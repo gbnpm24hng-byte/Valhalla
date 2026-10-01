@@ -431,13 +431,17 @@ button {
 
 button:active { transform: scale(0.98); }
 
-button.primary {
+button.primary,
+a.primary {
   background: linear-gradient(135deg, #d9af2d, #f4d97d);
   color: #121212;
   box-shadow: 0 12px 24px rgba(214, 169, 40, 0.25);
+  border-radius: 12px;
+  padding: 12px 14px;
 }
 
-button.primary:hover {
+button.primary:hover,
+a.primary:hover {
   background: var(--accent-hover);
 }
 
