@@ -5,11 +5,25 @@ global.window = global;
 require('../assets/js/data.js');
 require('../assets/js/finance.js');
 
-const { createInitialState } = globalThis.VALHALLA.data;
 const { calculateDashboard, getDashboardHighlights, validateMovement, addMovement } = globalThis.VALHALLA.finance;
 
+function createFinanceState() {
+  return {
+    profile: { initial_cash: 0, minimum_reserve: 0, savings_goal: 0 },
+    settings: { savings_rate: 0.5 },
+    movements: [],
+    recurringTransactions: [],
+    accounts: [
+      { id: 'account-operating', initialBalance: 0, isActive: true, isOperational: true },
+      { id: 'account-savings', initialBalance: 0, isActive: true, isOperational: true }
+    ],
+    clients: [],
+    debts: []
+  };
+}
+
 test('calculateDashboard returns expected projection and available amount', () => {
-  const state = createInitialState();
+  const state = createFinanceState();
   state.profile.initial_cash = 200000;
   state.movements.push({ id: 'm1', type: 'income', amount: 50000, category: 'sueldo', date: '2026-08-05', description: 'Sueldo', segment: 'personal' });
   state.movements.push({ id: 'm2', type: 'expense', amount: 30000, category: 'supermercado', date: '2026-08-04', description: 'Super', segment: 'personal' });
@@ -23,7 +37,7 @@ test('calculateDashboard returns expected projection and available amount', () =
 });
 
 test('validateMovement rejects negative amounts, empty dates, missing account and duplicates', () => {
-  const state = createInitialState();
+  const state = createFinanceState();
   const valid = {
     type: 'expense',
     amount: 10000,
@@ -45,7 +59,7 @@ test('validateMovement rejects negative amounts, empty dates, missing account an
 });
 
 test('calculateDashboard exposes account balances and excludes non-operational accounts from the operating view', () => {
-  const state = createInitialState();
+  const state = createFinanceState();
   state.accounts[0].initialBalance = 100000;
   state.accounts[1].initialBalance = 50000;
   state.accounts[1].isOperational = false;
@@ -58,7 +72,7 @@ test('calculateDashboard exposes account balances and excludes non-operational a
 });
 
 test('getDashboardHighlights builds the dashboard cards for the new home shell', () => {
-  const state = createInitialState();
+  const state = createFinanceState();
   state.profile.minimum_reserve = 50000;
   state.profile.savings_goal = 200000;
   state.clients.push({ id: 'c1', name: 'Ana', status: 'pending', continues: true, renewal_day: 20, amount: 90000 });

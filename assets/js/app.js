@@ -1,4 +1,8 @@
 ﻿(function () {
+  if (window.VALHALLA?.onboarding?.active) {
+    return;
+  }
+
   const dataApi = window.VALHALLA.data;
   const financeApi = window.VALHALLA.finance;
   const supabaseApi = window.VALHALLA.supabase;
@@ -18,7 +22,53 @@
     editingSetNumber: null,
     editingExerciseId: '',
     editingTemplateId: '',
-    editingTemplateExerciseId: ''
+    editingTemplateExerciseId: '',
+    activeTrainingView: 'today',
+    editingProgramId: '',
+    editingProgramDayId: '',
+    editingProgramExerciseId: '',
+    programExerciseDraft: null
+  };
+  const planningUi = {
+    currentStep: 1,
+    selectedClientIds: [],
+    objective: 'Fuerza',
+    duration: 4,
+    frequency: 3,
+    currentDayIndex: 0,
+    currentDayName: 'Día A',
+    category: 'PIERNAS',
+    selectedCategory: null,
+    exerciseDraft: null,
+    draftProgram: null,
+    baseProgramId: '',
+    moreOptionsOpen: false,
+    weeklyDays: []
+  };
+  const groupSessionUi = {
+    selectedClientIds: [],
+    sessionDate: getTodayLocalDate(),
+    drafts: {},
+    message: ''
+  };
+  const routineBuilder = {
+    screen: 'day',
+    activeDayIndex: 0,
+    category: null,
+    exerciseId: null,
+    editingIndex: null,
+    search: '',
+    showMoreOptions: false,
+    draft: {
+      sets: 3,
+      repMin: 8,
+      repMax: 12,
+      targetWeight: '',
+      approximations: [],
+      zone: '',
+      restSeconds: 90,
+      notes: ''
+    }
   };
   const studentUi = {
     enabled: false,
@@ -100,6 +150,29 @@
     routineForm: document.getElementById('routineForm'),
     routineMessage: document.getElementById('routineMessage'),
     trainingClientNotice: document.getElementById('trainingClientNotice'),
+    trainingViewTabs: document.getElementById('trainingViewTabs'),
+    trainingViewMessage: document.getElementById('trainingViewMessage'),
+    trainingTodayView: document.getElementById('trainingTodayView'),
+    trainingAgendaDate: document.getElementById('trainingAgendaDate'),
+    trainingAgendaToday: document.getElementById('trainingAgendaToday'),
+    trainingAgendaUpcoming: document.getElementById('trainingAgendaUpcoming'),
+    trainingPlanningView: document.getElementById('trainingPlanningView'),
+    trainingProgressView: document.getElementById('trainingProgressView'),
+    trainingGroupView: document.getElementById('trainingGroupView'),
+    groupSessionClients: document.getElementById('groupSessionClients'),
+    groupSessionDate: document.getElementById('groupSessionDate'),
+    groupSessionMessage: document.getElementById('groupSessionMessage'),
+    groupSessionRows: document.getElementById('groupSessionRows'),
+    importWhatsAppBtn: document.getElementById('importWhatsAppBtn'),
+    whatsAppImportPanel: document.getElementById('whatsAppImportPanel'),
+    whatsAppImportText: document.getElementById('whatsAppImportText'),
+    parseWhatsAppImportBtn: document.getElementById('parseWhatsAppImportBtn'),
+    cancelWhatsAppImportBtn: document.getElementById('cancelWhatsAppImportBtn'),
+    whatsAppImportMessage: document.getElementById('whatsAppImportMessage'),
+    clientAge: document.getElementById('clientAge'),
+    clientTrainingExperience: document.getElementById('clientTrainingExperience'),
+    clientAvoidExercises: document.getElementById('clientAvoidExercises'),
+    clientIntakeComment: document.getElementById('clientIntakeComment'),
     studentId: document.getElementById('studentId'),
     sessionCreateMode: document.getElementById('sessionCreateMode'),
     sessionTemplateId: document.getElementById('sessionTemplateId'),
@@ -188,7 +261,99 @@
     saveTemplateExerciseBtn: document.getElementById('saveTemplateExerciseBtn'),
     templateExerciseList: document.getElementById('templateExerciseList'),
     templateList: document.getElementById('templateList'),
+    librarySearch: document.getElementById('librarySearch'),
+    libraryPatternFilter: document.getElementById('libraryPatternFilter'),
+    libraryMuscleFilter: document.getElementById('libraryMuscleFilter'),
+    libraryTechnicalLevelFilter: document.getElementById('libraryTechnicalLevelFilter'),
+    libraryExerciseIdInput: document.getElementById('libraryExerciseId'),
+    libraryExerciseNameInput: document.getElementById('libraryExerciseName'),
+    libraryExercisePatternSelect: document.getElementById('libraryExercisePattern'),
+    libraryExercisePrimaryMuscleSelect: document.getElementById('libraryExercisePrimaryMuscle'),
+    libraryExerciseTechnicalLevelSelect: document.getElementById('libraryExerciseTechnicalLevel'),
+    libraryExerciseLoadTypeSelect: document.getElementById('libraryExerciseLoadType'),
+    libraryExerciseActiveSelect: document.getElementById('libraryExerciseActive'),
+    libraryExerciseBackDemandSelect: document.getElementById('libraryExerciseBackDemand'),
+    libraryExerciseShoulderDemandSelect: document.getElementById('libraryExerciseShoulderDemand'),
+    libraryExerciseKneeDemandSelect: document.getElementById('libraryExerciseKneeDemand'),
+    libraryExerciseHipDemandSelect: document.getElementById('libraryExerciseHipDemand'),
+    libraryExerciseDescriptionInput: document.getElementById('libraryExerciseDescription'),
+    libraryExerciseSecondaryMusclesInput: document.getElementById('libraryExerciseSecondaryMuscles'),
+    libraryExerciseEquipmentsInput: document.getElementById('libraryExerciseEquipments'),
+    libraryExerciseBaseInput: document.getElementById('libraryExerciseBase'),
+    libraryExerciseAlternativeGroupInput: document.getElementById('libraryExerciseAlternativeGroup'),
+    libraryRelationTargetInput: document.getElementById('libraryRelationTarget'),
+    libraryRelationTargetIdInput: document.getElementById('libraryRelationTargetId'),
+    libraryRelationTypeSelect: document.getElementById('libraryRelationType'),
+    libraryExerciseList: document.getElementById('libraryExerciseList'),
+    libraryMessage: document.getElementById('libraryMessage'),
+    newLibraryExerciseBtn: document.getElementById('newLibraryExerciseBtn'),
+    saveLibraryExerciseBtn: document.getElementById('saveLibraryExerciseBtn'),
+    exerciseLibraryOptions: document.getElementById('exerciseLibraryOptions'),
+    programForm: document.getElementById('programForm'),
+    programIdInput: document.getElementById('programId'),
+    programNameInput: document.getElementById('programName'),
+    programObjectiveInput: document.getElementById('programObjective'),
+    programStartDateInput: document.getElementById('programStartDate'),
+    programDurationWeeksInput: document.getElementById('programDurationWeeks'),
+    programWeeklyFrequencyInput: document.getElementById('programWeeklyFrequency'),
+    programAssignedClientsInput: document.getElementById('programAssignedClients'),
+    programDayList: document.getElementById('programDayList'),
+    addProgramDayBtn: document.getElementById('addProgramDayBtn'),
+    saveProgramBtn: document.getElementById('saveProgramBtn'),
+    programMessage: document.getElementById('programMessage'),
+    programList: document.getElementById('programList'),
+    newProgramBtn: document.getElementById('newProgramBtn'),
+    planningStep1: document.getElementById('planningStep1'),
+    planningStep2: document.getElementById('planningStep2'),
+    planningStep3: document.getElementById('planningStep3'),
+    planningStep4: document.getElementById('planningStep4'),
+    planningWizard: document.getElementById('planningWizard'),
+    planningClientGrid: document.getElementById('planningClientGrid'),
+    planningClientSelectionSummary: document.getElementById('planningClientSelectionSummary'),
+    planningProgramName: document.getElementById('planningProgramName'),
+    planningObjectiveOptions: document.getElementById('planningObjectiveOptions'),
+    planningCustomDuration: document.getElementById('planningCustomDuration'),
+    planningProgramStartDate: document.getElementById('planningProgramStartDate'),
+    planningDayTabs: document.getElementById('planningDayTabs'),
+    planningCurrentDayLabel: document.getElementById('planningCurrentDayLabel'),
+    planningExerciseList: document.getElementById('planningExerciseList'),
+    planningExerciseEmptyState: document.getElementById('planningExerciseEmptyState'),
+    routineBuilderRoot: document.getElementById('routineBuilderRoot'),
+    planningReviewSummary: document.getElementById('planningReviewSummary'),
+    planningSaveProgramWizardBtn: document.getElementById('planningSaveProgramWizardBtn'),
+    planningContinueStep1: document.getElementById('planningContinueStep1'),
+    planningContinueStep2: document.getElementById('planningContinueStep2'),
+    planningContinueStep3: document.getElementById('planningContinueStep3'),
+    planningBackToStep1: document.getElementById('planningBackToStep1'),
+    planningBackToStep2: document.getElementById('planningBackToStep2'),
+    planningBackToStep3: document.getElementById('planningBackToStep3'),
+    planningSavedPrograms: document.getElementById('planningSavedPrograms'),
+    programExerciseForm: document.getElementById('programExerciseForm'),
+    programExerciseIdInput: document.getElementById('programExerciseId'),
+    programExerciseNameInput: document.getElementById('programExerciseName'),
+    programExerciseCategoryInput: document.getElementById('programExerciseCategory'),
+    programExerciseZoneInput: document.getElementById('programExerciseZone'),
+    programExerciseRestInput: document.getElementById('programExerciseRest'),
+    programExerciseWeightInput: document.getElementById('programExerciseWeight'),
+    programExerciseRepMinInput: document.getElementById('programExerciseRepMin'),
+    programExerciseRepMaxInput: document.getElementById('programExerciseRepMax'),
+    programExerciseNotesInput: document.getElementById('programExerciseNotes'),
+    programApproximationModeInput: document.getElementById('programApproximationMode'),
+    programApproximationRows: document.getElementById('programApproximationRows'),
+    addProgramApproximationBtn: document.getElementById('addProgramApproximationBtn'),
+    programEffectiveSetRows: document.getElementById('programEffectiveSetRows'),
+    addProgramEffectiveSetBtn: document.getElementById('addProgramEffectiveSetBtn'),
+    saveProgramExerciseBtn: document.getElementById('saveProgramExerciseBtn'),
+    clearProgramExerciseBtn: document.getElementById('clearProgramExerciseBtn'),
+    exerciseCategorySelect: document.getElementById('exerciseCategorySelect'),
+    exerciseLibrarySearch: document.getElementById('exerciseLibrarySearch'),
+    exerciseLibraryList: document.getElementById('exerciseLibraryList'),
     reserve: document.getElementById('reserve'),
+    coachWhatsAppNumber: document.getElementById('coachWhatsAppNumber'),
+    onboardingQr: document.getElementById('onboardingQr'),
+    onboardingUrl: document.getElementById('onboardingUrl'),
+    onboardingQrMessage: document.getElementById('onboardingQrMessage'),
+    copyOnboardingUrlBtn: document.getElementById('copyOnboardingUrlBtn'),
     magicBudget: document.getElementById('magicBudget'),
     antBudget: document.getElementById('antBudget'),
     savingsGoal: document.getElementById('savingsGoal'),
@@ -233,6 +398,15 @@
       .replace(/>/g, '&gt;')
       .replace(/\"/g, '&quot;')
       .replace(/'/g, '&#39;');
+  }
+
+  function slugifyTrainingPart(value) {
+    return String(value || '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'base';
   }
 
   function isCloudMode() {
@@ -647,18 +821,30 @@
   }
 
   function getActiveTrainingClients() {
-    return (state.clients || []).filter((client) => client.client_status === 'active' && client.active !== false);
+    return (state.clients || []).filter((client) => {
+      const clientStatus = String(client?.client_status || client?.status || 'active').toLowerCase();
+      const paymentStatus = String(client?.payment_status || '').toLowerCase();
+      const notInactive = client?.active !== false && clientStatus !== 'inactive' && clientStatus !== 'paused';
+      const legacyIsActive = clientStatus === 'active' || clientStatus === 'paid' || clientStatus === 'pending' || paymentStatus === 'paid' || paymentStatus === 'pending' || paymentStatus === 'uncertain';
+      return notInactive && legacyIsActive;
+    });
   }
 
   function ensureTrainingsV08State() {
     if (!state.trainingsV08 || typeof state.trainingsV08 !== 'object') {
-      state.trainingsV08 = { plans: [], sessions: [] };
+      state.trainingsV08 = { plans: [], sessions: [], programs: [], assignments: [] };
     }
     if (!Array.isArray(state.trainingsV08.sessions)) {
       state.trainingsV08.sessions = [];
     }
     if (!Array.isArray(state.trainingsV08.plans)) {
       state.trainingsV08.plans = [];
+    }
+    if (!Array.isArray(state.trainingsV08.programs)) {
+      state.trainingsV08.programs = [];
+    }
+    if (!Array.isArray(state.trainingsV08.assignments)) {
+      state.trainingsV08.assignments = [];
     }
     if (!state.trainingModelVersion) {
       state.trainingModelVersion = '0.8.0';
@@ -747,6 +933,403 @@
   function getTemplateById(templateId) {
     ensureTrainingsV08State();
     return (state.trainingsV08.plans || []).find((template) => template.id === templateId) || null;
+  }
+
+  function getTrainingPrograms() {
+    ensureTrainingsV08State();
+    return Array.isArray(state.trainingsV08.programs) ? state.trainingsV08.programs : [];
+  }
+
+  function getTrainingProgramById(programId) {
+    return getTrainingPrograms().find((program) => program.id === programId) || null;
+  }
+
+  function getTrainingAssignments() {
+    ensureTrainingsV08State();
+    return Array.isArray(state.trainingsV08.assignments) ? state.trainingsV08.assignments : [];
+  }
+
+  function getTrainingAssignmentsForClient(clientId) {
+    return getTrainingAssignments().filter((assignment) => assignment.clientId === clientId);
+  }
+
+  function getActiveTrainingAssignment(clientId) {
+    return getTrainingAssignmentsForClient(clientId)
+      .filter((assignment) => assignment.status !== 'cancelled' && assignment.status !== 'completed')
+      .sort((first, second) => String(second.updatedAt || '').localeCompare(String(first.updatedAt || '')))[0] || null;
+  }
+
+  function getGroupSessionDay(assignment, sessionDate) {
+    const days = Array.isArray(assignment?.days) ? assignment.days : [];
+    if (!days.length) {
+      return { day: null, index: -1 };
+    }
+    const date = new Date(`${sessionDate || getTodayLocalDate()}T00:00:00`);
+    const weekday = date.getDay() || 7;
+    const scheduledWeekdays = Array.isArray(assignment.weeklyDays) ? assignment.weeklyDays.map(Number) : [];
+    const scheduledIndex = scheduledWeekdays.indexOf(weekday);
+    const index = scheduledIndex >= 0 ? scheduledIndex : 0;
+    return { day: days[index] || days[0], index: days[index] ? index : 0 };
+  }
+
+  function getGroupRowData(clientId) {
+    const assignment = getActiveTrainingAssignment(clientId);
+    if (!assignment) {
+      return null;
+    }
+    const { day, index: dayIndex } = getGroupSessionDay(assignment, groupSessionUi.sessionDate);
+    const exercises = Array.isArray(day?.exercises) ? day.exercises : [];
+    const draft = groupSessionUi.drafts[clientId];
+    const planExercise = exercises.find((exercise) => exercise.id === draft?.planExerciseId) || exercises[0] || null;
+    if (!day || !planExercise) {
+      return null;
+    }
+    const exerciseIndex = exercises.indexOf(planExercise);
+    if (!draft || draft.planExerciseId !== planExercise.id) {
+      groupSessionUi.drafts[clientId] = {
+        planExerciseId: planExercise.id,
+        exerciseId: planExercise.libraryExerciseId || planExercise.id,
+        warmups: '',
+        set1: '',
+        set2: '',
+        set3: '',
+        rir: '',
+        decision: '',
+        proposedWeight: String(Number(planExercise.targetWeight || 0))
+      };
+    }
+    return { assignment, day, dayIndex, exerciseIndex, planExercise, draft: groupSessionUi.drafts[clientId] };
+  }
+
+  function getGroupSessionId() {
+    const selectedIds = [...groupSessionUi.selectedClientIds].sort();
+    return `group-${groupSessionUi.sessionDate}-${selectedIds.join('-')}`;
+  }
+
+  function getGroupExerciseOption(exerciseId, planExercise) {
+    const libraryExercise = (state.exerciseLibrary || []).find((exercise) => exercise.id === exerciseId);
+    return libraryExercise || {
+      id: planExercise.libraryExerciseId || planExercise.id,
+      name: planExercise.exerciseName || 'Ejercicio'
+    };
+  }
+
+  function renderTrainingGroupMode() {
+    if (!els.trainingGroupView) {
+      return;
+    }
+    if (!groupSessionUi.sessionDate) {
+      groupSessionUi.sessionDate = getTodayLocalDate();
+    }
+    if (els.groupSessionDate && els.groupSessionDate.value !== groupSessionUi.sessionDate) {
+      els.groupSessionDate.value = groupSessionUi.sessionDate;
+    }
+    const activeClients = getActiveTrainingClients();
+    groupSessionUi.selectedClientIds = groupSessionUi.selectedClientIds.filter((id) => activeClients.some((client) => client.id === id));
+    if (els.groupSessionClients) {
+      els.groupSessionClients.innerHTML = activeClients.length
+        ? activeClients.map((client) => `
+          <label class="group-session-client">
+            <input type="checkbox" data-group-client="${escapeHtml(client.id)}" ${groupSessionUi.selectedClientIds.includes(client.id) ? 'checked' : ''}>
+            <span>${escapeHtml(getClientDisplayName(client))}</span>
+          </label>`).join('')
+        : '<div class="muted">No hay alumnos activos.</div>';
+    }
+    if (els.groupSessionMessage) {
+      els.groupSessionMessage.textContent = groupSessionUi.message || '';
+      els.groupSessionMessage.className = groupSessionUi.message.startsWith('✓') ? 'notice ok' : 'notice';
+    }
+    if (!els.groupSessionRows) {
+      return;
+    }
+    if (!groupSessionUi.selectedClientIds.length) {
+      els.groupSessionRows.innerHTML = '<div class="muted">Selecciona de 1 a 4 alumnos.</div>';
+      return;
+    }
+    const groupSessionId = getGroupSessionId();
+    els.groupSessionRows.innerHTML = groupSessionUi.selectedClientIds.map((clientId) => {
+      const client = getClientById(clientId);
+      const row = getGroupRowData(clientId);
+      if (!row) {
+        return `<article class="group-athlete-row"><h3>${escapeHtml(client ? getClientDisplayName(client) : 'Alumno')}</h3><div class="notice warn">No tiene un programa activo con ejercicios para esta fecha.</div></article>`;
+      }
+      const { assignment, day, planExercise, draft } = row;
+      const currentWeight = Number(planExercise.targetWeight || 0);
+      const selectedExerciseId = draft.exerciseId || planExercise.libraryExerciseId || planExercise.id;
+      const selectedExercise = getGroupExerciseOption(selectedExerciseId, planExercise);
+      const exerciseOptions = new Map();
+      (day.exercises || []).forEach((exercise) => {
+        const id = exercise.libraryExerciseId || exercise.id;
+        exerciseOptions.set(id, exercise.exerciseName || 'Ejercicio');
+      });
+      (state.exerciseLibrary || []).filter((exercise) => exercise.active !== false).forEach((exercise) => {
+        if (!exerciseOptions.has(exercise.id)) {
+          exerciseOptions.set(exercise.id, exercise.name || 'Ejercicio');
+        }
+      });
+      if (!exerciseOptions.has(selectedExerciseId)) {
+        exerciseOptions.set(selectedExerciseId, planExercise.exerciseName || selectedExercise.name);
+      }
+      const options = Array.from(exerciseOptions, ([id, name]) => `
+        <option value="${escapeHtml(id)}" ${id === selectedExerciseId ? 'selected' : ''}>${escapeHtml(name)}</option>`).join('');
+      const alreadyConfirmed = getTrainingSessionsByClient(clientId).some((session) => session.groupSessionId === groupSessionId);
+      const decisionLabels = [
+        ['up', '↑ Subir'],
+        ['keep', '→ Mantener'],
+        ['down', '↓ Bajar'],
+        ['change', '↔ Cambiar ejercicio']
+      ];
+      return `
+        <article class="group-athlete-row" data-group-row="${escapeHtml(clientId)}">
+          <header class="group-athlete-heading">
+            <div><h3>${escapeHtml(client ? getClientDisplayName(client) : 'Alumno')}</h3><div class="meta">${escapeHtml(day.name || 'Rutina')} · Plan actual: ${currentWeight} kg × ${Number(planExercise.repMin || planExercise.repRangeMin || 1)}-${Number(planExercise.repMax || planExercise.repRangeMax || 1)}</div></div>
+            <div class="meta">${escapeHtml(assignment.programName || 'Programa')}</div>
+          </header>
+          <label>Ejercicio<select data-group-field="exerciseId" data-client-id="${escapeHtml(clientId)}">${options}</select></label>
+          <div class="group-set-grid">
+            <label>Aproximaciones<input type="text" inputmode="text" placeholder="30/40 kg" data-group-field="warmups" data-client-id="${escapeHtml(clientId)}" value="${escapeHtml(draft.warmups)}"></label>
+            ${[1, 2, 3].map((setNumber) => `<label>S${setNumber} (kg)<input type="number" min="0" step="0.5" inputmode="decimal" data-group-field="set${setNumber}" data-client-id="${escapeHtml(clientId)}" value="${escapeHtml(draft[`set${setNumber}`])}"></label>`).join('')}
+            <label>RIR final<input type="number" min="0" max="10" step="1" inputmode="numeric" data-group-field="rir" data-client-id="${escapeHtml(clientId)}" value="${escapeHtml(draft.rir)}"></label>
+          </div>
+          <div class="group-decisions" role="group" aria-label="Decisión para ${escapeHtml(client ? getClientDisplayName(client) : 'alumno')}">
+            ${decisionLabels.map(([value, label]) => `<button class="${draft.decision === value ? 'primary' : 'secondary'} small" type="button" data-group-decision="${value}" data-client-id="${escapeHtml(clientId)}" aria-pressed="${draft.decision === value}">${label}</button>`).join('')}
+          </div>
+          <div class="group-confirm-row">
+            <label>Próxima sesión · ${escapeHtml(selectedExercise.name)}<input type="number" min="0" step="2.5" inputmode="decimal" data-group-field="proposedWeight" data-client-id="${escapeHtml(clientId)}" value="${escapeHtml(draft.proposedWeight)}">kg × ${Number(planExercise.repMin || planExercise.repRangeMin || 1)}-${Number(planExercise.repMax || planExercise.repRangeMax || 1)}</label>
+            <button class="primary" type="button" data-group-confirm="${escapeHtml(clientId)}" ${!draft.decision || alreadyConfirmed ? 'disabled' : ''}>${alreadyConfirmed ? 'Confirmada' : 'Confirmar'}</button>
+          </div>
+        </article>`;
+    }).join('');
+  }
+
+  function selectGroupDecision(clientId, decision) {
+    const row = getGroupRowData(clientId);
+    if (!row) {
+      return;
+    }
+    const currentWeight = Number(row.planExercise.targetWeight || 0);
+    const chosenExercise = getGroupExerciseOption(row.draft.exerciseId, row.planExercise);
+    const roundToPlate = (weight) => Math.round(weight / 2.5) * 2.5;
+    const proposedWeight = decision === 'up'
+      ? roundToPlate(currentWeight * 1.035)
+      : decision === 'down'
+        ? roundToPlate(currentWeight * 0.9)
+        : decision === 'change'
+          ? Number(chosenExercise.targetWeight || currentWeight)
+          : currentWeight;
+    row.draft.decision = decision;
+    row.draft.proposedWeight = String(proposedWeight);
+    groupSessionUi.message = '';
+    renderTrainingGroupMode();
+  }
+
+  function confirmGroupStudentSession(clientId) {
+    const row = getGroupRowData(clientId);
+    if (!row || !row.draft.decision) {
+      groupSessionUi.message = 'Selecciona una decisión antes de confirmar.';
+      renderTrainingGroupMode();
+      return;
+    }
+    const draft = row.draft;
+    const effectiveSets = [draft.set1, draft.set2, draft.set3].filter((value) => value !== '' && Number.isFinite(Number(value)));
+    if (!effectiveSets.length) {
+      groupSessionUi.message = 'Registra al menos una serie efectiva antes de confirmar.';
+      renderTrainingGroupMode();
+      return;
+    }
+    const groupSessionId = getGroupSessionId();
+    if (getTrainingSessionsByClient(clientId).some((session) => session.groupSessionId === groupSessionId)) {
+      groupSessionUi.message = 'Esta sesión ya fue confirmada para el alumno.';
+      renderTrainingGroupMode();
+      return;
+    }
+
+    const proposedWeight = Number(draft.proposedWeight);
+    if (!Number.isFinite(proposedWeight) || proposedWeight < 0) {
+      groupSessionUi.message = 'El objetivo propuesto debe ser un peso válido.';
+      renderTrainingGroupMode();
+      return;
+    }
+    const selectedExercise = getGroupExerciseOption(draft.exerciseId, row.planExercise);
+    const planExercise = row.day.exercises[row.exerciseIndex];
+    const plannedWeight = Number(planExercise.targetWeight || 0);
+    const performedExerciseName = selectedExercise.name || planExercise.exerciseName;
+    const originalLibraryExerciseId = planExercise.libraryExerciseId || '';
+    const originalExerciseName = String(planExercise.exerciseName || '').trim().toLowerCase();
+    row.assignment.days.forEach((day) => {
+      (day.exercises || []).forEach((exercise) => {
+        const sameExercise = originalLibraryExerciseId
+          ? exercise.libraryExerciseId === originalLibraryExerciseId
+          : String(exercise.exerciseName || '').trim().toLowerCase() === originalExerciseName;
+        if (!sameExercise) {
+          return;
+        }
+        if (draft.decision === 'change') {
+          exercise.libraryExerciseId = selectedExercise.id || '';
+          exercise.exerciseName = performedExerciseName;
+        }
+        exercise.targetWeight = proposedWeight;
+      });
+    });
+    row.assignment.updatedAt = new Date().toISOString();
+
+    const sets = String(draft.warmups || '').match(/[0-9]+(?:[.,][0-9]+)?/g) || [];
+    const archivedSets = sets.map((weight, index) => ({
+      setNumber: index + 1,
+      weight: Number(weight.replace(',', '.')),
+      reps: 0,
+      setType: 'A',
+      completed: true
+    }));
+    effectiveSets.forEach((weight, index) => {
+      archivedSets.push({
+        setNumber: archivedSets.length + 1,
+        weight: Number(weight),
+        reps: Number(row.planExercise.repMin || row.planExercise.repRangeMin || 1),
+        setType: 'S',
+        rir: index === effectiveSets.length - 1 && draft.rir !== '' ? Number(draft.rir) : null,
+        completed: true
+      });
+    });
+
+    const session = {
+      id: dataApi.createId('tx-session'),
+      clientId,
+      planId: row.assignment.programId || null,
+      groupSessionId,
+      date: groupSessionUi.sessionDate,
+      title: `Modo Grupo · ${row.day.name || 'Entrenamiento'}`,
+      status: 'completed',
+      notes: JSON.stringify({ decision: draft.decision, proposedWeight, proposedExercise: performedExerciseName }),
+      exercises: [{
+        id: dataApi.createId('tx-exercise'),
+        libraryExerciseId: selectedExercise.id || '',
+        exerciseName: performedExerciseName,
+        order: 1,
+        plannedSets: Number(row.planExercise.sets || 3),
+        plannedRepMin: Number(row.planExercise.repMin || row.planExercise.repRangeMin || 1),
+        plannedRepMax: Number(row.planExercise.repMax || row.planExercise.repRangeMax || 1),
+        targetWeight: plannedWeight,
+        restSeconds: Number(row.planExercise.restSeconds || 90),
+        coachNotes: row.planExercise.notes || '',
+        sets: archivedSets
+      }]
+    };
+    state.trainingsV08.sessions.push(session);
+    dataApi.saveState(state);
+    if (isCloudSessionActive()) {
+      syncSessionToCloud(session).catch((error) => console.error(error));
+    }
+    const client = getClientById(clientId);
+    groupSessionUi.message = `✓ ${client ? getClientDisplayName(client) : 'Alumno'}: próximo objetivo ${performedExerciseName}, ${proposedWeight} kg.`;
+    renderTrainings();
+  }
+
+  function handleGroupSessionInput(event) {
+    const field = event.target.getAttribute('data-group-field');
+    const clientId = event.target.getAttribute('data-client-id');
+    if (!field || !clientId) {
+      return;
+    }
+    const row = getGroupRowData(clientId);
+    if (row) {
+      row.draft[field] = event.target.value;
+    }
+  }
+
+  function handleGroupSessionChange(event) {
+    if (event.target === els.groupSessionDate) {
+      groupSessionUi.sessionDate = event.target.value || getTodayLocalDate();
+      groupSessionUi.message = '';
+      renderTrainingGroupMode();
+      return;
+    }
+    const clientCheckbox = event.target.closest('[data-group-client]');
+    if (clientCheckbox) {
+      const clientId = clientCheckbox.getAttribute('data-group-client');
+      const selected = new Set(groupSessionUi.selectedClientIds);
+      if (clientCheckbox.checked) {
+        if (selected.size >= 4) {
+          groupSessionUi.message = 'Modo Grupo admite hasta 4 alumnos.';
+          renderTrainingGroupMode();
+          return;
+        }
+        selected.add(clientId);
+      } else {
+        selected.delete(clientId);
+      }
+      groupSessionUi.selectedClientIds = Array.from(selected);
+      groupSessionUi.message = '';
+      renderTrainingGroupMode();
+      return;
+    }
+    const field = event.target.getAttribute('data-group-field');
+    const clientId = event.target.getAttribute('data-client-id');
+    if (field === 'exerciseId' && clientId) {
+      const row = getGroupRowData(clientId);
+      if (row) {
+        row.draft.exerciseId = event.target.value;
+        const plannedExercise = row.day.exercises.find((exercise) => (exercise.libraryExerciseId || exercise.id) === event.target.value);
+        if (plannedExercise && plannedExercise.id !== row.planExercise.id) {
+          row.draft.planExerciseId = plannedExercise.id;
+          row.draft.proposedWeight = String(Number(plannedExercise.targetWeight || 0));
+          row.draft.decision = '';
+          row.draft.set1 = '';
+          row.draft.set2 = '';
+          row.draft.set3 = '';
+          row.draft.warmups = '';
+          row.draft.rir = '';
+        }
+        groupSessionUi.message = '';
+        renderTrainingGroupMode();
+      }
+    }
+  }
+
+  function setTrainingView(viewName) {
+    trainingUi.activeTrainingView = viewName;
+    const trainingsSection = document.getElementById('trainings');
+    if (trainingsSection) {
+      trainingsSection.setAttribute('data-view', viewName);
+    }
+    const viewMap = {
+      today: els.trainingTodayView,
+      planning: els.trainingPlanningView,
+      progress: els.trainingProgressView,
+      group: els.trainingGroupView
+    };
+    Object.entries(viewMap).forEach(([key, element]) => {
+      if (element) {
+        element.classList.toggle('hidden', key !== viewName);
+      }
+    });
+    document.querySelectorAll('#trainingViewTabs button').forEach((button) => {
+      button.classList.toggle('active', button.getAttribute('data-training-view') === viewName);
+    });
+    if (viewName === 'planning') {
+      const currentStep = Number.isInteger(planningUi.currentStep) && planningUi.currentStep >= 1 && planningUi.currentStep <= 4
+        ? planningUi.currentStep
+        : 1;
+      planningUi.currentStep = currentStep;
+      showPlanningStep(currentStep);
+      renderPlanningClientSelection();
+      renderPlanningSavedPrograms();
+    }
+    if (viewName === 'group') {
+      renderTrainingGroupMode();
+    }
+    if (viewName === 'today') {
+      renderTrainingAgenda();
+    }
+    if (els.trainingViewMessage) {
+      els.trainingViewMessage.textContent = viewName === 'planning'
+        ? 'Planifica programas y días sin duplicar sesiones semanales.'
+        : viewName === 'progress'
+          ? 'Revisa progreso y series efectivas.'
+          : viewName === 'group'
+            ? 'Registra la sesión individual de cada alumno y confirma su próximo objetivo.'
+            : 'Hoy: registra la clase y las series reales.';
+    }
   }
 
   function cloneSessionFromTemplate(template, clientId, sessionDate) {
@@ -1041,6 +1624,1858 @@
           </div>
         </div>`).join('')
       : '<div class="muted">La plantilla no tiene ejercicios todavía.</div>';
+  }
+
+  function getProgramExerciseCatalog() {
+    const byCategory = {
+      PIERNAS: ['Sentadilla libre', 'Sentadilla Smith', 'Prensa', 'Peso muerto', 'Peso muerto rumano', 'Hip thrust', 'Extensión de cuádriceps', 'Femoral', 'Abducción', 'Estocadas'],
+      PECHO: ['Press de banca', 'Press inclinado', 'Aperturas', 'Pullover', 'Cruce de polea'],
+      ESPALDA: ['Remo barra', 'Remo mancuernas', 'Jalón al pecho', 'Pulldown', 'Peso muerto', 'Hip thrust'],
+      HOMBROS: ['Press militar', 'Elevaciones laterales', 'Elevaciones frontales', 'Face pull'],
+      BÍCEPS: ['Curl barra', 'Curl mancuernas', 'Curl martillo', 'Curl concentrado'],
+      TRÍCEPS: ['Press francés', 'Extension de tríceps polea', 'Fondos', 'Patada de tríceps'],
+      CORE: ['Plancha', 'Crunch', 'Abdominal', 'Russian twist', 'Hollow hold'],
+      OTROS: ['Movimiento libre', 'Carrera', 'Mobilidad', 'Core adicional']
+    };
+    return byCategory;
+  }
+
+  function createEmptyProgramDay(index = 1) {
+    return {
+      id: dataApi.createId('program-day'),
+      name: `Día ${index}`,
+      order: index,
+      exercises: []
+    };
+  }
+
+  function createEmptyProgramExercise() {
+    return {
+      id: dataApi.createId('program-exercise'),
+      exerciseName: '',
+      category: 'OTROS',
+      notes: '',
+      repRangeMin: 8,
+      repRangeMax: 10,
+      targetWeight: 0,
+      restSeconds: 90,
+      zone: '',
+      weightConvention: 'external',
+      approximations: [],
+      effectiveSets: []
+    };
+  }
+
+  function createProgramApproximation(index = 1) {
+    return {
+      id: dataApi.createId('program-approximation'),
+      label: `A${index}`,
+      weight: 0,
+      reps: 0
+    };
+  }
+
+  function createProgramEffectiveSet(index = 1) {
+    return {
+      id: dataApi.createId('program-set'),
+      label: `S${index}`,
+      weight: 0,
+      reps: 0
+    };
+  }
+
+  function clearProgramExerciseForm() {
+    trainingUi.programExerciseDraft = null;
+    trainingUi.editingProgramExerciseId = '';
+    if (els.programExerciseIdInput) {
+      els.programExerciseIdInput.value = '';
+    }
+    if (els.programExerciseNameInput) {
+      els.programExerciseNameInput.value = '';
+    }
+    if (els.programExerciseCategoryInput) {
+      els.programExerciseCategoryInput.value = 'OTROS';
+    }
+    if (els.programExerciseZoneInput) {
+      els.programExerciseZoneInput.value = '';
+    }
+    if (els.programExerciseRestInput) {
+      els.programExerciseRestInput.value = '90';
+    }
+    if (els.programExerciseWeightInput) {
+      els.programExerciseWeightInput.value = '';
+    }
+    if (els.programExerciseRepMinInput) {
+      els.programExerciseRepMinInput.value = '8';
+    }
+    if (els.programExerciseRepMaxInput) {
+      els.programExerciseRepMaxInput.value = '12';
+    }
+    if (els.programExerciseNotesInput) {
+      els.programExerciseNotesInput.value = '';
+    }
+    if (els.programApproximationModeInput) {
+      els.programApproximationModeInput.value = 'none';
+    }
+    if (els.programApproximationRows) {
+      els.programApproximationRows.innerHTML = '';
+    }
+    if (els.programEffectiveSetRows) {
+      els.programEffectiveSetRows.innerHTML = '';
+    }
+  }
+
+  function populateProgramExerciseForm(exercise) {
+    if (!exercise) {
+      clearProgramExerciseForm();
+      return;
+    }
+    trainingUi.programExerciseDraft = exercise;
+    trainingUi.editingProgramExerciseId = exercise.id;
+    if (els.programExerciseIdInput) {
+      els.programExerciseIdInput.value = exercise.id || '';
+    }
+    if (els.programExerciseNameInput) {
+      els.programExerciseNameInput.value = exercise.exerciseName || '';
+    }
+    if (els.programExerciseCategoryInput) {
+      els.programExerciseCategoryInput.value = exercise.category || 'OTROS';
+    }
+    if (els.programExerciseZoneInput) {
+      els.programExerciseZoneInput.value = exercise.zone || '';
+    }
+    if (els.programExerciseRestInput) {
+      els.programExerciseRestInput.value = String(exercise.restSeconds || 90);
+    }
+    if (els.programExerciseWeightInput) {
+      els.programExerciseWeightInput.value = Number(exercise.targetWeight || 0) > 0 ? String(exercise.targetWeight) : '';
+    }
+    if (els.programExerciseRepMinInput) {
+      els.programExerciseRepMinInput.value = String(exercise.repRangeMin || 8);
+    }
+    if (els.programExerciseRepMaxInput) {
+      els.programExerciseRepMaxInput.value = String(exercise.repRangeMax || 12);
+    }
+    if (els.programExerciseNotesInput) {
+      els.programExerciseNotesInput.value = exercise.notes || '';
+    }
+    if (els.programApproximationModeInput) {
+      const hasApproximations = Array.isArray(exercise.approximations) && exercise.approximations.length;
+      els.programApproximationModeInput.value = hasApproximations ? 'manual' : 'none';
+    }
+    renderProgramExerciseRows(exercise);
+  }
+
+  function renderProgramExerciseRows(exercise) {
+    if (!els.programApproximationRows || !els.programEffectiveSetRows) {
+      return;
+    }
+    const approximations = Array.isArray(exercise?.approximations) && exercise.approximations.length ? exercise.approximations : [];
+    const effectiveSets = Array.isArray(exercise?.effectiveSets) && exercise.effectiveSets.length ? exercise.effectiveSets : [];
+    els.programApproximationRows.innerHTML = approximations.length
+      ? approximations.map((approx, index) => `
+        <div class="training-set-item">
+          <div><strong>${escapeHtml(approx.label || `A${index + 1}`)}</strong></div>
+          <div class="row">
+            <div><label>Peso</label><input data-program-approx-weight="${approx.id}" type="number" min="0" step="0.5" value="${Number(approx.weight || 0)}"></div>
+            <div><label>Reps</label><input data-program-approx-reps="${approx.id}" type="number" min="0" value="${Number(approx.reps || 0)}"></div>
+          </div>
+        </div>`).join('')
+      : '<div class="muted">Sin aproximaciones.</div>';
+    els.programEffectiveSetRows.innerHTML = effectiveSets.length
+      ? effectiveSets.map((setEntry, index) => `
+        <div class="training-set-item">
+          <div><strong>${escapeHtml(setEntry.label || `S${index + 1}`)}</strong></div>
+          <div class="row">
+            <div><label>Peso</label><input data-program-set-weight="${setEntry.id}" type="number" min="0" step="0.5" value="${Number(setEntry.weight || 0)}"></div>
+            <div><label>Reps</label><input data-program-set-reps="${setEntry.id}" type="number" min="0" value="${Number(setEntry.reps || 0)}"></div>
+          </div>
+        </div>`).join('')
+      : '<div class="muted">Sin series efectivas.</div>';
+  }
+
+  function resetProgramDraft() {
+    trainingUi.editingProgramId = '';
+    trainingUi.editingProgramDayId = '';
+    trainingUi.editingProgramExerciseId = '';
+    if (els.programIdInput) {
+      els.programIdInput.value = '';
+    }
+    if (els.programNameInput) {
+      els.programNameInput.value = '';
+    }
+    if (els.programObjectiveInput) {
+      els.programObjectiveInput.value = '';
+    }
+    if (els.programStartDateInput) {
+      els.programStartDateInput.value = getTodayLocalDate();
+    }
+    if (els.programDurationWeeksInput) {
+      els.programDurationWeeksInput.value = '4';
+    }
+    if (els.programWeeklyFrequencyInput) {
+      els.programWeeklyFrequencyInput.value = '3';
+    }
+    if (els.programAssignedClientsInput) {
+      els.programAssignedClientsInput.innerHTML = '';
+    }
+  }
+
+  function getProgramDraft() {
+    ensureTrainingsV08State();
+    const existing = trainingUi.editingProgramId ? getTrainingProgramById(trainingUi.editingProgramId) : null;
+    if (existing) {
+      return existing;
+    }
+    return {
+      id: dataApi.createId('program'),
+      name: '',
+      objective: '',
+      startDate: getTodayLocalDate(),
+      durationWeeks: 4,
+      weeklyFrequency: 3,
+      assignedClientIds: [],
+      days: [createEmptyProgramDay(1)],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+  }
+
+  function renderProgramDayList(program) {
+    if (!els.programDayList) {
+      return;
+    }
+    const safeProgram = program || getProgramDraft();
+    els.programDayList.innerHTML = safeProgram.days.length
+      ? safeProgram.days.map((day, dayIndex) => {
+        const exerciseCount = day.exercises?.length || 0;
+        const effectiveSetCount = (day.exercises || []).reduce((sum, exercise) => sum + Number(exercise.effectiveSets?.length || 0), 0);
+        const zones = [...new Set((day.exercises || []).map((exercise) => exercise.zone).filter(Boolean))];
+        const estimatedMinutes = Math.max(20, Math.round((effectiveSetCount * 3) + (exerciseCount * 2) + (zones.length * 4) + 10));
+        return `
+        <div class="training-set-item">
+          <div>
+            <strong>${escapeHtml(day.name || `Día ${dayIndex + 1}`)}</strong>
+            <div class="meta">${exerciseCount} ejercicios · ${effectiveSetCount} series efectivas · Zonas: ${zones.length ? zones.join(' → ') : 'Sin zona'}</div>
+            <div class="meta">Duración estimada: ${estimatedMinutes} min</div>
+          </div>
+          <div class="inline-actions">
+            <button class="ghost small" type="button" data-program-day-edit="${day.id}">Editar</button>
+            <button class="secondary small" type="button" data-program-exercise-add="${day.id}">+ EJERCICIO</button>
+          </div>
+          <div class="training-set-list">
+            ${(day.exercises || []).map((exercise, exerciseIndex) => `
+              <div class="training-set-item">
+                <div>
+                  <strong>${exerciseIndex + 1}. ${escapeHtml(exercise.exerciseName || 'Ejercicio')}</strong>
+                  <div class="meta">${escapeHtml(exercise.category || 'OTROS')} · ${escapeHtml(exercise.zone || 'Sin zona')} · ${Number(exercise.restSeconds || 0)} s</div>
+                  <div class="meta">A: ${(exercise.approximations || []).map((item) => `${escapeHtml(item.label || '')} ${Number(item.weight || 0)} kg x ${Number(item.reps || 0)}`).join(' · ') || 'Sin aproximaciones'}</div>
+                  <div class="meta">S: ${(exercise.effectiveSets || []).map((item) => `${escapeHtml(item.label || '')} ${Number(item.weight || 0)} kg x ${Number(item.reps || 0)}`).join(' · ') || 'Sin series'}</div>
+                </div>
+                <div class="inline-actions">
+                  <button class="ghost small" type="button" data-program-exercise-edit="${exercise.id}">Editar</button>
+                  <button class="ghost small" type="button" data-program-exercise-up="${exercise.id}" ${exerciseIndex === 0 ? 'disabled' : ''}>Subir</button>
+                  <button class="ghost small" type="button" data-program-exercise-down="${exercise.id}" ${exerciseIndex === (day.exercises || []).length - 1 ? 'disabled' : ''}>Bajar</button>
+                  <button class="danger small" type="button" data-program-exercise-delete="${exercise.id}">Eliminar</button>
+                </div>
+              </div>`).join('')}
+          </div>
+        </div>`;
+      }).join('')
+      : '<div class="muted">Aún no hay días creados.</div>';
+  }
+
+  function renderProgramLibrary() {
+    if (!els.exerciseLibraryList) {
+      return;
+    }
+    const category = els.exerciseCategorySelect?.value || 'PIERNAS';
+    const search = String(els.exerciseLibrarySearch?.value || '').trim().toLowerCase();
+    const catalog = getProgramExerciseCatalog()[category] || [];
+    const items = catalog.filter((exercise) => !search || exercise.toLowerCase().includes(search));
+    els.exerciseLibraryList.innerHTML = items.length
+      ? items.map((exercise) => `
+        <div class="training-set-item">
+          <div><strong>${escapeHtml(exercise)}</strong></div>
+          <div class="inline-actions"><button class="secondary small" type="button" data-program-library-select="${escapeHtml(exercise)}">Agregar</button></div>
+        </div>`).join('')
+      : '<div class="muted">No hay ejercicios para esta categoría.</div>';
+  }
+
+  function renderProgramsList() {
+    if (!els.programList) {
+      return;
+    }
+    const programs = getTrainingPrograms();
+    els.programList.innerHTML = programs.length
+      ? programs.map((program) => `
+        <div class="training-set-item">
+          <div>
+            <strong>${escapeHtml(program.name || 'Programa')}</strong>
+            <div class="meta">${escapeHtml(program.objective || 'Sin objetivo')} · ${Number(program.durationWeeks || 0)} semanas · ${Number(program.weeklyFrequency || 0)} días/semana</div>
+            <div class="meta">${program.days?.length || 0} días · ${program.assignedClientIds?.length || 0} alumnos</div>
+          </div>
+          <div class="inline-actions">
+            <button class="secondary small" type="button" data-program-edit="${program.id}">Editar</button>
+            <button class="ghost small" type="button" data-program-assign="${program.id}">Asignar</button>
+          </div>
+        </div>`).join('')
+      : '<div class="muted">No hay programas aún.</div>';
+  }
+
+  function getPlanningDraftProgram() {
+    ensureTrainingsV08State();
+    if (planningUi.draftProgram && planningUi.draftProgram.id) {
+      return planningUi.draftProgram;
+    }
+    const program = {
+      id: dataApi.createId('planning-program'),
+      name: '',
+      objective: planningUi.objective || 'Fuerza',
+      startDate: getTodayLocalDate(),
+      durationWeeks: planningUi.duration || 4,
+      weeklyFrequency: planningUi.frequency || 2,
+      assignedClientIds: [...planningUi.selectedClientIds],
+      days: [
+        { id: dataApi.createId('program-day'), name: 'Día A', order: 1, exercises: [] },
+        { id: dataApi.createId('program-day'), name: 'Día B', order: 2, exercises: [] },
+        { id: dataApi.createId('program-day'), name: 'Día C', order: 3, exercises: [] }
+      ],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    planningUi.draftProgram = program;
+    return program;
+  }
+
+  function syncPlanningProgramToLegacyForm() {
+    const draft = getPlanningDraftProgram();
+    if (els.programNameInput) els.programNameInput.value = draft.name || '';
+    if (els.programObjectiveInput) els.programObjectiveInput.value = draft.objective || '';
+    if (els.programStartDateInput) els.programStartDateInput.value = draft.startDate || getTodayLocalDate();
+    if (els.programDurationWeeksInput) els.programDurationWeeksInput.value = String(draft.durationWeeks || 4);
+    if (els.programWeeklyFrequencyInput) els.programWeeklyFrequencyInput.value = String(draft.weeklyFrequency || 2);
+    if (els.programAssignedClientsInput) {
+      const selectedIds = new Set(draft.assignedClientIds || []);
+      Array.from(els.programAssignedClientsInput.options).forEach((option) => {
+        option.selected = selectedIds.has(option.value);
+      });
+    }
+    if (els.programIdInput) els.programIdInput.value = draft.id || '';
+  }
+
+  function renderPlanningSavedPrograms() {
+    if (!els.planningSavedPrograms) {
+      return;
+    }
+    const programs = getTrainingPrograms();
+    if (!programs.length) {
+      els.planningSavedPrograms.innerHTML = '<div class="muted">Todavía no hay programaciones guardadas.</div>';
+      return;
+    }
+    els.planningSavedPrograms.innerHTML = programs.slice(0, 6).map((program) => `
+      <div class="planning-program-item">
+        <div>
+          <strong>${escapeHtml(program.name || 'Programa')}</strong>
+          <div class="meta">${escapeHtml(program.objective || 'Sin objetivo')} · ${Number(program.durationWeeks || 0)} sem.</div>
+        </div>
+        <div class="inline-actions">
+          <button class="ghost small" type="button" data-program-edit="${program.id}">Abrir</button>
+          <button class="secondary small" type="button" data-program-base="${program.id}">Usar como base</button>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  function renderPlanningBaseProgramOptions() {
+    const select = els.planningBaseProgramSelect;
+    if (!select) {
+      return;
+    }
+    const programs = getTrainingPrograms();
+    const currentValue = String(planningUi.baseProgramId || '').trim();
+    select.innerHTML = '<option value="">Selecciona un programa guardado...</option>' + programs.map((program) => {
+      const programName = escapeHtml(program.name || 'Programa');
+      const clientCount = Array.isArray(program.assignedClientIds) ? program.assignedClientIds.length : 0;
+      return `<option value="${escapeHtml(program.id || '')}" ${currentValue === String(program.id || '') ? 'selected' : ''}>${programName} · ${clientCount} alumno(s)</option>`;
+    }).join('');
+    if (!programs.some((program) => String(program.id || '') === currentValue) && currentValue) {
+      select.value = '';
+      planningUi.baseProgramId = '';
+    }
+  }
+
+  function duplicatePlanningProgramFromBase(programId) {
+    const sourceProgram = getTrainingProgramById(programId);
+    if (!sourceProgram) {
+      return false;
+    }
+
+    const baseCopy = JSON.parse(JSON.stringify(sourceProgram));
+    const copiedProgram = dataApi.normalizeTrainingProgram({
+      ...baseCopy,
+      id: dataApi.createId('planning-program'),
+      name: `${baseCopy.name || 'Programa'} (copia)`,
+      assignedClientIds: Array.isArray(baseCopy.assignedClientIds) ? [...baseCopy.assignedClientIds] : [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    });
+
+    planningUi.baseProgramId = programId;
+    planningUi.objective = copiedProgram.objective || 'Fuerza';
+    planningUi.duration = Number(copiedProgram.durationWeeks || 4);
+    planningUi.frequency = Number(copiedProgram.weeklyFrequency || copiedProgram.days?.length || 2);
+    planningUi.draftProgram = copiedProgram;
+    planningUi.selectedClientIds = Array.isArray(copiedProgram.assignedClientIds) ? [...copiedProgram.assignedClientIds] : [];
+    planningUi.weeklyDays = [];
+    planningUi.currentDayIndex = 0;
+    if (copiedProgram.days?.length) {
+      copiedProgram.days = copiedProgram.days.map((day, index) => ({ ...day, order: index + 1, name: day.name || `Día ${index + 1}` }));
+    }
+    applyPlanningChoiceData();
+    renderPlanningClientSelection();
+    renderPlanningSavedPrograms();
+    renderPlanningBaseProgramOptions();
+    showPlanningStep(2);
+    return true;
+  }
+
+  function renderPlanningClientSelection() {
+    const clients = getActiveTrainingClients();
+    const selected = new Set(planningUi.selectedClientIds || []);
+    if (!els.planningClientGrid) {
+      return;
+    }
+    if (!clients.length) {
+      els.planningClientGrid.innerHTML = '<div class="muted">No hay alumnos activos para seleccionar. Crea primero un cliente en la sección de Clientes.</div>';
+      if (els.planningClientSelectionSummary) {
+        els.planningClientSelectionSummary.textContent = '0 alumnos seleccionados';
+      }
+      return;
+    }
+    els.planningClientGrid.innerHTML = clients.map((client) => `
+      <button class="planning-client-card ${selected.has(client.id) ? 'selected' : ''}" type="button" data-planning-client-id="${client.id}">
+        ${escapeHtml(getClientDisplayName(client))}
+      </button>
+    `).join('');
+    if (els.planningClientSelectionSummary) {
+      els.planningClientSelectionSummary.textContent = `${selected.size} alumnos seleccionados`;
+    }
+  }
+
+  function renderPlanningStepIndicators() {
+    const steps = document.querySelectorAll('.planning-step');
+    steps.forEach((step, index) => {
+      const isActive = index + 1 === planningUi.currentStep;
+      const isCompleted = index + 1 < planningUi.currentStep;
+      step.classList.toggle('active', isActive);
+      step.classList.toggle('completed', isCompleted);
+      step.classList.toggle('pending', !isActive && !isCompleted);
+      const mark = step.querySelector('.step-mark');
+      if (mark) {
+        mark.textContent = isCompleted ? '✓' : isActive ? '●' : '○';
+      }
+    });
+  }
+
+  function programHasExercises() {
+    const draft = getPlanningDraftProgram();
+    return (draft.days || []).some((day) => (day.exercises || []).length > 0);
+  }
+
+  function updatePlanningContinueButton() {
+    const button = document.getElementById('planningContinueStep3');
+    const message = document.getElementById('planningStep3Message');
+    const enabled = programHasExercises();
+    if (button) {
+      button.disabled = !enabled;
+      button.classList.toggle('secondary', !enabled);
+      button.classList.toggle('primary', enabled);
+    }
+    if (message) {
+      message.classList.toggle('hidden', enabled);
+      message.textContent = 'Agrega al menos un ejercicio para continuar.';
+    }
+  }
+
+  function showPlanningStep(stepNumber) {
+    planningUi.currentStep = stepNumber;
+    const panels = [els.planningStep1, els.planningStep2, els.planningStep3, els.planningStep4];
+    panels.forEach((panel, index) => {
+      if (panel) {
+        panel.classList.toggle('hidden', index + 1 !== stepNumber);
+      }
+    });
+    renderPlanningStepIndicators();
+
+    if (stepNumber === 1) {
+      renderPlanningClientSelection();
+      renderPlanningSavedPrograms();
+      renderPlanningBaseProgramOptions();
+    }
+
+    if (stepNumber === 2) {
+      if (els.planningProgramName) {
+        els.planningProgramName.value = getPlanningDraftProgram().name || '';
+      }
+      if (els.planningProgramStartDate) {
+        els.planningProgramStartDate.value = getPlanningDraftProgram().startDate || getTodayLocalDate();
+      }
+    }
+
+    if (stepNumber === 3) {
+      routineBuilder.screen = 'day';
+      routineBuilder.activeDayIndex = planningUi.currentDayIndex;
+      renderPlanningDays();
+      if (els.routineBuilderRoot) {
+        renderRoutineBuilder();
+      }
+    }
+    if (stepNumber === 4) {
+      const draft = getPlanningDraftProgram();
+      const expected = Math.max(1, Math.min(Number(draft.weeklyFrequency || planningUi.frequency || 3), Math.max(1, (draft.days || []).length || 3)));
+      if (!planningUi.weeklyDays || !planningUi.weeklyDays.length) {
+        planningUi.weeklyDays = getDefaultPlanningWeeklyDays(expected, draft.days.length || 3);
+      }
+      renderPlanningReview();
+    }
+  }
+
+  function applyPlanningChoiceData() {
+    const draft = getPlanningDraftProgram();
+    draft.name = String(els.planningProgramName?.value || '').trim();
+    draft.objective = planningUi.objective || draft.objective || 'Fuerza';
+    draft.durationWeeks = planningUi.duration || Number(els.planningCustomDuration?.value || draft.durationWeeks || 4);
+    draft.weeklyFrequency = planningUi.frequency || Number(draft.weeklyFrequency || 2);
+    const expectedDayCount = Math.max(1, Math.min(Number(draft.weeklyFrequency || 2), 7));
+    draft.days = Array.isArray(draft.days) ? draft.days : [];
+    while (draft.days.length < expectedDayCount) {
+      const index = draft.days.length;
+      draft.days.push({
+        id: dataApi.createId('program-day'),
+        name: `Día ${String.fromCharCode(65 + index)}`,
+        order: index + 1,
+        exercises: []
+      });
+    }
+    if (draft.days.length > expectedDayCount && draft.days.slice(expectedDayCount).every((day) => !(day.exercises || []).length)) {
+      draft.days.splice(expectedDayCount);
+    }
+    planningUi.currentDayIndex = Math.min(planningUi.currentDayIndex, Math.max(0, draft.days.length - 1));
+    draft.startDate = String(els.planningProgramStartDate?.value || draft.startDate || getTodayLocalDate());
+    draft.assignedClientIds = [...planningUi.selectedClientIds];
+    draft.updatedAt = new Date().toISOString();
+    planningUi.draftProgram = draft;
+    syncPlanningProgramToLegacyForm();
+    renderPlanningReview();
+  }
+
+  function getVisualExerciseCategory(exercise) {
+    const haystack = String(
+      exercise?.name ||
+      exercise?.normalizedName ||
+      exercise?.primaryMuscle ||
+      exercise?.primary_muscle ||
+      exercise?.category ||
+      exercise ||
+      ''
+    ).toLowerCase();
+
+    if (/(quadriceps|hamstrings|glutes|adductors|squat|deadlift|hip thrust|split squat|leg press|femoral|estocada|sentadilla|peso muerto|prensa de piernas)/.test(haystack)) {
+      return 'PIERNAS';
+    }
+    if (/(chest|pec|press banca|bench|incline|apertura|pecho)/.test(haystack)) {
+      return 'PECHO';
+    }
+    if (/(lats|upper_back|traps|back|remo|pulldown|lat|espalda|jalon|remo)/.test(haystack)) {
+      return 'ESPALDA';
+    }
+    if (/(front_delts|lateral_delts|rear_delts|shoulder|press militar|elevacion|hombro|delto|shoulders)/.test(haystack)) {
+      return 'HOMBROS';
+    }
+    if (/(biceps|curl|bíceps|curls)/.test(haystack)) {
+      return 'BÍCEPS';
+    }
+    if (/(triceps|patada|extension de tríceps|tríceps|press francés)/.test(haystack)) {
+      return 'TRÍCEPS';
+    }
+    if (/(abdominals|obliques|spinal_erectors|core|plancha|abdominal|crunch|russian twist|hollow|oblicuo|core)/.test(haystack)) {
+      return 'CORE';
+    }
+    return 'OTROS';
+  }
+
+  function getRoutineExerciseCatalog() {
+    const library = Array.isArray(state.exerciseLibrary) && state.exerciseLibrary.length ? state.exerciseLibrary : [];
+    const catalog = {
+      PIERNAS: [],
+      PECHO: [],
+      ESPALDA: [],
+      HOMBROS: [],
+      BÍCEPS: [],
+      TRÍCEPS: [],
+      CORE: [],
+      OTROS: []
+    };
+
+    if (library.length) {
+      library.forEach((exercise) => {
+        const category = getVisualExerciseCategory(exercise);
+        const entry = {
+          id: exercise.id || exercise.libraryExerciseId || dataApi.createId('library-exercise'),
+          name: exercise.name || exercise.normalizedName || 'Ejercicio',
+          primaryMuscle: exercise.primaryMuscle || exercise.primary_muscle || '',
+          category
+        };
+        if (!catalog[category]) {
+          catalog[category] = [];
+        }
+        catalog[category].push(entry);
+      });
+      return catalog;
+    }
+
+    const fallback = getProgramExerciseCatalog();
+    Object.keys(fallback).forEach((category) => {
+      catalog[category] = fallback[category].map((name) => ({ id: `${category}-${slugifyTrainingPart(name)}`, name, category }));
+    });
+    return catalog;
+  }
+
+  function getRoutineBuilderDay() {
+    const draft = getPlanningDraftProgram();
+    const day = draft.days[routineBuilder.activeDayIndex] || draft.days[0];
+    return day || { id: dataApi.createId('program-day'), name: 'Día A', order: 1, exercises: [] };
+  }
+
+  function renderPlanningDays() {
+    const draft = getPlanningDraftProgram();
+    const days = draft.days || [];
+    if (!els.planningDayTabs) {
+      return;
+    }
+    els.planningDayTabs.innerHTML = days.map((day, index) => {
+      const count = Array.isArray(day.exercises) ? day.exercises.length : 0;
+      const label = count > 0 ? `${day.name || `Día ${index + 1}`} ✓ ${count}` : `${day.name || `Día ${index + 1}`} · VACÍO`;
+      return `
+        <button class="planning-day-tab ${index === planningUi.currentDayIndex ? 'active' : ''}" type="button" data-planning-day-index="${index}">${escapeHtml(label)}</button>
+      `;
+    }).join('');
+    planningUi.currentDayName = days[planningUi.currentDayIndex]?.name || `Día ${planningUi.currentDayIndex + 1}`;
+    if (els.planningCurrentDayLabel) {
+      els.planningCurrentDayLabel.textContent = planningUi.currentDayName.toUpperCase();
+    }
+    routineBuilder.activeDayIndex = planningUi.currentDayIndex;
+    routineBuilder.screen = 'day';
+    renderRoutineBuilder();
+    updatePlanningContinueButton();
+  }
+
+  function resetRoutineBuilderDraft() {
+    routineBuilder.draft = {
+      sets: 3,
+      repMin: 8,
+      repMax: 12,
+      targetWeight: '',
+      approximations: [],
+      zone: '',
+      restSeconds: 90,
+      notes: ''
+    };
+    routineBuilder.showMoreOptions = false;
+  }
+
+  function loadRoutineBuilderDraftFromExercise(exercise) {
+    if (!exercise) {
+      resetRoutineBuilderDraft();
+      return;
+    }
+    routineBuilder.exerciseId = exercise.libraryExerciseId || exercise.id || null;
+    routineBuilder.draft = {
+      sets: Number(exercise.sets || exercise.plannedSets || 3),
+      repMin: Number(exercise.repMin || exercise.repRangeMin || exercise.plannedRepMin || 8),
+      repMax: Number(exercise.repMax || exercise.repRangeMax || exercise.plannedRepMax || Number(exercise.repMin || exercise.repRangeMin || exercise.plannedRepMin || 8)),
+      targetWeight: Number(exercise.targetWeight || 0) > 0 ? String(exercise.targetWeight) : '',
+      approximations: Array.isArray(exercise.approximations) ? exercise.approximations.map((item) => ({
+        weight: item.weight === undefined || item.weight === null ? '' : String(item.weight),
+        reps: Number(item.reps || 8)
+      })) : [],
+      zone: exercise.zone || '',
+      restSeconds: Number(exercise.restSeconds || 90),
+      notes: exercise.notes || ''
+    };
+    routineBuilder.showMoreOptions = Boolean(routineBuilder.draft.zone || routineBuilder.draft.notes || routineBuilder.draft.restSeconds !== 90);
+  }
+
+  function renderRoutineBuilder() {
+    if (!els.routineBuilderRoot) {
+      return;
+    }
+
+    const draft = getPlanningDraftProgram();
+    const day = draft.days[routineBuilder.activeDayIndex] || draft.days[0];
+    const label = (day?.name || `Día ${routineBuilder.activeDayIndex + 1}`).toUpperCase();
+    const categories = ['PIERNAS', 'PECHO', 'ESPALDA', 'HOMBROS', 'BÍCEPS', 'TRÍCEPS', 'CORE', 'OTROS'];
+
+    if (routineBuilder.screen === 'day') {
+      const items = Array.isArray(day?.exercises) ? day.exercises : [];
+      const html = `
+        <div class="planning-panel-box">
+          <div class="section-title compact">
+            <strong>${escapeHtml(label)}</strong>
+          </div>
+          ${items.length ? items.map((exercise, index) => `
+            <div class="planning-exercise-item">
+              <div class="planning-exercise-item-header">
+                <strong>${index + 1}. ${escapeHtml(exercise.exerciseName || 'Ejercicio')}</strong>
+              </div>
+              <div class="meta">${Number(exercise.sets || exercise.plannedSets || 0)} × ${Number(exercise.repMin || exercise.repRangeMin || 0)}-${Number(exercise.repMax || exercise.repRangeMax || 0)}</div>
+              <div class="meta">${Array.isArray(exercise.approximations) ? `${exercise.approximations.length} aproximaciones` : '0 aproximaciones'} · ${escapeHtml(exercise.zone || 'Sin zona')}</div>
+              <div class="inline-actions">
+                <button class="ghost small" type="button" data-routine-action="edit-exercise" data-exercise-index="${index}">Editar</button>
+                <button class="ghost small" type="button" data-routine-action="move-up" data-exercise-index="${index}" ${index === 0 ? 'disabled' : ''}>↑</button>
+                <button class="ghost small" type="button" data-routine-action="move-down" data-exercise-index="${index}" ${index === items.length - 1 ? 'disabled' : ''}>↓</button>
+                <button class="danger small" type="button" data-routine-action="delete-exercise" data-exercise-index="${index}">Eliminar</button>
+              </div>
+            </div>
+          `).join('') : '<div class="muted">Todavía no agregaste ejercicios.</div>'}
+          <div class="inline-actions">
+            <button class="primary" type="button" data-routine-action="add-exercise">+ AGREGAR EJERCICIO</button>
+          </div>
+        </div>
+      `;
+      els.routineBuilderRoot.innerHTML = html;
+      updatePlanningContinueButton();
+      return;
+    }
+
+    if (routineBuilder.screen === 'categories') {
+      els.routineBuilderRoot.innerHTML = `
+        <div class="planning-panel-box">
+          <div class="section-title compact">
+            <strong>¿QUÉ QUIERES TRABAJAR?</strong>
+            <button class="ghost small" type="button" data-routine-action="back-day">← Volver</button>
+          </div>
+          <div class="planning-category-grid">
+            ${categories.map((category) => `
+              <button class="planning-category-btn" type="button" data-routine-action="open-category" data-category="${category}">${escapeHtml(category)}</button>
+            `).join('')}
+          </div>
+        </div>
+      `;
+      return;
+    }
+
+    if (routineBuilder.screen === 'exerciseList') {
+      const category = routineBuilder.category || 'PIERNAS';
+      const catalog = getRoutineExerciseCatalog();
+      const filtered = (catalog[category] || []).filter((exercise) => {
+        const value = String(routineBuilder.search || '').trim().toLowerCase();
+        return !value || String(exercise.name || '').toLowerCase().includes(value);
+      });
+      els.routineBuilderRoot.innerHTML = `
+        <div class="planning-panel-box">
+          <div class="section-title compact">
+            <button class="ghost small" type="button" data-routine-action="back-categories">← CATEGORÍAS</button>
+            <strong>${escapeHtml(category)}</strong>
+          </div>
+          <div class="planning-search-wrap">
+            <input type="search" data-routine-field="search" value="${escapeHtml(String(routineBuilder.search || ''))}" placeholder="Buscar ejercicio...">
+          </div>
+          <div class="planning-category-grid">
+            ${filtered.length ? filtered.map((exercise) => `
+              <button class="planning-exercise-pick-btn" type="button" data-routine-action="select-exercise" data-exercise-id="${escapeHtml(exercise.id || '')}">${escapeHtml(exercise.name || 'Ejercicio')}</button>
+            `).join('') : '<div class="muted">No hay ejercicios para esta categoría.</div>'}
+          </div>
+        </div>
+      `;
+      return;
+    }
+
+    const selectedExercise = getRoutineExerciseCatalog()[routineBuilder.category || 'PIERNAS']?.find((item) => item.id === routineBuilder.exerciseId)
+      || { id: routineBuilder.exerciseId || dataApi.createId('library-exercise'), name: 'Ejercicio', category: routineBuilder.category || 'PIERNAS' };
+    const selectedName = selectedExercise.name || 'Ejercicio';
+    const approx = Array.isArray(routineBuilder.draft.approximations) ? routineBuilder.draft.approximations : [];
+
+    els.routineBuilderRoot.innerHTML = `
+      <div class="planning-panel-box">
+        <div class="section-title compact">
+          <button class="ghost small" type="button" data-routine-action="back-exercise-list">← ${escapeHtml((routineBuilder.category || 'PIERNAS'))}</button>
+          <strong>${escapeHtml(String(selectedName).toUpperCase())}</strong>
+        </div>
+
+        <div class="planning-field-inline">
+          <label>SERIES</label>
+          <div class="planning-stepper-counter">
+            <button class="ghost small" type="button" data-routine-action="decrease-sets">-</button>
+            <span>${Number(routineBuilder.draft.sets || 3)}</span>
+            <button class="ghost small" type="button" data-routine-action="increase-sets">+</button>
+          </div>
+        </div>
+
+        <div class="planning-field-inline">
+          <label>REPETICIONES</label>
+          <div class="planning-range-inline">
+            <input type="number" min="1" data-routine-field="repMin" value="${Number(routineBuilder.draft.repMin || 8)}">
+            <span>a</span>
+            <input type="number" min="1" data-routine-field="repMax" value="${Number(routineBuilder.draft.repMax || 12)}">
+          </div>
+        </div>
+
+        <div class="planning-field-inline">
+          <label>PESO OBJETIVO</label>
+          <input type="number" min="0" step="0.5" data-routine-field="targetWeight" value="${routineBuilder.draft.targetWeight === '' ? '' : Number(routineBuilder.draft.targetWeight || 0)}" placeholder="kg">
+        </div>
+
+        <div class="planning-advanced-toggle">
+          <button class="secondary small" type="button" data-routine-action="toggle-more-options">⚙ MÁS OPCIONES</button>
+        </div>
+
+        ${routineBuilder.showMoreOptions ? `
+          <div class="planning-more-options">
+            <div class="planning-field-block">
+              <label>ZONA</label>
+              <select data-routine-field="zone">
+                <option value="" ${!routineBuilder.draft.zone ? 'selected' : ''}>Otro</option>
+                <option value="Salón A" ${routineBuilder.draft.zone === 'Salón A' ? 'selected' : ''}>Salón A</option>
+                <option value="Salón B" ${routineBuilder.draft.zone === 'Salón B' ? 'selected' : ''}>Salón B</option>
+                <option value="Patio / Factor" ${routineBuilder.draft.zone === 'Patio / Factor' ? 'selected' : ''}>Patio / Factor</option>
+                <option value="Otro" ${routineBuilder.draft.zone === 'Otro' ? 'selected' : ''}>Otro</option>
+              </select>
+            </div>
+            <div class="planning-field-block">
+              <label>DESCANSO</label>
+              <select data-routine-field="restSeconds">
+                ${['60', '90', '95', '120'].map((value) => `<option value="${value}" ${String(routineBuilder.draft.restSeconds || 90) === value ? 'selected' : ''}>${value}</option>`).join('')}
+              </select>
+            </div>
+            <div class="planning-field-block">
+              <label>NOTA TÉCNICA</label>
+              <textarea data-routine-field="notes" placeholder="Foco técnico...">${escapeHtml(routineBuilder.draft.notes || '')}</textarea>
+            </div>
+          </div>
+        ` : ''}
+
+        <div class="planning-field-block">
+          <label>APROXIMACIONES</label>
+          <div class="planning-approx-list">
+            ${approx.length ? approx.map((item, index) => `
+              <div class="planning-approx-item">
+                <div>
+                  <label>A${index + 1}</label>
+                  <input type="number" min="0" step="0.5" data-routine-field="approx-weight" data-approx-index="${index}" value="${item.weight === '' || item.weight === null || item.weight === undefined ? '' : Number(item.weight || 0)}" placeholder="kg">
+                </div>
+                <div>
+                  <label>Reps</label>
+                  <input type="number" min="1" data-routine-field="approx-reps" data-approx-index="${index}" value="${Number(item.reps || 8)}">
+                </div>
+                <div class="planning-approx-actions">
+                  <button class="ghost small" type="button" data-routine-action="remove-approx" data-approx-index="${index}">Eliminar</button>
+                </div>
+              </div>
+            `).join('') : '<div class="muted">Sin aproximaciones.</div>'}
+          </div>
+          <button class="ghost small" type="button" data-routine-action="add-approximation" ${approx.length >= 3 ? 'disabled' : ''}>+ AGREGAR APROXIMACIÓN</button>
+        </div>
+
+        <div class="inline-actions">
+          <button class="primary" type="button" data-routine-action="save-exercise">GUARDAR EJERCICIO</button>
+        </div>
+      </div>
+    `;
+  }
+
+  function saveRoutineBuilderExercise() {
+    const draft = getPlanningDraftProgram();
+    const day = draft.days[routineBuilder.activeDayIndex] || draft.days[0];
+    if (!day) {
+      return;
+    }
+
+    const exerciseName = (() => {
+      const libraryItems = getRoutineExerciseCatalog();
+      const localExercise = (libraryItems[routineBuilder.category || 'PIERNAS'] || []).find((item) => item.id === routineBuilder.exerciseId);
+      return localExercise?.name || 'Ejercicio';
+    })();
+
+    const payload = {
+      id: dataApi.createId('program-exercise'),
+      libraryExerciseId: routineBuilder.exerciseId || '',
+      exerciseName,
+      sets: Number(routineBuilder.draft.sets || 3),
+      repMin: Number(routineBuilder.draft.repMin || 8),
+      repMax: Number(routineBuilder.draft.repMax || Number(routineBuilder.draft.repMin || 8)),
+      targetWeight: Number(routineBuilder.draft.targetWeight || 0),
+      approximations: Array.isArray(routineBuilder.draft.approximations) ? routineBuilder.draft.approximations.map((item, index) => ({
+        id: dataApi.createId('program-approximation'),
+        label: `A${index + 1}`,
+        weight: item.weight === '' || item.weight === null || item.weight === undefined ? '' : Number(item.weight || 0),
+        reps: Number(item.reps || 8)
+      })) : [],
+      zone: routineBuilder.draft.zone || '',
+      restSeconds: Number(routineBuilder.draft.restSeconds || 90),
+      notes: routineBuilder.draft.notes || '',
+      order: 1,
+      category: routineBuilder.category || 'PIERNAS'
+    };
+
+    const normalizedDayExercises = Array.isArray(day.exercises) ? day.exercises : [];
+    const replacementIndex = routineBuilder.editingIndex !== null && routineBuilder.editingIndex !== undefined ? routineBuilder.editingIndex : null;
+
+    if (replacementIndex !== null && replacementIndex >= 0 && replacementIndex < normalizedDayExercises.length) {
+      const existing = normalizedDayExercises[replacementIndex];
+      payload.id = existing.id || payload.id;
+      payload.order = replacementIndex + 1;
+      normalizedDayExercises[replacementIndex] = { ...existing, ...payload };
+    } else {
+      payload.order = normalizedDayExercises.length + 1;
+      normalizedDayExercises.push(payload);
+    }
+
+    day.exercises = normalizedDayExercises.map((item, index) => ({ ...item, order: index + 1 }));
+    routineBuilder.screen = 'day';
+    routineBuilder.exerciseId = null;
+    routineBuilder.editingIndex = null;
+    resetRoutineBuilderDraft();
+    renderPlanningDays();
+  }
+
+  function getPlanningWeeklyDayOptions() {
+    return [
+      { value: 1, label: 'LUN' },
+      { value: 2, label: 'MAR' },
+      { value: 3, label: 'MIÉ' },
+      { value: 4, label: 'JUE' },
+      { value: 5, label: 'VIE' },
+      { value: 6, label: 'SÁB' },
+      { value: 7, label: 'DOM' }
+    ];
+  }
+
+  function getWeekdayLabel(weekday) {
+    return getPlanningWeeklyDayOptions().find((item) => Number(item.value) === Number(weekday))?.label || 'DIA';
+  }
+
+  function getDefaultPlanningWeeklyDays(frequency, totalDays = 3) {
+    const palette = [1, 3, 5, 2, 4, 6, 7];
+    const requested = Math.max(1, Math.min(Number(frequency || 3), Number(totalDays || 3), 7));
+    const defaults = [];
+    palette.forEach((weekday) => {
+      if (defaults.length >= requested) {
+        return;
+      }
+      if (!defaults.includes(weekday)) {
+        defaults.push(weekday);
+      }
+    });
+    return defaults.slice(0, requested);
+  }
+
+  function getPlanningWeeklyDaySelection() {
+    const draft = getPlanningDraftProgram();
+    const totalDays = Math.max(1, Math.min(Number(draft.days?.length || 3), 7));
+    const expected = Math.max(1, Math.min(Number(draft.weeklyFrequency || planningUi.frequency || 3), totalDays));
+    const current = Array.isArray(planningUi.weeklyDays)
+      ? planningUi.weeklyDays
+      : [];
+    const normalized = [...new Set(current.map((item) => Number(item)).filter((item) => Number.isInteger(item) && item >= 1 && item <= 7))].sort((a, b) => a - b);
+    if (!normalized.length) {
+      planningUi.weeklyDays = getDefaultPlanningWeeklyDays(expected, totalDays);
+      return planningUi.weeklyDays;
+    }
+    if (normalized.length > expected) {
+      planningUi.weeklyDays = normalized.slice(0, expected);
+      return planningUi.weeklyDays;
+    }
+    planningUi.weeklyDays = normalized;
+    return planningUi.weeklyDays;
+  }
+
+  function getPlanningWeeklySchedule() {
+    const draft = getPlanningDraftProgram();
+    const selected = getPlanningWeeklyDaySelection();
+    return selected.map((weekday, index) => {
+      const programDay = draft.days?.[index] || draft.days?.[0] || { name: `Día ${index + 1}` };
+      return {
+        weekday,
+        weekdayLabel: getWeekdayLabel(weekday),
+        dayName: programDay.name || `Día ${index + 1}`,
+        dayIndex: index
+      };
+    });
+  }
+
+  function formatReviewDate(dateString) {
+    const value = String(dateString || '').trim();
+    if (!value) {
+      return 'Sin fecha';
+    }
+    const date = new Date(`${value}T00:00:00`);
+    return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString('es-CL');
+  }
+
+  function calculateEstimatedFinishDate(startDate, durationWeeks) {
+    const safeStart = String(startDate || getTodayLocalDate()).trim();
+    const start = new Date(`${safeStart}T00:00:00`);
+    if (Number.isNaN(start.getTime())) {
+      return 'Sin fecha';
+    }
+    const clone = new Date(start);
+    const weeks = Math.max(1, Number(durationWeeks || 4));
+    clone.setDate(clone.getDate() + weeks * 7);
+    return clone.toLocaleDateString('es-CL');
+  }
+
+  function getSelectedPlanningClientNames() {
+    const draft = getPlanningDraftProgram();
+    const ids = Array.isArray(draft.assignedClientIds) ? draft.assignedClientIds : [];
+    return ids.map((clientId) => {
+      const client = getClientById(clientId);
+      return client ? getClientDisplayName(client) : clientId;
+    }).filter(Boolean);
+  }
+
+  function renderPlanningReview() {
+    const draft = getPlanningDraftProgram();
+    if (!els.planningReviewSummary) {
+      return;
+    }
+    const totalExercises = (draft.days || []).reduce((sum, day) => sum + (day.exercises || []).length, 0);
+    const totalSeries = (draft.days || []).reduce((sum, day) => {
+      return sum + (day.exercises || []).reduce((inner, exercise) => inner + Number(exercise.sets || exercise.plannedSets || 0), 0);
+    }, 0);
+    const expectedDays = Math.max(1, Math.min(Number(draft.weeklyFrequency || planningUi.frequency || 3), Math.max(1, draft.days.length || 3)));
+    if (!planningUi.weeklyDays || !planningUi.weeklyDays.length) {
+      planningUi.weeklyDays = getDefaultPlanningWeeklyDays(expectedDays, draft.days.length || 3);
+    }
+    const selectedDays = getPlanningWeeklyDaySelection();
+    const schedule = getPlanningWeeklySchedule();
+    const startDate = String(draft.startDate || getTodayLocalDate()).trim() || getTodayLocalDate();
+    const clientNames = getSelectedPlanningClientNames();
+
+    els.planningReviewSummary.innerHTML = `
+      <div class="planning-review-card">
+        <strong>REVISAR PROGRAMACIÓN</strong>
+        <div class="meta">${escapeHtml(draft.name || 'Programa sin nombre')}</div>
+      </div>
+      <div class="planning-review-card">
+        <div class="meta"><strong>OBJETIVO</strong> · ${escapeHtml(draft.objective || 'Sin objetivo')}</div>
+        <div class="meta"><strong>DURACIÓN</strong> · ${Number(draft.durationWeeks || 0)} semanas</div>
+        <div class="meta"><strong>FRECUENCIA</strong> · ${Number(draft.weeklyFrequency || 0)} días por semana</div>
+        <div class="meta"><strong>ALUMNOS</strong> · ${clientNames.length ? escapeHtml(clientNames.join(', ')) : 'Sin alumnos'}</div>
+      </div>
+
+      ${(draft.days || []).map((day, index) => {
+        const exercises = Array.isArray(day.exercises) ? day.exercises : [];
+        const countSeries = exercises.reduce((sum, exercise) => sum + Number(exercise.sets || exercise.plannedSets || 0), 0);
+        return `
+          <div class="planning-review-card">
+            <div class="inline-actions" style="justify-content: space-between; align-items: center;">
+              <strong>${escapeHtml(day.name || `Día ${index + 1}`)}</strong>
+              <button class="ghost small" type="button" data-planning-edit-day="${index}">EDITAR DÍA</button>
+            </div>
+            <div class="meta">${exercises.length} ejercicios · ${countSeries} series efectivas</div>
+            ${(exercises.length ? exercises.map((exercise, exerciseIndex) => `
+              <div class="meta" style="margin-top: 8px;">
+                <strong>${exerciseIndex + 1}. ${escapeHtml(exercise.exerciseName || 'Ejercicio')}</strong>
+                <div>${Number(exercise.sets || exercise.plannedSets || 0)} × ${Number(exercise.repMin || exercise.repRangeMin || 0)}-${Number(exercise.repMax || exercise.repRangeMax || 0)}</div>
+                <div>${Array.isArray(exercise.approximations) ? exercise.approximations.length : 0} aproximaciones</div>
+                <div>${escapeHtml(exercise.zone || 'Sin zona')}</div>
+              </div>
+            `).join('') : '<div class="meta">Sin ejercicios</div>')}
+          </div>
+        `;
+      }).join('')}
+
+      <div class="planning-review-card">
+        <strong>¿QUÉ DÍAS SE ENTRENA?</strong>
+        <div class="planning-chip-grid" style="margin-top: 12px;">
+          ${getPlanningWeeklyDayOptions().map((dayOption) => {
+            const active = selectedDays.includes(Number(dayOption.value));
+            return `
+              <button class="planning-option-btn ${active ? 'active' : ''}" type="button" data-planning-weekday="${dayOption.value}">
+                ${dayOption.label}${active ? ' ✓' : ''}
+              </button>
+            `;
+          }).join('')}
+        </div>
+        <div class="meta">Se seleccionaron ${selectedDays.length} de ${expectedDays} días.</div>
+        ${schedule.length ? `
+          <div class="meta" style="margin-top: 8px;">
+            ${schedule.map((slot) => `${slot.weekdayLabel} → ${escapeHtml(slot.dayName)}`).join(' · ')}
+          </div>
+        ` : ''}
+      </div>
+
+      <div class="planning-review-card">
+        <strong>INICIO Y FIN</strong>
+        <div class="meta">Inicio: ${formatReviewDate(startDate)}</div>
+        <div class="meta">Fin estimado: ${calculateEstimatedFinishDate(startDate, Number(draft.durationWeeks || 4))}</div>
+      </div>
+
+      <div class="meta" style="margin-top: 10px;">Resumen total: ${totalExercises} ejercicios · ${totalSeries} series efectivas</div>
+    `;
+  }
+
+  function persistPrograms() {
+    ensureTrainingsV08State();
+    persist();
+    renderProgramsList();
+    renderProgramDayList(getProgramDraft());
+  }
+
+  function setProgramSaveStatus(message, tone = 'neutral') {
+    if (!els.programMessage) {
+      return;
+    }
+    els.programMessage.textContent = message;
+    els.programMessage.classList.remove('ok', 'bad', 'warn', 'muted');
+    els.programMessage.classList.add(tone === 'ok' ? 'ok' : tone === 'bad' ? 'bad' : tone === 'warn' ? 'warn' : 'muted');
+  }
+
+  function setProgramButtonState(label, isLoading = false) {
+    if (!els.saveProgramBtn) {
+      return;
+    }
+    els.saveProgramBtn.textContent = label;
+    els.saveProgramBtn.disabled = isLoading;
+  }
+
+  function persistProgramInLocalStorage(program) {
+    const snapshot = dataApi.loadState();
+    snapshot.trainingsV08 = snapshot.trainingsV08 || { plans: [], sessions: [], programs: [], assignments: [] };
+    snapshot.trainingsV08.programs = Array.isArray(snapshot.trainingsV08.programs) ? [...snapshot.trainingsV08.programs] : [];
+    const existingIndex = snapshot.trainingsV08.programs.findIndex((item) => item.id === program.id);
+    if (existingIndex >= 0) {
+      snapshot.trainingsV08.programs[existingIndex] = program;
+    } else {
+      snapshot.trainingsV08.programs.unshift(program);
+    }
+
+    dataApi.saveState(snapshot);
+
+    const verification = dataApi.loadState();
+    const verified = Array.isArray(verification.trainingsV08?.programs)
+      ? verification.trainingsV08.programs.some((item) => item.id === program.id)
+      : false;
+
+    if (!verified) {
+      throw new Error('El programa no quedó persistido en almacenamiento local');
+    }
+
+    return verification;
+  }
+
+  function testLocalStorageWrite() {
+    try {
+      const snapshot = dataApi.loadState();
+      snapshot.trainingsV08 = snapshot.trainingsV08 || { plans: [], sessions: [], programs: [], assignments: [] };
+      snapshot.trainingsV08.programs = Array.isArray(snapshot.trainingsV08.programs) ? [...snapshot.trainingsV08.programs] : [];
+      const id = dataApi.createId('local-test');
+      const testProgram = {
+        id,
+        name: 'TEST LOCAL',
+        objective: 'Prueba almacenamiento',
+        startDate: '',
+        durationWeeks: 4,
+        weeklyFrequency: 3,
+        assignedClientIds: [],
+        days: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      snapshot.trainingsV08.programs.unshift(testProgram);
+      dataApi.saveState(snapshot);
+
+      const verification = dataApi.loadState();
+      const exists = Array.isArray(verification.trainingsV08?.programs)
+        ? verification.trainingsV08.programs.some((item) => item.id === id)
+        : false;
+
+      if (!exists) {
+        throw new Error('La prueba de almacenamiento local falló');
+      }
+
+      setProgramButtonState('✓ Prueba local OK', false);
+      setProgramSaveStatus('✓ Prueba local OK: almacenamiento local funciona.', 'ok');
+    } catch (error) {
+      console.error(error);
+      setProgramButtonState('✕ Prueba local falló', false);
+      setProgramSaveStatus(`✕ No se pudo guardar: ${error.message || 'Error desconocido'}`, 'bad');
+    }
+  }
+
+  function saveProgram() {
+    setProgramButtonState('Guardando...', true);
+    setProgramSaveStatus('Guardando...', 'neutral');
+
+    try {
+      ensureTrainingsV08State();
+
+      const planningDraft = planningUi.draftProgram && planningUi.draftProgram.id ? planningUi.draftProgram : getPlanningDraftProgram();
+      const formName = String(els.programNameInput?.value || '').trim() || String(planningDraft.name || '').trim();
+      const durationWeeks = Number(els.programDurationWeeksInput?.value || planningDraft.durationWeeks || 4);
+      const weeklyFrequency = Number(els.programWeeklyFrequencyInput?.value || planningDraft.weeklyFrequency || 3);
+
+      if (!formName) {
+        throw new Error('Falta el nombre del programa');
+      }
+      if (!Number.isFinite(durationWeeks) || durationWeeks < 1) {
+        throw new Error('La duración debe ser válida');
+      }
+      if (!Number.isFinite(weeklyFrequency) || weeklyFrequency < 1) {
+        throw new Error('La frecuencia debe ser válida');
+      }
+
+      const draft = planningDraft.id ? planningDraft : getProgramDraft();
+      draft.name = formName;
+      draft.objective = String(els.programObjectiveInput?.value || planningDraft.objective || '').trim() || draft.objective || 'Fuerza';
+      draft.startDate = String(els.programStartDateInput?.value || planningDraft.startDate || getTodayLocalDate()).trim();
+      draft.durationWeeks = durationWeeks;
+      draft.weeklyFrequency = weeklyFrequency;
+      draft.assignedClientIds = Array.from(els.programAssignedClientsInput?.selectedOptions || []).map((option) => option.value).filter(Boolean);
+      if (!draft.assignedClientIds.length) {
+        draft.assignedClientIds = [...(planningUi.selectedClientIds || [])];
+      }
+      draft.updatedAt = new Date().toISOString();
+
+      const normalizedDraft = dataApi.normalizeTrainingProgram(draft);
+      const persisted = persistProgramInLocalStorage(normalizedDraft);
+      state.trainingsV08 = persisted.trainingsV08 || state.trainingsV08;
+      planningUi.draftProgram = normalizedDraft;
+
+      trainingUi.editingProgramId = normalizedDraft.id;
+      if (els.programIdInput) {
+        els.programIdInput.value = normalizedDraft.id;
+      }
+
+      renderProgramsList();
+      renderProgramDayList(normalizedDraft);
+      renderPlanningReview();
+      setProgramButtonState('✓ Programa guardado', false);
+      setProgramSaveStatus(`✓ Programa guardado correctamente\n${formName}\n${durationWeeks} semanas · ${weeklyFrequency} días`, 'ok');
+    } catch (error) {
+      console.error(error);
+      setProgramButtonState('✕ No se pudo guardar', false);
+      setProgramSaveStatus(`✕ No se pudo guardar: ${error.message || 'Error desconocido'}`, 'bad');
+    }
+  }
+
+  function savePlanningProgramAndAssignments() {
+    try {
+      ensureTrainingsV08State();
+      const draft = getPlanningDraftProgram();
+      const selectedClientIds = (planningUi.selectedClientIds && planningUi.selectedClientIds.length)
+        ? [...planningUi.selectedClientIds]
+        : [...(draft.assignedClientIds || [])];
+      const expectedDays = Math.max(1, Math.min(Number(draft.weeklyFrequency || planningUi.frequency || 3), Math.max(1, (draft.days || []).length || 3)));
+      const selectedDays = getPlanningWeeklyDaySelection();
+
+      if (!draft.name) {
+        throw new Error('El programa necesita un nombre.');
+      }
+      if (!selectedClientIds.length) {
+        throw new Error('Selecciona al menos un alumno.');
+      }
+      if (selectedDays.length !== expectedDays) {
+        throw new Error(`Selecciona ${expectedDays} días de entrenamiento.`);
+      }
+      if (!Array.isArray(draft.days) || draft.days.length === 0) {
+        throw new Error('El programa no tiene días con ejercicios.');
+      }
+
+      draft.startDate = String(draft.startDate || els.planningProgramStartDate?.value || getTodayLocalDate()).trim();
+      draft.updatedAt = new Date().toISOString();
+      const normalizedDraft = dataApi.normalizeTrainingProgram(draft);
+      const persistedProgramState = persistProgramInLocalStorage(normalizedDraft);
+      state.trainingsV08 = persistedProgramState.trainingsV08 || state.trainingsV08;
+      planningUi.draftProgram = normalizedDraft;
+
+      const assignmentPayloads = selectedClientIds.map((clientId) => {
+        const client = getClientById(clientId);
+        return dataApi.normalizeTrainingProgramAssignment({
+          id: dataApi.createId('program-assignment'),
+          programId: normalizedDraft.id,
+          clientId,
+          clientName: client ? getClientDisplayName(client) : '',
+          programName: normalizedDraft.name,
+          objective: normalizedDraft.objective,
+          startDate: normalizedDraft.startDate,
+          durationWeeks: Number(normalizedDraft.durationWeeks || 4),
+          weeklyDays: selectedDays.slice(),
+          weeklyFrequency: expectedDays,
+          status: 'active',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        }, { trainingsV08: { programs: getTrainingPrograms() } });
+      });
+
+      const existingAssignments = getTrainingAssignments().filter((assignment) => !selectedClientIds.includes(assignment.clientId) || assignment.programId !== normalizedDraft.id);
+      state.trainingsV08.assignments = [...existingAssignments, ...assignmentPayloads];
+      dataApi.saveState(state);
+
+      const verification = dataApi.loadState();
+      const savedPrograms = Array.isArray(verification.trainingsV08?.programs) ? verification.trainingsV08.programs : [];
+      const savedAssignments = Array.isArray(verification.trainingsV08?.assignments) ? verification.trainingsV08.assignments : [];
+      const programExists = savedPrograms.some((item) => item.id === normalizedDraft.id);
+      const assignmentsExist = savedAssignments.filter((item) => item.programId === normalizedDraft.id).length === selectedClientIds.length;
+
+      if (!programExists || !assignmentsExist) {
+        throw new Error('La programación o las asignaciones no quedaron persistidas correctamente.');
+      }
+
+      renderPlanningSavedPrograms();
+      renderProgramsList();
+      renderPlanningReview();
+      if (els.planningReviewSummary) {
+        els.planningReviewSummary.insertAdjacentHTML('beforeend', `
+          <div class="planning-review-card" style="border-color: var(--success, #2e7d32);">
+            <strong>✓ PROGRAMACIÓN ASIGNADA</strong>
+            <div class="meta">${escapeHtml(normalizedDraft.name || 'Programa')}</div>
+            <div class="meta">${selectedClientIds.length} alumnos · ${expectedDays} días/semana · ${formatReviewDate(normalizedDraft.startDate || getTodayLocalDate())}</div>
+          </div>
+        `);
+      }
+      if (els.programMessage) {
+        els.programMessage.textContent = '✓ Programación asignada correctamente.';
+        els.programMessage.className = 'notice ok';
+      }
+      return true;
+    } catch (error) {
+      console.error(error);
+      if (els.programMessage) {
+        els.programMessage.textContent = error.message || 'No se pudo guardar la programación.';
+        els.programMessage.className = 'notice bad';
+      }
+      return false;
+    }
+  }
+
+  function addProgramDay() {
+    const draft = getProgramDraft();
+    draft.days.push(createEmptyProgramDay(draft.days.length + 1));
+    draft.updatedAt = new Date().toISOString();
+    state.trainingsV08.programs = (getTrainingPrograms()).filter((program) => program.id !== draft.id);
+    state.trainingsV08.programs.unshift(draft);
+    trainingUi.editingProgramId = draft.id;
+    persistPrograms();
+    renderProgramDayList(draft);
+  }
+
+  function addProgramExerciseToDay(dayId, exerciseName) {
+    const draft = getProgramDraft();
+    const day = draft.days.find((item) => item.id === dayId);
+    if (!day) {
+      return;
+    }
+    const exercise = createEmptyProgramExercise();
+    exercise.exerciseName = exerciseName;
+    exercise.category = 'OTROS';
+    day.exercises.push(exercise);
+    draft.updatedAt = new Date().toISOString();
+    state.trainingsV08.programs = (getTrainingPrograms()).filter((program) => program.id !== draft.id);
+    state.trainingsV08.programs.unshift(draft);
+    trainingUi.editingProgramId = draft.id;
+    trainingUi.editingProgramDayId = dayId;
+    populateProgramExerciseForm(exercise);
+    persistPrograms();
+    renderProgramDayList(draft);
+  }
+
+  function saveProgramExercise() {
+    const draft = getProgramDraft();
+    const day = draft.days.find((item) => item.id === trainingUi.editingProgramDayId);
+    if (!day) {
+      return;
+    }
+    const exerciseId = els.programExerciseIdInput?.value || trainingUi.editingProgramExerciseId || '';
+    let exercise = day.exercises.find((item) => item.id === exerciseId) || null;
+    if (!exercise) {
+      exercise = createEmptyProgramExercise();
+      day.exercises.push(exercise);
+    }
+    exercise.exerciseName = String(els.programExerciseNameInput?.value || '').trim() || exercise.exerciseName || 'Ejercicio';
+    exercise.category = String(els.programExerciseCategoryInput?.value || 'OTROS').trim();
+    exercise.notes = String(els.programExerciseNotesInput?.value || '').trim();
+    exercise.repRangeMin = Math.max(1, Number(els.programExerciseRepMinInput?.value || 8));
+    exercise.repRangeMax = Math.max(exercise.repRangeMin, Number(els.programExerciseRepMaxInput?.value || exercise.repRangeMin));
+    exercise.targetWeight = Number(els.programExerciseWeightInput?.value || 0);
+    exercise.restSeconds = Math.max(0, Number(els.programExerciseRestInput?.value || 90));
+    exercise.zone = String(els.programExerciseZoneInput?.value || '').trim();
+
+    const mode = els.programApproximationModeInput?.value || 'none';
+    const approximationInputs = Array.from(document.querySelectorAll('[data-program-approx-weight]'));
+    if (mode === 'none') {
+      exercise.approximations = [];
+    } else if (approximationInputs.length) {
+      exercise.approximations = approximationInputs.slice(0, 3).map((input, index) => {
+        const id = input.getAttribute('data-program-approx-weight') || createProgramApproximation(index + 1).id;
+        const repsInput = document.querySelector(`[data-program-approx-reps="${id}"]`);
+        return {
+          id,
+          label: `A${index + 1}`,
+          weight: Number(input.value || 0),
+          reps: Number(repsInput?.value || 0)
+        };
+      });
+    } else if (mode === 'auto') {
+      exercise.approximations = [createProgramApproximation(1), createProgramApproximation(2), createProgramApproximation(3)];
+    } else {
+      exercise.approximations = [createProgramApproximation(1)];
+    }
+
+    const effectiveSetInputs = Array.from(document.querySelectorAll('[data-program-set-weight]'));
+    exercise.effectiveSets = effectiveSetInputs.length
+      ? effectiveSetInputs.map((input, index) => {
+        const id = input.getAttribute('data-program-set-weight') || createProgramEffectiveSet(index + 1).id;
+        const repsInput = document.querySelector(`[data-program-set-reps="${id}"]`);
+        return {
+          id,
+          label: `S${index + 1}`,
+          weight: Number(input.value || 0),
+          reps: Number(repsInput?.value || 0)
+        };
+      })
+      : [];
+
+    draft.updatedAt = new Date().toISOString();
+    state.trainingsV08.programs = (getTrainingPrograms()).filter((program) => program.id !== draft.id);
+    state.trainingsV08.programs.unshift(draft);
+    trainingUi.editingProgramId = draft.id;
+    persistPrograms();
+    renderProgramDayList(draft);
+    clearProgramExerciseForm();
+  }
+
+  function moveProgramExercise(dayId, exerciseId, direction) {
+    const draft = getProgramDraft();
+    const day = draft.days.find((item) => item.id === dayId);
+    if (!day) {
+      return;
+    }
+    const index = day.exercises.findIndex((item) => item.id === exerciseId);
+    if (index < 0) {
+      return;
+    }
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= day.exercises.length) {
+      return;
+    }
+    const [exercise] = day.exercises.splice(index, 1);
+    day.exercises.splice(targetIndex, 0, exercise);
+    draft.updatedAt = new Date().toISOString();
+    state.trainingsV08.programs = (getTrainingPrograms()).filter((program) => program.id !== draft.id);
+    state.trainingsV08.programs.unshift(draft);
+    trainingUi.editingProgramId = draft.id;
+    persistPrograms();
+    renderProgramDayList(draft);
+  }
+
+  function deleteProgramExercise(dayId, exerciseId) {
+    const draft = getProgramDraft();
+    const day = draft.days.find((item) => item.id === dayId);
+    if (!day) {
+      return;
+    }
+    day.exercises = day.exercises.filter((item) => item.id !== exerciseId);
+    draft.updatedAt = new Date().toISOString();
+    state.trainingsV08.programs = (getTrainingPrograms()).filter((program) => program.id !== draft.id);
+    state.trainingsV08.programs.unshift(draft);
+    trainingUi.editingProgramId = draft.id;
+    persistPrograms();
+    renderProgramDayList(draft);
+  }
+
+  function renderProgramAssignedClients() {
+    if (!els.programAssignedClientsInput) {
+      return;
+    }
+    const clients = getActiveTrainingClients();
+    const selectedIds = getProgramDraft().assignedClientIds || [];
+    els.programAssignedClientsInput.innerHTML = clients.map((client) => `
+      <option value="${client.id}" ${selectedIds.includes(client.id) ? 'selected' : ''}>${escapeHtml(getClientDisplayName(client))}</option>`).join('');
+  }
+
+  function loadProgramIntoForm(programId) {
+    const program = getTrainingProgramById(programId);
+    if (!program) {
+      return;
+    }
+    trainingUi.editingProgramId = program.id;
+    if (els.programIdInput) {
+      els.programIdInput.value = program.id;
+    }
+    if (els.programNameInput) {
+      els.programNameInput.value = program.name || '';
+    }
+    if (els.programObjectiveInput) {
+      els.programObjectiveInput.value = program.objective || '';
+    }
+    if (els.programStartDateInput) {
+      els.programStartDateInput.value = program.startDate || getTodayLocalDate();
+    }
+    if (els.programDurationWeeksInput) {
+      els.programDurationWeeksInput.value = String(program.durationWeeks || 4);
+    }
+    if (els.programWeeklyFrequencyInput) {
+      els.programWeeklyFrequencyInput.value = String(program.weeklyFrequency || 3);
+    }
+    renderProgramAssignedClients();
+    renderProgramDayList(program);
+  }
+
+  function getLibraryPatternOptions() {
+    return [
+      'squat', 'horizontal_push', 'horizontal_pull', 'vertical_pull', 'hinge', 'carry', 'lunge', 'core', 'conditioning', 'mobility', 'other'
+    ];
+  }
+
+  function getLibraryMuscleOptions() {
+    return [
+      'quadriceps', 'hamstrings', 'glutes', 'chest', 'lats', 'mid_back', 'front_delts', 'rear_delts',
+      'biceps', 'triceps', 'core', 'calves', 'full_body', 'other'
+    ];
+  }
+
+  function getLibraryTechnicalLevelOptions() {
+    return ['beginner', 'intermediate', 'advanced'];
+  }
+
+  function getLibraryLoadTypeOptions() {
+    return ['external_load', 'bodyweight', 'machine', 'assisted', 'band', 'other'];
+  }
+
+  function getExerciseDemandSummary(exercise) {
+    const demand = exercise?.jointDemand || {};
+    return {
+      back: Number(demand.back || 0),
+      shoulder: Number(demand.shoulder || 0),
+      knee: Number(demand.knee || 0),
+      hip: Number(demand.hip || 0),
+      total: Number(demand.back || 0) + Number(demand.shoulder || 0) + Number(demand.knee || 0) + Number(demand.hip || 0)
+    };
+  }
+
+  function formatJointDemand(demand) {
+    return `E${demand.back || 0} / H${demand.shoulder || 0} / R${demand.knee || 0} / C${demand.hip || 0}`;
+  }
+
+  function findLibraryExerciseByName(name) {
+    const target = String(name || '').trim();
+    if (!target) {
+      return null;
+    }
+    return (Array.isArray(state.exerciseLibrary) ? state.exerciseLibrary : []).find((exercise) =>
+      (exercise.name || '').toLowerCase() === target.toLowerCase() ||
+      (exercise.normalizedName || '').toLowerCase() === target.toLowerCase()
+    ) || null;
+  }
+
+  function findAlternativesForExercise(exercise) {
+    const library = Array.isArray(state.exerciseLibrary) ? state.exerciseLibrary : [];
+    const currentPattern = exercise?.pattern || 'other';
+    const currentDemand = getExerciseDemandSummary(exercise).total;
+    if (!currentPattern || currentDemand === 0) {
+      return [];
+    }
+    return library
+      .filter((item) => item && item.id !== exercise.id && item.active !== false)
+      .filter((item) => (item.pattern || 'other') === currentPattern)
+      .filter((item) => getExerciseDemandSummary(item).total < currentDemand)
+      .sort((a, b) => getExerciseDemandSummary(a).total - getExerciseDemandSummary(b).total)
+      .slice(0, 3);
+  }
+
+  function findLibraryExerciseById(exerciseId) {
+    return (Array.isArray(state.exerciseLibrary) ? state.exerciseLibrary : []).find((item) => item.id === exerciseId) || null;
+  }
+
+  function getLibraryExerciseOptions() {
+    return (Array.isArray(state.exerciseLibrary) ? state.exerciseLibrary : [])
+      .filter((exercise) => exercise && exercise.active !== false)
+      .map((exercise) => ({
+        id: exercise.id || exercise.libraryExerciseId || dataApi.createId('library-exercise'),
+        name: exercise.name || exercise.normalizedName || 'Ejercicio'
+      }));
+  }
+
+  function renderExerciseLibraryOptions() {
+    const datalist = els.exerciseLibraryOptions;
+    if (!datalist) {
+      return;
+    }
+    const options = getLibraryExerciseOptions();
+    datalist.innerHTML = options.map((exercise) => `<option value="${escapeHtml(exercise.name)}"></option>`).join('');
+  }
+
+  function fillLibrarySelectOptions() {
+    const patternOptions = getLibraryPatternOptions();
+    const muscleOptions = getLibraryMuscleOptions();
+    const technicalOptions = getLibraryTechnicalLevelOptions();
+    const loadTypeOptions = getLibraryLoadTypeOptions();
+
+    const populate = (select, values, selectedValue = '') => {
+      if (!select) {
+        return;
+      }
+      const options = values.map((value) => `<option value="${value}" ${selectedValue === value ? 'selected' : ''}>${escapeHtml(value)}</option>`).join('');
+      select.innerHTML = options;
+    };
+
+    populate(els.libraryExercisePatternSelect, patternOptions);
+    populate(els.libraryExercisePrimaryMuscleSelect, muscleOptions);
+    populate(els.libraryExerciseTechnicalLevelSelect, technicalOptions);
+    populate(els.libraryExerciseLoadTypeSelect, loadTypeOptions);
+
+    if (els.libraryPatternFilter) {
+      const patternValues = [''].concat(patternOptions);
+      els.libraryPatternFilter.innerHTML = patternValues.map((value) => `<option value="${escapeHtml(value)}">${value ? escapeHtml(value) : 'Todos'}</option>`).join('');
+    }
+    if (els.libraryMuscleFilter) {
+      const muscleValues = [''].concat(muscleOptions);
+      els.libraryMuscleFilter.innerHTML = muscleValues.map((value) => `<option value="${escapeHtml(value)}">${value ? escapeHtml(value) : 'Todos'}</option>`).join('');
+    }
+    if (els.libraryTechnicalLevelFilter) {
+      const technicalValues = [''].concat(technicalOptions);
+      els.libraryTechnicalLevelFilter.innerHTML = technicalValues.map((value) => `<option value="${escapeHtml(value)}">${value ? escapeHtml(value) : 'Todos'}</option>`).join('');
+    }
+  }
+
+  function renderLibraryExerciseList() {
+    if (!els.libraryExerciseList) {
+      return;
+    }
+    const search = String(els.librarySearch?.value || '').trim().toLowerCase();
+    const pattern = String(els.libraryPatternFilter?.value || '');
+    const muscle = String(els.libraryMuscleFilter?.value || '');
+    const level = String(els.libraryTechnicalLevelFilter?.value || '');
+    const exercises = (Array.isArray(state.exerciseLibrary) ? state.exerciseLibrary : [])
+      .filter((exercise) => exercise && exercise.active !== false)
+      .filter((exercise) => !search || (exercise.name || '').toLowerCase().includes(search) || (exercise.normalizedName || '').toLowerCase().includes(search))
+      .filter((exercise) => !pattern || (exercise.pattern || '') === pattern)
+      .filter((exercise) => !muscle || (exercise.primaryMuscle || '') === muscle)
+      .filter((exercise) => !level || (exercise.technicalLevel || '') === level);
+
+    els.libraryExerciseList.innerHTML = exercises.length
+      ? exercises.map((exercise) => {
+          const demand = getExerciseDemandSummary(exercise);
+          const alternatives = findAlternativesForExercise(exercise);
+          const baseName = findLibraryExerciseByName(exercise.baseExerciseId)?.name || '';
+          return `
+        <div class="training-set-item library-exercise-item">
+          <div class="library-exercise-main">
+            <strong>${escapeHtml(exercise.name || 'Ejercicio')}</strong>
+            <div class="meta">${escapeHtml(exercise.pattern || 'other')} · ${escapeHtml(exercise.primaryMuscle || 'full_body')} · ${escapeHtml(exercise.technicalLevel || 'beginner')}</div>
+            <div class="meta">Demanda articular: ${escapeHtml(formatJointDemand(demand))}</div>
+            <div class="meta">${escapeHtml(exercise.description || 'Sin descripción')}</div>
+            ${baseName ? `<div class="meta">Base: ${escapeHtml(baseName)}</div>` : ''}
+            ${alternatives.length ? `<div class="meta library-alternatives">Alternativas — mismo patrón, menor demanda: ${alternatives.map((item) => escapeHtml(item.name)).join(' · ')}</div>` : '<div class="meta library-alternatives">Alternativas — mismo patrón, menor demanda: ninguna por debajo</div>'}
+          </div>
+          <div class="inline-actions">
+            <button class="ghost small" type="button" data-library-exercise-edit="${exercise.id}">Editar</button>
+            <button class="danger small" type="button" data-library-exercise-delete="${exercise.id}">Eliminar</button>
+          </div>
+        </div>`;
+        }).join('')
+      : '<div class="muted">No hay ejercicios en la galería con esos filtros.</div>';
+
+    renderExerciseLibraryOptions();
+  }
+
+  function setLibraryMessage(message, tone = 'neutral') {
+    if (!els.libraryMessage) {
+      return;
+    }
+    els.libraryMessage.textContent = message;
+    els.libraryMessage.classList.toggle('ok', tone === 'ok');
+    els.libraryMessage.classList.toggle('bad', tone === 'bad');
+    els.libraryMessage.classList.toggle('warn', tone === 'warn');
+    els.libraryMessage.classList.toggle('muted', tone === 'neutral');
+  }
+
+  function resetLibraryExerciseForm() {
+    if (els.libraryExerciseIdInput) {
+      els.libraryExerciseIdInput.value = '';
+    }
+    if (els.libraryExerciseNameInput) {
+      els.libraryExerciseNameInput.value = '';
+    }
+    if (els.libraryExercisePatternSelect) {
+      els.libraryExercisePatternSelect.value = 'squat';
+    }
+    if (els.libraryExercisePrimaryMuscleSelect) {
+      els.libraryExercisePrimaryMuscleSelect.value = 'quadriceps';
+    }
+    if (els.libraryExerciseTechnicalLevelSelect) {
+      els.libraryExerciseTechnicalLevelSelect.value = 'beginner';
+    }
+    if (els.libraryExerciseLoadTypeSelect) {
+      els.libraryExerciseLoadTypeSelect.value = 'external_load';
+    }
+    if (els.libraryExerciseBackDemandSelect) {
+      els.libraryExerciseBackDemandSelect.value = '0';
+    }
+    if (els.libraryExerciseShoulderDemandSelect) {
+      els.libraryExerciseShoulderDemandSelect.value = '0';
+    }
+    if (els.libraryExerciseKneeDemandSelect) {
+      els.libraryExerciseKneeDemandSelect.value = '0';
+    }
+    if (els.libraryExerciseHipDemandSelect) {
+      els.libraryExerciseHipDemandSelect.value = '0';
+    }
+    if (els.libraryExerciseActiveSelect) {
+      els.libraryExerciseActiveSelect.value = 'true';
+    }
+    if (els.libraryExerciseDescriptionInput) {
+      els.libraryExerciseDescriptionInput.value = '';
+    }
+    if (els.libraryExerciseSecondaryMusclesInput) {
+      els.libraryExerciseSecondaryMusclesInput.value = '';
+    }
+    if (els.libraryExerciseEquipmentsInput) {
+      els.libraryExerciseEquipmentsInput.value = '';
+    }
+    if (els.libraryExerciseBaseInput) {
+      els.libraryExerciseBaseInput.value = '';
+    }
+    if (els.libraryExerciseAlternativeGroupInput) {
+      els.libraryExerciseAlternativeGroupInput.value = '';
+    }
+    if (els.libraryRelationTargetInput) {
+      els.libraryRelationTargetInput.value = '';
+    }
+    if (els.libraryRelationTargetIdInput) {
+      els.libraryRelationTargetIdInput.value = '';
+    }
+    if (els.libraryRelationTypeSelect) {
+      els.libraryRelationTypeSelect.value = '';
+    }
+  }
+
+  function editLibraryExercise(exerciseId) {
+    const exercise = (Array.isArray(state.exerciseLibrary) ? state.exerciseLibrary : []).find((item) => item.id === exerciseId);
+    if (!exercise) {
+      return;
+    }
+    if (els.libraryExerciseIdInput) {
+      els.libraryExerciseIdInput.value = exercise.id || '';
+    }
+    if (els.libraryExerciseNameInput) {
+      els.libraryExerciseNameInput.value = exercise.name || '';
+    }
+    if (els.libraryExercisePatternSelect) {
+      els.libraryExercisePatternSelect.value = exercise.pattern || 'squat';
+    }
+    if (els.libraryExercisePrimaryMuscleSelect) {
+      els.libraryExercisePrimaryMuscleSelect.value = exercise.primaryMuscle || 'full_body';
+    }
+    if (els.libraryExerciseTechnicalLevelSelect) {
+      els.libraryExerciseTechnicalLevelSelect.value = exercise.technicalLevel || 'beginner';
+    }
+    if (els.libraryExerciseLoadTypeSelect) {
+      els.libraryExerciseLoadTypeSelect.value = exercise.loadType || 'external_load';
+    }
+    if (els.libraryExerciseBackDemandSelect) {
+      els.libraryExerciseBackDemandSelect.value = String(exercise.jointDemand?.back || 0);
+    }
+    if (els.libraryExerciseShoulderDemandSelect) {
+      els.libraryExerciseShoulderDemandSelect.value = String(exercise.jointDemand?.shoulder || 0);
+    }
+    if (els.libraryExerciseKneeDemandSelect) {
+      els.libraryExerciseKneeDemandSelect.value = String(exercise.jointDemand?.knee || 0);
+    }
+    if (els.libraryExerciseHipDemandSelect) {
+      els.libraryExerciseHipDemandSelect.value = String(exercise.jointDemand?.hip || 0);
+    }
+    if (els.libraryExerciseActiveSelect) {
+      els.libraryExerciseActiveSelect.value = String(exercise.active !== false);
+    }
+    if (els.libraryExerciseDescriptionInput) {
+      els.libraryExerciseDescriptionInput.value = exercise.description || '';
+    }
+    if (els.libraryExerciseSecondaryMusclesInput) {
+      els.libraryExerciseSecondaryMusclesInput.value = Array.isArray(exercise.secondaryMuscles) ? exercise.secondaryMuscles.join(', ') : '';
+    }
+    if (els.libraryExerciseEquipmentsInput) {
+      els.libraryExerciseEquipmentsInput.value = Array.isArray(exercise.equipments) ? exercise.equipments.join(', ') : '';
+    }
+    if (els.libraryExerciseBaseInput) {
+      els.libraryExerciseBaseInput.value = findLibraryExerciseById(exercise.baseExerciseId)?.name || '';
+    }
+    if (els.libraryExerciseAlternativeGroupInput) {
+      els.libraryExerciseAlternativeGroupInput.value = exercise.alternativeGroupId || '';
+    }
+  }
+
+  function saveLibraryExercise() {
+    const name = String(els.libraryExerciseNameInput?.value || '').trim();
+    if (!name) {
+      setLibraryMessage('Ingresa un nombre para el ejercicio.', 'bad');
+      return;
+    }
+
+    const existingId = String(els.libraryExerciseIdInput?.value || '').trim();
+    const baseTarget = String(els.libraryExerciseBaseInput?.value || '').trim();
+    const baseExercise = findLibraryExerciseByName(baseTarget);
+    const targetRelationName = String(els.libraryRelationTargetInput?.value || '').trim();
+    const relationTarget = findLibraryExerciseByName(targetRelationName);
+    const relationType = String(els.libraryRelationTypeSelect?.value || '').trim();
+
+    const normalized = dataApi.normalizeLibraryExercise({
+      id: existingId || dataApi.createId('library-exercise'),
+      name,
+      normalizedName: name,
+      description: String(els.libraryExerciseDescriptionInput?.value || '').trim(),
+      pattern: String(els.libraryExercisePatternSelect?.value || 'other'),
+      primaryMuscle: String(els.libraryExercisePrimaryMuscleSelect?.value || 'full_body'),
+      secondaryMuscles: String(els.libraryExerciseSecondaryMusclesInput?.value || '').split(',').map((item) => item.trim()).filter(Boolean),
+      equipments: String(els.libraryExerciseEquipmentsInput?.value || '').split(',').map((item) => item.trim()).filter(Boolean),
+      technicalLevel: String(els.libraryExerciseTechnicalLevelSelect?.value || 'beginner'),
+      loadType: String(els.libraryExerciseLoadTypeSelect?.value || 'external_load'),
+      jointDemand: {
+        back: Number(els.libraryExerciseBackDemandSelect?.value || 0),
+        shoulder: Number(els.libraryExerciseShoulderDemandSelect?.value || 0),
+        knee: Number(els.libraryExerciseKneeDemandSelect?.value || 0),
+        hip: Number(els.libraryExerciseHipDemandSelect?.value || 0)
+      },
+      active: String(els.libraryExerciseActiveSelect?.value || 'true') === 'true',
+      baseExerciseId: baseExercise?.id || '',
+      alternativeGroupId: String(els.libraryExerciseAlternativeGroupInput?.value || '').trim() || (baseExercise ? `group-${baseExercise.id}` : ''),
+      relations: relationType && relationTarget ? [{
+        relatedExerciseId: relationTarget.id,
+        relationType,
+        notes: `Relación ${relationType} para ${name}`,
+        relatedExerciseName: relationTarget.name
+      }] : []
+    });
+
+    state.exerciseLibrary = (Array.isArray(state.exerciseLibrary) ? state.exerciseLibrary : []).filter((item) => item.id !== normalized.id);
+    state.exerciseLibrary.unshift(normalized);
+    persist();
+    renderLibraryExerciseList();
+    resetLibraryExerciseForm();
+    setLibraryMessage('Ejercicio guardado en la biblioteca.', 'ok');
+  }
+
+  async function deleteLibraryExerciseById(exerciseId) {
+    const library = Array.isArray(state.exerciseLibrary) ? state.exerciseLibrary : [];
+    const match = library.find((item) => item.id === exerciseId);
+    if (!match) {
+      return;
+    }
+
+    if (isCloudSessionActive() && cloudDataApi && typeof cloudDataApi.deleteLibraryExercise === 'function') {
+      const response = await cloudDataApi.deleteLibraryExercise(exerciseId);
+      if (response && response.error) {
+        throw new Error(response.error.message || response.error || 'No se pudo eliminar en Cloud');
+      }
+    }
+
+    state.exerciseLibrary = library.filter((item) => item.id !== exerciseId).map((item) => ({ ...item, active: false }));
+    persist();
+    renderLibraryExerciseList();
+    setLibraryMessage('Ejercicio eliminado de la galería.', 'ok');
   }
 
   function renderTemplateList() {
@@ -2345,7 +4780,11 @@
     const defaults = {
       clientService: 'Personalizado',
       clientStatus: 'active',
-      clientPaymentStatus: 'pending'
+      clientPaymentStatus: 'pending',
+      clientSessionsTotal: '8',
+      clientSessionsUsed: '0',
+      clientTrainingModality: 'personalized',
+      clientTrainingGroupSize: ''
     };
     Object.entries(defaults).forEach(([elementId, value]) => {
       const element = document.getElementById(elementId);
@@ -2372,11 +4811,19 @@
     document.getElementById('clientPaymentStatus').value = client?.payment_status || 'pending';
     document.getElementById('clientEmail').value = client?.email || '';
     document.getElementById('clientBirthDate').value = client?.birth_date || '';
+    els.clientAge.value = client?.age || '';
     document.getElementById('clientTrainingDays').value = client?.training_days || '';
     document.getElementById('clientSchedule').value = client?.schedule_notes || '';
+    document.getElementById('clientSessionsTotal').value = Number(client?.sessions_total ?? 0);
+    document.getElementById('clientSessionsUsed').value = Number(client?.sessions_used ?? 0);
+    document.getElementById('clientTrainingModality').value = client?.training_modality || 'personalized';
+    document.getElementById('clientTrainingGroupSize').value = client?.training_modality === 'group' ? Number(client?.training_group_size || 2) : '';
     document.getElementById('clientStartDate').value = client?.start_date || '';
     document.getElementById('clientRenewalDate').value = client?.renewal_date || '';
     document.getElementById('clientObjective').value = client?.objective || '';
+    els.clientTrainingExperience.value = client?.training_experience || '';
+    els.clientAvoidExercises.value = client?.avoid_exercises || '';
+    els.clientIntakeComment.value = client?.intake_comment || '';
     document.getElementById('clientInjuries').value = client?.injuries || '';
     document.getElementById('clientObservations').value = client?.observations || '';
     document.getElementById('clientEmergencyContact').value = client?.emergency_contact || '';
@@ -2407,6 +4854,33 @@
       return null;
     }
     return Object.fromEntries(new FormData(els.clientForm).entries());
+  }
+
+  function parseWhatsAppImport() {
+    const parsed = window.VALHALLA.onboarding?.parseMessage(els.whatsAppImportText.value || '') || {};
+    if (!parsed.fullName || !parsed.phone) {
+      els.whatsAppImportMessage.textContent = 'El mensaje debe incluir Nombre completo y Teléfono de contacto.';
+      els.whatsAppImportMessage.className = 'notice warn';
+      return;
+    }
+    toggleClientForm(true, null);
+    document.getElementById('clientFullName').value = parsed.fullName;
+    document.getElementById('clientPhone').value = parsed.phone;
+    els.clientAge.value = parsed.age || '';
+    document.getElementById('clientObjective').value = parsed.objective || '';
+    els.clientTrainingExperience.value = parsed.experience || '';
+    document.getElementById('clientInjuries').value = parsed.injuries || '';
+    els.clientAvoidExercises.value = parsed.avoidExercises || '';
+    els.clientIntakeComment.value = parsed.comment || '';
+    els.whatsAppImportPanel.classList.add('hidden');
+    els.whatsAppImportMessage.textContent = '';
+    const formMessage = document.getElementById('clientFormMessage');
+    if (formMessage) {
+      formMessage.textContent = 'Ingreso importado. Revisa los datos y completa plan, días y modalidad antes de guardar.';
+      formMessage.className = 'notice ok';
+    }
+    renderClients();
+    els.clientFormPanel?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   function validateClientPayload(payload, existingId = null) {
@@ -2465,6 +4939,7 @@
       phone: payload.phone || '',
       email: payload.email || '',
       birth_date: payload.birthDate || '',
+      age: payload.age ? Math.max(1, Math.min(120, Math.floor(Number(payload.age)))) : '',
       training_days: payload.trainingDays || '',
       service: payload.service || 'Personalizado',
       monthly_value: monthlyValue,
@@ -2473,7 +4948,15 @@
       payment_status: paymentStatus,
       status: paymentStatus,
       schedule_notes: payload.schedule || '',
+      sessions_total: Math.max(0, Math.floor(Number(payload.sessionsTotal || 0))),
+      sessions_used: Math.max(0, Math.floor(Number(payload.sessionsUsed || 0))),
+      training_modality: payload.trainingModality === 'group' ? 'group' : 'personalized',
+      training_group_size: payload.trainingModality === 'group' ? Math.max(2, Math.min(4, Math.floor(Number(payload.trainingGroupSize || 2)))) : 1,
+      training_attendance: Array.isArray(existingClient?.training_attendance) ? existingClient.training_attendance : [],
       objective: payload.objective || '',
+      training_experience: payload.trainingExperience || '',
+      avoid_exercises: payload.avoidExercises || '',
+      intake_comment: payload.intakeComment || '',
       injuries: payload.injuries || '',
       observations: payload.observations || '',
       emergency_contact: payload.emergencyContact || '',
@@ -2514,6 +4997,8 @@
           <div><strong>Fecha de renovación</strong><div class="meta">${escapeHtml(getClientRenewalLabel(client))}</div></div>
           <div><strong>Horario</strong><div class="meta">${escapeHtml(client.schedule_notes || 'Sin horario')}</div></div>
           <div><strong>Días de entrenamiento</strong><div class="meta">${escapeHtml(client.training_days || 'Sin información')}</div></div>
+          <div><strong>Sesiones disponibles</strong><div class="meta">${Math.max(0, Number(client.sessions_total || 0) - Number(client.sessions_used || 0))}/${Number(client.sessions_total || 0)}</div></div>
+          <div><strong>Modalidad</strong><div class="meta">${client.training_modality === 'group' ? `Grupo (${Number(client.training_group_size || 2)})` : 'Personalizado'}</div></div>
           <div><strong>Correo</strong><div class="meta">${escapeHtml(client.email || 'Sin correo')}</div></div>
           <div><strong>Objetivo</strong><div class="meta">${escapeHtml(client.objective || 'Sin objetivo')}</div></div>
           <div><strong>Contacto de emergencia</strong><div class="meta">${escapeHtml(client.emergency_contact || 'Sin contacto')}</div></div>
@@ -3248,8 +5733,156 @@
     }
   }
 
+  function getClientAgendaWeekdays(client) {
+    const rawDays = String(client.training_days || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const dayAliases = [
+      ['lunes', 'lun'],
+      ['martes', 'mar'],
+      ['miercoles', 'mie'],
+      ['jueves', 'jue'],
+      ['viernes', 'vie'],
+      ['sabado', 'sab'],
+      ['domingo', 'dom']
+    ];
+    const parsed = dayAliases.flatMap((aliases, index) => {
+      const pattern = new RegExp(`(^|[^a-z])(${aliases.join('|')})(?=$|[^a-z])`);
+      return pattern.test(rawDays) ? [index + 1] : [];
+    });
+    if (parsed.length) {
+      return parsed;
+    }
+    return [...new Set(getTrainingAssignmentsForClient(client.id).flatMap((assignment) => assignment.weeklyDays || []).map(Number))]
+      .filter((weekday) => Number.isInteger(weekday) && weekday >= 1 && weekday <= 7);
+  }
+
+  function getAgendaDateValue(date) {
+    return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
+  }
+
+  function getAgendaRoutine(clientId, dateValue) {
+    const assignment = getActiveTrainingAssignment(clientId);
+    const { day } = getGroupSessionDay(assignment, dateValue);
+    if (!day) {
+      return 'Sin rutina asignada';
+    }
+    const dayName = String(day.name || 'Rutina').replace(/^(lunes|martes|miercoles|jueves|viernes|sabado|domingo|lun|mar|mie|jue|vie|sab|dom)\s*[—–-]\s*/i, '') || day.name;
+    const exerciseNames = (day.exercises || []).map((exercise) => exercise.exerciseName).filter(Boolean);
+    return exerciseNames.length ? `${dayName}: ${exerciseNames.join(', ')}` : dayName;
+  }
+
+  function getAgendaSlotsForDate(date) {
+    const dateValue = getAgendaDateValue(date);
+    const weekday = date.getDay() || 7;
+    const slotsByKey = new Map();
+    getActiveTrainingClients().forEach((client) => {
+      if (!getClientAgendaWeekdays(client).includes(weekday)) {
+        return;
+      }
+      const timeMatch = String(client.schedule_notes || '').match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/);
+      const time = timeMatch ? `${timeMatch[1].padStart(2, '0')}:${timeMatch[2]}` : 'Sin hora';
+      const modality = client.training_modality === 'group' ? 'group' : 'personalized';
+      const groupSize = modality === 'group' ? Number(client.training_group_size || 2) : 1;
+      const slotKey = modality === 'group' ? `${time}:group:${groupSize}` : `${time}:client:${client.id}`;
+      if (!slotsByKey.has(slotKey)) {
+        slotsByKey.set(slotKey, { time, modality, groupSize, students: [] });
+      }
+      slotsByKey.get(slotKey).students.push({
+        id: client.id,
+        name: getClientDisplayName(client),
+        routine: getAgendaRoutine(client.id, dateValue),
+        total: Number(client.sessions_total || 0),
+        used: Number(client.sessions_used || 0),
+        attended: false
+      });
+    });
+    return Array.from(slotsByKey.entries()).map(([slotKey, slot]) => {
+      const clientIds = slot.students.map((student) => student.id).sort();
+      const sessionKey = `${dateValue}:${slotKey}:${clientIds.join(',')}`;
+      slot.students.forEach((student) => {
+        const client = getClientById(student.id);
+        student.attended = (client?.training_attendance || []).some((entry) => entry.sessionKey === sessionKey);
+      });
+      return { ...slot, sessionKey, dateValue, key: slotKey };
+    }).sort((first, second) => first.time.localeCompare(second.time));
+  }
+
+  function renderAgendaSlot(slot, showAttendanceAction = false) {
+    const complete = slot.students.every((student) => student.attended);
+    const canMark = slot.students.some((student) => !student.attended && student.total > student.used);
+    const modeLabel = slot.modality === 'group' ? `Grupo (${slot.groupSize})` : 'Personalizado';
+    return `
+      <article class="training-agenda-slot">
+        <div class="training-agenda-slot-heading"><strong>${escapeHtml(slot.time)}</strong><span class="pill">${modeLabel}</span></div>
+        <div class="training-agenda-students">${slot.students.map((student) => `
+          <div class="training-agenda-student">
+            <div><strong>${escapeHtml(student.name)}</strong><div class="meta">${escapeHtml(student.routine)}</div></div>
+            <span class="training-session-balance">${Math.max(0, student.total - student.used)}/${student.total}</span>
+          </div>`).join('')}
+        </div>
+        ${showAttendanceAction ? `<button class="${complete ? 'secondary' : 'primary'} small" type="button" data-agenda-attend="${escapeHtml(slot.sessionKey)}" ${complete || !canMark ? 'disabled' : ''}>${complete ? 'Asistencia marcada' : canMark ? 'Marcar asistencia' : 'Plan sin sesiones disponibles'}</button>` : ''}
+      </article>`;
+  }
+
+  function renderTrainingAgenda() {
+    const today = new Date(`${getTodayLocalDate()}T00:00:00`);
+    if (els.trainingAgendaDate) {
+      els.trainingAgendaDate.textContent = today.toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' });
+    }
+    const todaySlots = getAgendaSlotsForDate(today);
+    if (els.trainingAgendaToday) {
+      els.trainingAgendaToday.innerHTML = todaySlots.length
+        ? todaySlots.map((slot) => renderAgendaSlot(slot, true)).join('')
+        : '<div class="muted">No hay sesiones programadas para hoy.</div>';
+    }
+    const upcomingSlots = [];
+    for (let offset = 1; offset <= 7; offset += 1) {
+      const date = new Date(today);
+      date.setDate(today.getDate() + offset);
+      const dateValue = getAgendaDateValue(date);
+      getAgendaSlotsForDate(date).forEach((slot) => upcomingSlots.push({ ...slot, dateLabel: date.toLocaleDateString('es-CL', { weekday: 'short', day: 'numeric', month: 'short' }), dateValue }));
+    }
+    if (els.trainingAgendaUpcoming) {
+      els.trainingAgendaUpcoming.innerHTML = upcomingSlots.length
+        ? upcomingSlots.map((slot) => `<div class="training-agenda-upcoming"><strong>${escapeHtml(slot.dateLabel)}</strong>${renderAgendaSlot(slot, false)}</div>`).join('')
+        : '<div class="muted">No hay entrenamientos próximos en los siguientes 7 días.</div>';
+    }
+  }
+
+  function markAgendaAttendance(sessionKey) {
+    const today = new Date(`${getTodayLocalDate()}T00:00:00`);
+    const slot = getAgendaSlotsForDate(today).find((item) => item.sessionKey === sessionKey);
+    if (!slot) {
+      return;
+    }
+    const markedAt = new Date().toISOString();
+    slot.students.forEach((student) => {
+      const client = getClientById(student.id);
+      if (!client || student.attended || Number(client.sessions_used || 0) >= Number(client.sessions_total || 0)) {
+        return;
+      }
+      if (!Array.isArray(client.training_attendance)) {
+        client.training_attendance = [];
+      }
+      if (client.training_attendance.some((entry) => entry.sessionKey === sessionKey)) {
+        return;
+      }
+      client.training_attendance.push({ sessionKey, date: slot.dateValue, time: slot.time, markedAt });
+      client.sessions_used = Math.min(Number(client.sessions_total || 0), Number(client.sessions_used || 0) + 1);
+    });
+    dataApi.saveState(state);
+    render();
+  }
+
   function renderTrainings() {
     ensureTrainingsV08State();
+    setTrainingView(trainingUi.activeTrainingView || 'today');
+    renderProgramAssignedClients();
+    renderProgramLibrary();
+    fillLibrarySelectOptions();
+    renderLibraryExerciseList();
+    renderProgramsList();
+    const draft = getProgramDraft();
+    renderProgramDayList(draft);
     const activeClients = getActiveTrainingClients();
     const selectedClientId = trainingUi.selectedClientId && activeClients.some((client) => client.id === trainingUi.selectedClientId)
       ? trainingUi.selectedClientId
@@ -3449,6 +6082,8 @@
     els.magicBudget.value = state.settings.magic_budget || 0;
     els.antBudget.value = state.settings.ant_budget || 0;
     els.savingsGoal.value = state.profile.savings_goal || 0;
+    els.coachWhatsAppNumber.value = String(state.settings.coach_whatsapp_number || '');
+    renderOnboardingQr();
     if (els.accountSettings) {
       els.accountSettings.innerHTML = (state.accounts || []).map((account) => `
         <div class="list-item">
@@ -3462,6 +6097,67 @@
             <button class="ghost small" type="button" data-account-balance="${account.id}">Editar saldo</button>
           </div>
         </div>`).join('');
+    }
+  }
+
+  function getOnboardingUrl() {
+    const currentUrl = window.location.protocol === 'file:'
+      ? 'https://vikingosradical.github.io/valhalla-finanzas-github/index.html'
+      : window.location.href;
+    const onboardingUrl = new URL(currentUrl);
+    onboardingUrl.search = '';
+    onboardingUrl.hash = '';
+    onboardingUrl.searchParams.set('onboarding', '1');
+    const coachNumber = String(state.settings.coach_whatsapp_number || '').replace(/\D/g, '');
+    if (coachNumber) {
+      onboardingUrl.searchParams.set('coach', coachNumber);
+    }
+    return onboardingUrl.toString();
+  }
+
+  function renderOnboardingQr() {
+    if (!els.onboardingUrl || !els.onboardingQr) {
+      return;
+    }
+    const onboardingUrl = getOnboardingUrl();
+    els.onboardingUrl.value = onboardingUrl;
+    if (!window.qrcode) {
+      els.onboardingQr.textContent = 'No se pudo cargar el generador QR local.';
+      return;
+    }
+    try {
+      const qr = window.qrcode(0, 'M');
+      qr.addData(onboardingUrl, 'Byte');
+      qr.make();
+      els.onboardingQr.innerHTML = qr.createSvgTag({
+        cellSize: 4,
+        margin: 16,
+        title: { text: 'Código QR para ingreso de alumnos' },
+        alt: { text: `Abrir ${onboardingUrl}` }
+      });
+      if (els.onboardingQrMessage) {
+        els.onboardingQrMessage.textContent = state.settings.coach_whatsapp_number
+          ? 'El QR incluye el número de WhatsApp configurado.'
+          : 'Configura el número de WhatsApp para que el formulario pueda enviar el ingreso.';
+      }
+    } catch (error) {
+      els.onboardingQr.textContent = 'No se pudo generar el código QR.';
+      if (els.onboardingQrMessage) {
+        els.onboardingQrMessage.textContent = error.message || 'Error al generar QR.';
+      }
+    }
+  }
+
+  async function copyOnboardingUrl() {
+    const url = els.onboardingUrl?.value || getOnboardingUrl();
+    try {
+      await navigator.clipboard.writeText(url);
+      els.onboardingQrMessage.textContent = 'Link copiado.';
+    } catch (_) {
+      els.onboardingUrl.focus();
+      els.onboardingUrl.select();
+      const copied = document.execCommand('copy');
+      els.onboardingQrMessage.textContent = copied ? 'Link copiado.' : 'Selecciona el link para copiarlo.';
     }
   }
 
@@ -3987,6 +6683,7 @@
     state.profile.savings_goal = Number(els.savingsGoal.value || 0);
     state.settings.magic_budget = Number(els.magicBudget.value || 0);
     state.settings.ant_budget = Number(els.antBudget.value || 0);
+    state.settings.coach_whatsapp_number = String(els.coachWhatsAppNumber.value || '').replace(/\D/g, '');
     persist();
   }
 
@@ -4649,6 +7346,24 @@
       return;
     }
 
+    if (target === els.importWhatsAppBtn) {
+      els.whatsAppImportPanel.classList.remove('hidden');
+      els.whatsAppImportMessage.textContent = '';
+      els.whatsAppImportText.focus();
+      return;
+    }
+
+    if (target === els.parseWhatsAppImportBtn) {
+      parseWhatsAppImport();
+      return;
+    }
+
+    if (target === els.cancelWhatsAppImportBtn) {
+      els.whatsAppImportPanel.classList.add('hidden');
+      els.whatsAppImportMessage.textContent = '';
+      return;
+    }
+
     if (target === els.clientNewBtn) {
       toggleClientForm(true, null);
       renderClients();
@@ -4725,10 +7440,536 @@
       return;
     }
 
+    const trainingViewButton = target.closest('[data-training-view]');
+    const agendaAttendanceButton = target.closest('[data-agenda-attend]');
+    if (agendaAttendanceButton && !agendaAttendanceButton.disabled) {
+      markAgendaAttendance(agendaAttendanceButton.getAttribute('data-agenda-attend'));
+      return;
+    }
+
+    const groupDecisionButton = target.closest('[data-group-decision]');
+    if (groupDecisionButton) {
+      selectGroupDecision(
+        groupDecisionButton.getAttribute('data-client-id'),
+        groupDecisionButton.getAttribute('data-group-decision')
+      );
+      return;
+    }
+
+    const groupConfirmButton = target.closest('[data-group-confirm]');
+    if (groupConfirmButton) {
+      confirmGroupStudentSession(groupConfirmButton.getAttribute('data-group-confirm'));
+      return;
+    }
+
+    if (trainingViewButton) {
+      setTrainingView(trainingViewButton.getAttribute('data-training-view') || 'today');
+      return;
+    }
+
     if (target === els.newTemplateBtn) {
       resetTemplateDraft();
       setTemplateMessage('Nueva plantilla lista para editar.', 'neutral');
       renderTemplateList();
+      return;
+    }
+
+    const libraryEditId = target.getAttribute('data-library-exercise-edit');
+    if (libraryEditId) {
+      editLibraryExercise(libraryEditId);
+      return;
+    }
+
+    const libraryDeleteId = target.getAttribute('data-library-exercise-delete');
+    if (libraryDeleteId) {
+      deleteLibraryExerciseById(libraryDeleteId).catch((error) => {
+        setLibraryMessage(error?.message || 'No se pudo eliminar el ejercicio.', 'bad');
+      });
+      return;
+    }
+
+    const planningClientId = target.closest('[data-planning-client-id]')?.getAttribute('data-planning-client-id');
+    if (planningClientId) {
+      const current = new Set(planningUi.selectedClientIds || []);
+      if (current.has(planningClientId)) {
+        current.delete(planningClientId);
+      } else {
+        current.add(planningClientId);
+      }
+      planningUi.selectedClientIds = Array.from(current);
+      getPlanningDraftProgram().assignedClientIds = [...planningUi.selectedClientIds];
+      renderPlanningClientSelection();
+      renderPlanningSavedPrograms();
+      return;
+    }
+
+    if (target === els.planningLoadBaseProgramBtn || target.closest('#planningLoadBaseProgramBtn')) {
+      const selectedProgramId = String(els.planningBaseProgramSelect?.value || '').trim();
+      if (!selectedProgramId) {
+        if (els.programMessage) {
+          els.programMessage.textContent = 'Selecciona un programa guardado para usarlo como base.';
+          els.programMessage.className = 'notice warn';
+        }
+        return;
+      }
+      const loaded = duplicatePlanningProgramFromBase(selectedProgramId);
+      if (loaded && els.programMessage) {
+        els.programMessage.textContent = 'Base cargada correctamente.';
+        els.programMessage.className = 'notice ok';
+      }
+      return;
+    }
+
+    const programBaseId = target.closest('[data-program-base]')?.getAttribute('data-program-base');
+    if (programBaseId) {
+      duplicatePlanningProgramFromBase(programBaseId);
+      return;
+    }
+
+    if (target === els.planningContinueStep1) {
+      showPlanningStep(2);
+      if (els.planningProgramName) {
+        els.planningProgramName.value = getPlanningDraftProgram().name || '';
+      }
+      if (els.planningProgramStartDate) {
+        els.planningProgramStartDate.value = getPlanningDraftProgram().startDate || getTodayLocalDate();
+      }
+      return;
+    }
+
+    if (target === els.planningBackToStep1) {
+      showPlanningStep(1);
+      return;
+    }
+
+    if (target === els.planningContinueStep2) {
+      applyPlanningChoiceData();
+      showPlanningStep(3);
+      renderPlanningDays();
+      return;
+    }
+
+    if (target === els.planningBackToStep2) {
+      showPlanningStep(2);
+      return;
+    }
+
+    if (target === els.planningContinueStep3) {
+      const totalExercises = (getPlanningDraftProgram().days || []).reduce((sum, day) => sum + (day.exercises || []).length, 0);
+      if (totalExercises <= 0) {
+        const message = document.getElementById('planningStep3Message');
+        if (message) {
+          message.classList.remove('hidden');
+        }
+        return;
+      }
+      applyPlanningChoiceData();
+      renderPlanningReview();
+      showPlanningStep(4);
+      return;
+    }
+
+    if (target === els.planningBackToStep3) {
+      showPlanningStep(3);
+      return;
+    }
+
+    if (target === els.planningSaveProgramWizardBtn) {
+      applyPlanningChoiceData();
+      syncPlanningProgramToLegacyForm();
+      savePlanningProgramAndAssignments();
+      return;
+    }
+
+    const weekdayButton = target.closest('[data-planning-weekday]');
+    if (weekdayButton) {
+      const chosenDay = Number(weekdayButton.getAttribute('data-planning-weekday') || 0);
+      const draft = getPlanningDraftProgram();
+      const expected = Math.max(1, Math.min(Number(draft.weeklyFrequency || planningUi.frequency || 3), Math.max(1, (draft.days || []).length || 3)));
+      const selected = new Set(getPlanningWeeklyDaySelection());
+      if (selected.has(chosenDay)) {
+        selected.delete(chosenDay);
+      } else {
+        if (selected.size >= expected) {
+          if (els.programMessage) {
+            els.programMessage.textContent = `Selecciona ${expected} días de entrenamiento.`;
+            els.programMessage.className = 'notice warn';
+          }
+          return;
+        }
+        selected.add(chosenDay);
+      }
+      planningUi.weeklyDays = Array.from(selected).sort((a, b) => a - b);
+      renderPlanningReview();
+      return;
+    }
+
+    const reviewDayEdit = target.closest('[data-planning-edit-day]');
+    if (reviewDayEdit) {
+      const index = Number(reviewDayEdit.getAttribute('data-planning-edit-day') || 0);
+      const draft = getPlanningDraftProgram();
+      if (draft.days?.[index]) {
+        planningUi.currentDayIndex = index;
+        routineBuilder.activeDayIndex = index;
+        showPlanningStep(3);
+        renderPlanningDays();
+      }
+      return;
+    }
+
+    const planningCategory = target.closest('[data-planning-category]');
+    if (planningCategory) {
+      const category = planningCategory.getAttribute('data-planning-category') || 'PIERNAS';
+      planningUi.category = category;
+      planningUi.selectedCategory = category;
+      if (els.planningCategorySelector) {
+        els.planningCategorySelector.classList.remove('hidden');
+      }
+      renderPlanningCategories();
+      return;
+    }
+
+    if (target.closest('[data-planning-category-back]')) {
+      planningUi.selectedCategory = null;
+      if (els.planningExerciseSearch) {
+        els.planningExerciseSearch.value = '';
+      }
+      renderPlanningCategories();
+      return;
+    }
+
+    if (target.closest('[data-planning-exercise-option]')) {
+      const exerciseName = target.closest('[data-planning-exercise-option]')?.textContent?.trim() || 'Ejercicio';
+      planningUi.exerciseDraft = {
+        id: dataApi.createId('program-exercise'),
+        exerciseName,
+        category: planningUi.selectedCategory || planningUi.category || 'PIERNAS',
+        notes: '',
+        repRangeMin: 8,
+        repRangeMax: 12,
+        plannedSets: 3,
+        targetWeight: '',
+        restSeconds: 90,
+        zone: '',
+        approximations: [],
+        effectiveSets: []
+      };
+      if (els.planningCategorySelector) {
+        els.planningCategorySelector.classList.add('hidden');
+      }
+      if (els.planningExerciseBuilder) {
+        els.planningExerciseBuilder.classList.remove('hidden');
+      }
+      renderPlanningBuilder();
+      return;
+    }
+
+    if (target.closest('[data-planning-day-index]')) {
+      const dayIndex = Number(target.closest('[data-planning-day-index]').getAttribute('data-planning-day-index') || 0);
+      planningUi.currentDayIndex = dayIndex;
+      routineBuilder.activeDayIndex = dayIndex;
+      routineBuilder.screen = 'day';
+      renderPlanningDays();
+      return;
+    }
+
+    if (target.closest('[data-planning-exercise-remove]')) {
+      const exerciseId = target.closest('[data-planning-exercise-remove]').getAttribute('data-planning-exercise-remove');
+      const draft = getPlanningDraftProgram();
+      const day = draft.days[planningUi.currentDayIndex];
+      if (day) {
+        day.exercises = (day.exercises || []).filter((item) => item.id !== exerciseId);
+        planningUi.draftProgram = draft;
+        renderPlanningDays();
+      }
+      return;
+    }
+
+    if (target === els.planningAddFirstExercise || target.closest('#planningAddFirstExercise') || target.closest('#planningAddExerciseBtn')) {
+      routineBuilder.screen = 'categories';
+      routineBuilder.category = null;
+      routineBuilder.search = '';
+      renderRoutineBuilder();
+      return;
+    }
+
+    if (target === els.planningBackToDay || target.closest('#planningBackToDay')) {
+      if (els.planningCategorySelector) {
+        els.planningCategorySelector.classList.add('hidden');
+      }
+      if (els.planningExerciseBuilder) {
+        els.planningExerciseBuilder.classList.add('hidden');
+      }
+      planningUi.selectedCategory = null;
+      renderPlanningDays();
+      return;
+    }
+
+    if (target === els.planningBuilderBack || target.closest('#planningBuilderBack')) {
+      if (els.planningExerciseBuilder) {
+        els.planningExerciseBuilder.classList.add('hidden');
+      }
+      if (els.planningCategorySelector) {
+        els.planningCategorySelector.classList.remove('hidden');
+      }
+      planningUi.selectedCategory = planningUi.selectedCategory || planningUi.category || 'PIERNAS';
+      renderPlanningCategories();
+      return;
+    }
+
+    if (target === els.planningSetMinus || target.closest('#planningSetMinus')) {
+      const nextValue = Math.max(1, Number(planningUi.exerciseDraft?.plannedSets || 3) - 1);
+      if (planningUi.exerciseDraft) {
+        planningUi.exerciseDraft.plannedSets = nextValue;
+      }
+      renderPlanningBuilder();
+      return;
+    }
+
+    if (target === els.planningSetPlus || target.closest('#planningSetPlus')) {
+      const nextValue = Math.max(1, Number(planningUi.exerciseDraft?.plannedSets || 3) + 1);
+      if (planningUi.exerciseDraft) {
+        planningUi.exerciseDraft.plannedSets = nextValue;
+      }
+      renderPlanningBuilder();
+      return;
+    }
+
+    if (target === els.planningToggleMoreOptions || target.closest('#planningToggleMoreOptions')) {
+      planningUi.moreOptionsOpen = !planningUi.moreOptionsOpen;
+      renderPlanningBuilder();
+      return;
+    }
+
+    if (target === els.planningAddApproximation || target.closest('#planningAddApproximation')) {
+      const draft = planningUi.exerciseDraft || { approximations: [] };
+      draft.approximations = Array.isArray(draft.approximations) ? draft.approximations : [];
+      if (draft.approximations.length >= 3) {
+        return;
+      }
+      draft.approximations.push({ id: dataApi.createId('planning-approx'), label: `A${draft.approximations.length + 1}`, weight: '', reps: 8 });
+      planningUi.exerciseDraft = draft;
+      renderPlanningBuilder();
+      return;
+    }
+
+    if (target.closest('[data-planning-approx-remove]')) {
+      const key = target.closest('[data-planning-approx-remove]').getAttribute('data-planning-approx-remove');
+      if (planningUi.exerciseDraft) {
+        planningUi.exerciseDraft.approximations = (planningUi.exerciseDraft.approximations || []).filter((item) => String(item.id || item.label || '') !== String(key));
+      }
+      renderPlanningBuilder();
+      return;
+    }
+
+    if (target === els.planningSaveExerciseBtn || target.closest('#planningSaveExerciseBtn')) {
+      const draft = getPlanningDraftProgram();
+      const day = draft.days[planningUi.currentDayIndex] || draft.days[0];
+      if (!day) {
+        return;
+      }
+      const baseExercise = planningUi.exerciseDraft || {
+        id: dataApi.createId('program-exercise'),
+        exerciseName: 'Ejercicio',
+        category: planningUi.category || 'PIERNAS',
+        repRangeMin: 8,
+        repRangeMax: 12,
+        plannedSets: 3,
+        targetWeight: 0,
+        zone: '',
+        restSeconds: 90,
+        notes: '',
+        approximations: []
+      };
+      const repMin = Number(els.planningRepMin?.value || baseExercise.repRangeMin || 8);
+      const repMax = Number(els.planningRepMax?.value || baseExercise.repRangeMax || repMin);
+      const capturedExercise = {
+        ...baseExercise,
+        id: baseExercise.id || dataApi.createId('program-exercise'),
+        exerciseName: String(els.planningBuilderTitle?.textContent || baseExercise.exerciseName || 'Ejercicio').trim() || 'Ejercicio',
+        category: baseExercise.category || planningUi.selectedCategory || planningUi.category || 'PIERNAS',
+        plannedSets: Number(els.planningSetCount?.textContent || baseExercise.plannedSets || 3),
+        repRangeMin: repMin,
+        repRangeMax: repMax,
+        targetWeight: Number(els.planningTargetWeight?.value || 0),
+        zone: els.planningZoneSelect?.value || baseExercise.zone || '',
+        restSeconds: Number(els.planningRestSelect?.value || baseExercise.restSeconds || 90),
+        notes: els.planningNotes?.value || baseExercise.notes || '',
+        approximations: Array.isArray(baseExercise.approximations) ? baseExercise.approximations.map((item, index) => ({
+          ...item,
+          id: item.id || dataApi.createId('planning-approx'),
+          label: item.label || `A${index + 1}`,
+          weight: String(els.planningApproximationRows?.querySelectorAll('[data-planning-approx-weight]')[index]?.value ?? item.weight ?? ''),
+          reps: Number(els.planningApproximationRows?.querySelectorAll('[data-planning-approx-reps]')[index]?.value || item.reps || 8)
+        })) : []
+      };
+      day.exercises = Array.isArray(day.exercises) ? day.exercises : [];
+      day.exercises.push(capturedExercise);
+      planningUi.exerciseDraft = null;
+      planningUi.selectedCategory = null;
+      planningUi.moreOptionsOpen = false;
+      if (els.planningCategorySelector) {
+        els.planningCategorySelector.classList.add('hidden');
+      }
+      if (els.planningExerciseBuilder) {
+        els.planningExerciseBuilder.classList.add('hidden');
+      }
+      renderPlanningDays();
+      return;
+    }
+
+    if (target.closest('[data-program-objective]')) {
+      const button = target.closest('[data-program-objective]');
+      planningUi.objective = button.getAttribute('data-program-objective') || 'Fuerza';
+      document.querySelectorAll('[data-program-objective]').forEach((item) => item.classList.toggle('active', item === button));
+      applyPlanningChoiceData();
+      return;
+    }
+
+    if (target.closest('[data-program-duration]')) {
+      const button = target.closest('[data-program-duration]');
+      const choice = button.getAttribute('data-program-duration') || '4';
+      planningUi.duration = choice === 'custom' ? Number(els.planningCustomDuration?.value || 4) : Number(choice);
+      document.querySelectorAll('[data-program-duration]').forEach((item) => item.classList.toggle('active', item === button));
+      if (choice === 'custom') {
+        if (els.planningCustomDuration) {
+          els.planningCustomDuration.classList.remove('hidden');
+          els.planningCustomDuration.focus();
+        }
+      } else if (els.planningCustomDuration) {
+        els.planningCustomDuration.classList.add('hidden');
+      }
+      applyPlanningChoiceData();
+      return;
+    }
+
+    if (target.closest('[data-program-frequency]')) {
+      const button = target.closest('[data-program-frequency]');
+      planningUi.frequency = Number(button.getAttribute('data-program-frequency') || 2);
+      document.querySelectorAll('[data-program-frequency]').forEach((item) => item.classList.toggle('active', item === button));
+      applyPlanningChoiceData();
+      return;
+    }
+
+    if (target === els.addProgramDayBtn) {
+      addProgramDay();
+      return;
+    }
+
+    if (target === els.saveProgramBtn) {
+      saveProgram();
+      return;
+    }
+
+    const programEditId = target.getAttribute('data-program-edit');
+    if (programEditId) {
+      loadProgramIntoForm(programEditId);
+      return;
+    }
+
+    const programAssignId = target.getAttribute('data-program-assign');
+    if (programAssignId) {
+      const program = getTrainingProgramById(programAssignId);
+      if (program) {
+        const clientIds = program.assignedClientIds || [];
+        const selectedClients = clientIds.length ? clientIds : [];
+        const nextIds = selectedClients.length ? selectedClients : [trainingUi.selectedClientId || ''];
+        const assignment = dataApi.normalizeTrainingProgramAssignment({
+          id: dataApi.createId('program-assignment'),
+          programId: program.id,
+          clientId: nextIds[0] || '',
+          clientName: getClientById(nextIds[0] || '')?.full_name || '',
+          programName: program.name,
+          program
+        }, { trainingsV08: { programs: getTrainingPrograms() } });
+        state.trainingsV08.assignments = [assignment, ...getTrainingAssignments().filter((item) => item.id !== assignment.id)];
+        persist();
+        if (els.programMessage) {
+          els.programMessage.textContent = 'Programa asignado a un alumno.';
+        }
+      }
+      return;
+    }
+
+    const programDayEditId = target.getAttribute('data-program-day-edit');
+    if (programDayEditId) {
+      const draft = getProgramDraft();
+      trainingUi.editingProgramDayId = programDayEditId;
+      if (els.programMessage) {
+        els.programMessage.textContent = 'Edición de día activa.';
+      }
+      renderProgramDayList(draft);
+      return;
+    }
+
+    const programExerciseAddId = target.getAttribute('data-program-exercise-add');
+    if (programExerciseAddId) {
+      addProgramExerciseToDay(programExerciseAddId, 'Ejercicio nuevo');
+      return;
+    }
+
+    const programExerciseEditId = target.getAttribute('data-program-exercise-edit');
+    if (programExerciseEditId) {
+      const draft = getProgramDraft();
+      const day = draft.days.find((item) => item.exercises.some((exercise) => exercise.id === programExerciseEditId));
+      if (day) {
+        trainingUi.editingProgramDayId = day.id;
+        const exercise = day.exercises.find((item) => item.id === programExerciseEditId);
+        if (exercise) {
+          populateProgramExerciseForm(exercise);
+          renderProgramDayList(draft);
+        }
+      }
+      return;
+    }
+
+    const programExerciseMoveUpId = target.getAttribute('data-program-exercise-up');
+    if (programExerciseMoveUpId) {
+      const draft = getProgramDraft();
+      const day = draft.days.find((item) => item.exercises.some((exercise) => exercise.id === programExerciseMoveUpId));
+      if (day) {
+        moveProgramExercise(day.id, programExerciseMoveUpId, 'up');
+      }
+      return;
+    }
+
+    const programExerciseMoveDownId = target.getAttribute('data-program-exercise-down');
+    if (programExerciseMoveDownId) {
+      const draft = getProgramDraft();
+      const day = draft.days.find((item) => item.exercises.some((exercise) => exercise.id === programExerciseMoveDownId));
+      if (day) {
+        moveProgramExercise(day.id, programExerciseMoveDownId, 'down');
+      }
+      return;
+    }
+
+    const programExerciseDeleteId = target.getAttribute('data-program-exercise-delete');
+    if (programExerciseDeleteId) {
+      const draft = getProgramDraft();
+      const day = draft.days.find((item) => item.exercises.some((exercise) => exercise.id === programExerciseDeleteId));
+      if (day) {
+        deleteProgramExercise(day.id, programExerciseDeleteId);
+      }
+      return;
+    }
+
+    const programLibrarySelect = target.getAttribute('data-program-library-select');
+    if (programLibrarySelect) {
+      const draft = getProgramDraft();
+      const dayId = trainingUi.editingProgramDayId || draft.days[0]?.id || createEmptyProgramDay(1).id;
+      const day = draft.days.find((item) => item.id === dayId) || draft.days[0] || createEmptyProgramDay(1);
+      const exercise = createEmptyProgramExercise();
+      exercise.exerciseName = programLibrarySelect;
+      day.exercises.push(exercise);
+      if (!draft.days.find((item) => item.id === day.id)) {
+        draft.days.push(day);
+      }
+      state.trainingsV08.programs = (getTrainingPrograms()).filter((program) => program.id !== draft.id);
+      state.trainingsV08.programs.unshift(draft);
+      trainingUi.editingProgramId = draft.id;
+      trainingUi.editingProgramDayId = day.id;
+      populateProgramExerciseForm(exercise);
+      persistPrograms();
       return;
     }
 
@@ -5118,13 +8359,248 @@
     }
   }
 
+  function handleRoutineBuilderRootClick(event) {
+    const actionTarget = event.target.closest('[data-routine-action]');
+    if (!actionTarget || !els.routineBuilderRoot || !event.target.closest('#routineBuilderRoot')) {
+      return;
+    }
+
+    const action = actionTarget.getAttribute('data-routine-action');
+    if (!action) {
+      return;
+    }
+
+    if (action === 'add-exercise') {
+      routineBuilder.screen = 'categories';
+      routineBuilder.category = null;
+      routineBuilder.search = '';
+      renderRoutineBuilder();
+      return;
+    }
+
+    if (action === 'back-day') {
+      routineBuilder.screen = 'day';
+      renderRoutineBuilder();
+      return;
+    }
+
+    if (action === 'back-categories') {
+      routineBuilder.screen = 'categories';
+      routineBuilder.search = '';
+      renderRoutineBuilder();
+      return;
+    }
+
+    if (action === 'back-exercise-list') {
+      routineBuilder.screen = 'exerciseList';
+      renderRoutineBuilder();
+      return;
+    }
+
+    if (action === 'open-category') {
+      routineBuilder.category = actionTarget.getAttribute('data-category') || 'PIERNAS';
+      routineBuilder.screen = 'exerciseList';
+      routineBuilder.search = '';
+      renderRoutineBuilder();
+      return;
+    }
+
+    if (action === 'select-exercise') {
+      routineBuilder.exerciseId = actionTarget.getAttribute('data-exercise-id') || routineBuilder.exerciseId;
+      routineBuilder.screen = 'exerciseForm';
+      const libraryItems = getRoutineExerciseCatalog();
+      const match = (libraryItems[routineBuilder.category || 'PIERNAS'] || []).find((item) => item.id === routineBuilder.exerciseId);
+      if (match && routineBuilder.editingIndex === null) {
+        routineBuilder.draft = {
+          sets: 3,
+          repMin: 8,
+          repMax: 12,
+          targetWeight: '',
+          approximations: [],
+          zone: '',
+          restSeconds: 90,
+          notes: ''
+        };
+      }
+      renderRoutineBuilder();
+      return;
+    }
+
+    if (action === 'increase-sets') {
+      routineBuilder.draft.sets = Math.max(1, Number(routineBuilder.draft.sets || 3) + 1);
+      renderRoutineBuilder();
+      return;
+    }
+
+    if (action === 'decrease-sets') {
+      routineBuilder.draft.sets = Math.max(1, Number(routineBuilder.draft.sets || 3) - 1);
+      renderRoutineBuilder();
+      return;
+    }
+
+    if (action === 'toggle-more-options') {
+      routineBuilder.showMoreOptions = !routineBuilder.showMoreOptions;
+      renderRoutineBuilder();
+      return;
+    }
+
+    if (action === 'add-approximation') {
+      if (routineBuilder.draft.approximations.length >= 3) {
+        return;
+      }
+      routineBuilder.draft.approximations.push({ weight: '', reps: 8 });
+      renderRoutineBuilder();
+      return;
+    }
+
+    if (action === 'remove-approx') {
+      const approxIndex = Number(actionTarget.getAttribute('data-approx-index') || -1);
+      if (approxIndex >= 0) {
+        routineBuilder.draft.approximations.splice(approxIndex, 1);
+        renderRoutineBuilder();
+      }
+      return;
+    }
+
+    if (action === 'save-exercise') {
+      saveRoutineBuilderExercise();
+      return;
+    }
+
+    if (action === 'edit-exercise') {
+      const exerciseIndex = Number(actionTarget.getAttribute('data-exercise-index') || -1);
+      const day = getRoutineBuilderDay();
+      const exercise = day?.exercises?.[exerciseIndex];
+      if (exercise) {
+        routineBuilder.activeDayIndex = planningUi.currentDayIndex;
+        routineBuilder.editingIndex = exerciseIndex;
+        routineBuilder.category = exercise.category || routineBuilder.category || 'PIERNAS';
+        routineBuilder.exerciseId = exercise.libraryExerciseId || exercise.id || null;
+        loadRoutineBuilderDraftFromExercise(exercise);
+        routineBuilder.screen = 'exerciseForm';
+        renderRoutineBuilder();
+      }
+      return;
+    }
+
+    if (action === 'delete-exercise') {
+      const exerciseIndex = Number(actionTarget.getAttribute('data-exercise-index') || -1);
+      const day = getRoutineBuilderDay();
+      if (day && exerciseIndex >= 0) {
+        day.exercises.splice(exerciseIndex, 1);
+        day.exercises = day.exercises.map((item, index) => ({ ...item, order: index + 1 }));
+        renderPlanningDays();
+      }
+      return;
+    }
+
+    if (action === 'move-up') {
+      const exerciseIndex = Number(actionTarget.getAttribute('data-exercise-index') || -1);
+      const day = getRoutineBuilderDay();
+      if (day && exerciseIndex > 0) {
+        [day.exercises[exerciseIndex - 1], day.exercises[exerciseIndex]] = [day.exercises[exerciseIndex], day.exercises[exerciseIndex - 1]];
+        day.exercises = day.exercises.map((item, index) => ({ ...item, order: index + 1 }));
+        renderPlanningDays();
+      }
+      return;
+    }
+
+    if (action === 'move-down') {
+      const exerciseIndex = Number(actionTarget.getAttribute('data-exercise-index') || -1);
+      const day = getRoutineBuilderDay();
+      if (day && exerciseIndex >= 0 && exerciseIndex < day.exercises.length - 1) {
+        [day.exercises[exerciseIndex], day.exercises[exerciseIndex + 1]] = [day.exercises[exerciseIndex + 1], day.exercises[exerciseIndex]];
+        day.exercises = day.exercises.map((item, index) => ({ ...item, order: index + 1 }));
+        renderPlanningDays();
+      }
+      return;
+    }
+  }
+
+  function handleRoutineBuilderRootInput(event) {
+    if (!els.routineBuilderRoot || !event.target.closest('#routineBuilderRoot')) {
+      return;
+    }
+
+    const field = event.target.getAttribute('data-routine-field');
+    if (!field) {
+      return;
+    }
+
+    if (field === 'search') {
+      routineBuilder.search = event.target.value || '';
+      renderRoutineBuilder();
+      return;
+    }
+
+    if (field === 'repMin') {
+      routineBuilder.draft.repMin = Math.max(1, Number(event.target.value || 1));
+      if (routineBuilder.draft.repMax < routineBuilder.draft.repMin) {
+        routineBuilder.draft.repMax = routineBuilder.draft.repMin;
+      }
+      renderRoutineBuilder();
+      return;
+    }
+
+    if (field === 'repMax') {
+      routineBuilder.draft.repMax = Math.max(1, Number(event.target.value || 1));
+      if (routineBuilder.draft.repMin > routineBuilder.draft.repMax) {
+        routineBuilder.draft.repMin = routineBuilder.draft.repMax;
+      }
+      renderRoutineBuilder();
+      return;
+    }
+
+    if (field === 'targetWeight') {
+      routineBuilder.draft.targetWeight = event.target.value === '' ? '' : String(event.target.value);
+      return;
+    }
+
+    if (field === 'zone') {
+      routineBuilder.draft.zone = event.target.value || '';
+      return;
+    }
+
+    if (field === 'restSeconds') {
+      routineBuilder.draft.restSeconds = Number(event.target.value || 90);
+      return;
+    }
+
+    if (field === 'notes') {
+      routineBuilder.draft.notes = event.target.value || '';
+      return;
+    }
+
+    if (field === 'approx-weight') {
+      const index = Number(event.target.getAttribute('data-approx-index') || -1);
+      if (index >= 0 && routineBuilder.draft.approximations[index]) {
+        routineBuilder.draft.approximations[index].weight = event.target.value === '' ? '' : String(event.target.value);
+      }
+      return;
+    }
+
+    if (field === 'approx-reps') {
+      const index = Number(event.target.getAttribute('data-approx-index') || -1);
+      if (index >= 0 && routineBuilder.draft.approximations[index]) {
+        routineBuilder.draft.approximations[index].reps = Math.max(1, Number(event.target.value || 8));
+      }
+    }
+  }
+
   document.addEventListener('click', handleClick);
   document.addEventListener('submit', handleDynamicFormSubmit);
+  if (els.routineBuilderRoot) {
+    els.routineBuilderRoot.addEventListener('click', handleRoutineBuilderRootClick);
+    els.routineBuilderRoot.addEventListener('input', handleRoutineBuilderRootInput);
+  }
+  els.trainingGroupView?.addEventListener('input', handleGroupSessionInput);
+  els.trainingGroupView?.addEventListener('change', handleGroupSessionChange);
   els.form.addEventListener('submit', handleMovementSubmit);
   els.cashForm.addEventListener('submit', handleInitialCashSubmit);
   els.routineForm.addEventListener('submit', handleRoutineSubmit);
   els.clientForm?.addEventListener('submit', handleClientSubmit);
   document.getElementById('settingsForm').addEventListener('submit', handleSettingsSubmit);
+  els.copyOnboardingUrlBtn?.addEventListener('click', copyOnboardingUrl);
   document.getElementById('exportBtn').addEventListener('click', exportData);
   els.fileInput.addEventListener('change', handleImport);
   els.clientSearch?.addEventListener('input', (event) => {
@@ -5188,6 +8664,52 @@
     trainingUi.selectedExercise = event.target.value || '';
     renderTrainings();
   });
+  els.exerciseCategorySelect?.addEventListener('change', renderProgramLibrary);
+  els.exerciseLibrarySearch?.addEventListener('input', renderProgramLibrary);
+  els.newLibraryExerciseBtn?.addEventListener('click', () => {
+    resetLibraryExerciseForm();
+    setLibraryMessage('Nuevo ejercicio listo para guardar.', 'neutral');
+  });
+  els.saveLibraryExerciseBtn?.addEventListener('click', () => {
+    saveLibraryExercise();
+  });
+  els.librarySearch?.addEventListener('input', renderLibraryExerciseList);
+  els.libraryPatternFilter?.addEventListener('change', renderLibraryExerciseList);
+  els.libraryMuscleFilter?.addEventListener('change', renderLibraryExerciseList);
+  els.libraryTechnicalLevelFilter?.addEventListener('change', renderLibraryExerciseList);
+  els.addProgramDayBtn?.addEventListener('click', addProgramDay);
+  els.newProgramBtn?.addEventListener('click', () => {
+    clearProgramExerciseForm();
+    resetProgramDraft();
+    renderProgramDayList(getProgramDraft());
+    renderProgramsList();
+  });
+  els.saveProgramBtn?.addEventListener('click', saveProgram);
+  els.addProgramApproximationBtn?.addEventListener('click', () => {
+    const draft = getProgramDraft();
+    const day = draft.days.find((item) => item.id === trainingUi.editingProgramDayId);
+    const exercise = day?.exercises.find((item) => item.id === trainingUi.editingProgramExerciseId) || trainingUi.programExerciseDraft;
+    if (exercise) {
+      exercise.approximations = Array.isArray(exercise.approximations) ? exercise.approximations : [];
+      if (exercise.approximations.length >= 3) {
+        return;
+      }
+      exercise.approximations.push(createProgramApproximation(exercise.approximations.length + 1));
+      renderProgramExerciseRows(exercise);
+    }
+  });
+  els.addProgramEffectiveSetBtn?.addEventListener('click', () => {
+    const draft = getProgramDraft();
+    const day = draft.days.find((item) => item.id === trainingUi.editingProgramDayId);
+    const exercise = day?.exercises.find((item) => item.id === trainingUi.editingProgramExerciseId) || trainingUi.programExerciseDraft;
+    if (exercise) {
+      exercise.effectiveSets = Array.isArray(exercise.effectiveSets) ? exercise.effectiveSets : [];
+      exercise.effectiveSets.push(createProgramEffectiveSet(exercise.effectiveSets.length + 1));
+      renderProgramExerciseRows(exercise);
+    }
+  });
+  els.saveProgramExerciseBtn?.addEventListener('click', saveProgramExercise);
+  els.clearProgramExerciseBtn?.addEventListener('click', clearProgramExerciseForm);
   document.getElementById('exercise')?.addEventListener('input', (event) => {
     if (!els.historyExercise || els.historyExercise.value) {
       return;

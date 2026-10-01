@@ -1,26 +1,18 @@
 ﻿(function () {
-  const DEFAULT_RECURRING_TRANSACTIONS = [
-    { id: 'salary', type: 'income', name: 'Ingreso semanal', amount: 250000, frequency: 'weekly', weekday: 6, active: true, segment: 'personal', category: 'Sueldo', paid: false },
-    { id: 'rent', type: 'expense', name: 'Arriendo mensual', amount: 550000, frequency: 'monthly', day: 1, active: true, segment: 'business', category: 'Arriendo', paid: false },
-    { id: 'light', type: 'expense', name: 'Luz mensual', amount: 89000, frequency: 'monthly', day: 10, active: true, segment: 'business', category: 'Luz', paid: false },
-    { id: 'internet', type: 'expense', name: 'Internet mensual', amount: 20000, frequency: 'monthly', day: 10, active: true, segment: 'business', category: 'Internet', paid: false },
-    { id: 'fuel', type: 'expense', name: 'Bencina estimada', amount: 120000, frequency: 'monthly', day: 5, active: true, segment: 'business', category: 'Bencina de trabajo', paid: false },
-    { id: 'market', type: 'expense', name: 'Supermercado estimado', amount: 80000, frequency: 'weekly', weekday: 6, active: true, segment: 'personal', category: 'Supermercado', paid: false },
-    { id: 'fee', type: 'expense', name: 'Cuota mensual', amount: 100000, frequency: 'monthly', day: 5, active: true, segment: 'business', category: 'Cuota', paid: false },
-    { id: 'debt', type: 'expense', name: 'Deuda 12 cuotas', amount: 100000, frequency: 'monthly', day: 5, active: true, segment: 'business', category: 'Deuda', paid: false, installments_pending: 7 }
-  ];
+  const DEFAULT_RECURRING_TRANSACTIONS = [];
 
   const INITIAL_STATE = {
     profile: {
       name: 'Sebastián',
       initial_cash: 0,
-      minimum_reserve: 50000,
+      minimum_reserve: 0,
       savings_goal: 0
     },
     settings: {
       magic_budget: 30000,
       ant_budget: 30000,
-      savings_rate: 0.5
+      savings_rate: 0.5,
+      coach_whatsapp_number: ''
     },
     accounts: [
       { id: 'account-bancoestado', name: 'Cuenta Corriente BancoEstado', initialBalance: 0, isActive: true, isMain: true, isOperational: true },
@@ -68,17 +60,7 @@
     debts: [
       { id: 'debt-main', name: 'Deuda total', totalAmount: 1200000, installmentsTotal: 12, installmentsPaid: 5, installmentsPending: 7, amountPerInstallment: 100000, status: 'active' }
     ],
-    clients: [
-      { id: 'nacho', name: 'Nacho', service: 'Semi', amount: 70000, renewal_day: 2, status: 'pending', continues: true },
-      { id: 'claudia', name: 'Claudia', service: 'Semi', amount: 70000, renewal_day: 3, status: 'paid', continues: true },
-      { id: 'romi', name: 'Romi Meridaz', service: 'Semi', amount: 70000, renewal_day: 8, status: 'pending', continues: true },
-      { id: 'helen', name: 'Helen', service: 'Semi', amount: 70000, renewal_day: 11, status: 'pending', continues: true },
-      { id: 'jeanette', name: 'Jeanette', service: 'Semi', amount: 70000, renewal_day: 11, status: 'pending', continues: true },
-      { id: 'cristina', name: 'Cristina', service: 'Semi', amount: 70000, renewal_day: 15, status: 'pending', continues: true },
-      { id: 'rodrigo', name: 'Rodrigo', service: 'Personalizado', amount: 90000, renewal_day: 3, status: 'pending', continues: true },
-      { id: 'renato', name: 'Renato', service: 'Personalizado', amount: 60000, renewal_day: 7, status: 'uncertain', continues: false },
-      { id: 'gerardo', name: 'Gerardo', service: 'Personalizado', amount: 120000, renewal_day: 7, status: 'uncertain', continues: false }
-    ],
+    clients: [],
     trainings: {
       students: [
         { id: 'alumno-1', name: 'Martín', routines: [] },
@@ -89,9 +71,54 @@
     trainingModelVersion: '0.8.0',
     trainingsV08: {
       plans: [],
-      sessions: []
+      sessions: [],
+      programs: [],
+      assignments: []
     },
-    exerciseLibrary: [],
+    exerciseLibrary: [
+      {
+        id: 'library-squat',
+        name: 'Sentadilla',
+        normalizedName: 'sentadilla',
+        description: 'Patrón principal de fuerza y potencia para piernas.',
+        pattern: 'squat',
+        primaryMuscle: 'quadriceps',
+        secondaryMuscles: ['glutes', 'core'],
+        equipments: ['barbell', 'rack'],
+        technicalLevel: 'intermediate',
+        loadType: 'external_load',
+        active: true,
+        relations: []
+      },
+      {
+        id: 'library-bench',
+        name: 'Press de banca',
+        normalizedName: 'press-de-banca',
+        description: 'Empuje horizontal para pecho, hombros y tríceps.',
+        pattern: 'horizontal_push',
+        primaryMuscle: 'chest',
+        secondaryMuscles: ['triceps', 'front_delts'],
+        equipments: ['barbell', 'bench'],
+        technicalLevel: 'intermediate',
+        loadType: 'external_load',
+        active: true,
+        relations: []
+      },
+      {
+        id: 'library-row',
+        name: 'Remo con barra',
+        normalizedName: 'remo-con-barra',
+        description: 'Patrón de tracción para espalda y bíceps.',
+        pattern: 'horizontal_pull',
+        primaryMuscle: 'lats',
+        secondaryMuscles: ['mid_back', 'biceps'],
+        equipments: ['barbell'],
+        technicalLevel: 'beginner',
+        loadType: 'external_load',
+        active: true,
+        relations: []
+      }
+    ],
     sportsProfiles: [],
     sportsConsiderations: [],
     movementStatuses: []
@@ -175,9 +202,40 @@
     state.trainingModelVersion = '0.8.0';
     state.trainingsV08 = {
       plans: [],
-      sessions: []
+      sessions: [],
+      programs: [],
+      assignments: []
     };
-    state.exerciseLibrary = [];
+    state.exerciseLibrary = Array.isArray(state.exerciseLibrary) && state.exerciseLibrary.length
+      ? state.exerciseLibrary.map((exercise) => normalizeLibraryExercise(exercise))
+      : [
+          normalizeLibraryExercise({
+            id: 'library-squat',
+            name: 'Sentadilla',
+            normalizedName: 'sentadilla',
+            description: 'Patrón principal de fuerza y potencia para piernas.',
+            pattern: 'squat',
+            primaryMuscle: 'quadriceps',
+            secondaryMuscles: ['glutes', 'core'],
+            equipments: ['barbell', 'rack'],
+            technicalLevel: 'intermediate',
+            loadType: 'external_load',
+            active: true
+          }),
+          normalizeLibraryExercise({
+            id: 'library-bench',
+            name: 'Press de banca',
+            normalizedName: 'press-de-banca',
+            description: 'Empuje horizontal para pecho, hombros y tríceps.',
+            pattern: 'horizontal_push',
+            primaryMuscle: 'chest',
+            secondaryMuscles: ['triceps', 'front_delts'],
+            equipments: ['barbell', 'bench'],
+            technicalLevel: 'intermediate',
+            loadType: 'external_load',
+            active: true
+          })
+        ];
     state.sportsProfiles = [];
     state.sportsConsiderations = [];
     state.movementStatuses = [];
@@ -225,7 +283,34 @@
     };
   }
 
+  function normalizeJointDemand(value) {
+    const input = value && typeof value === 'object' ? value : {};
+    return {
+      back: clampDemandValue(input.back ?? input.spine ?? input.espalda ?? 0),
+      shoulder: clampDemandValue(input.shoulder ?? input.hombro ?? 0),
+      knee: clampDemandValue(input.knee ?? input.rodilla ?? 0),
+      hip: clampDemandValue(input.hip ?? input.cadera ?? 0)
+    };
+  }
+
+  function clampDemandValue(value) {
+    const numeric = Number(value ?? 0);
+    if (!Number.isFinite(numeric)) {
+      return 0;
+    }
+    return Math.min(2, Math.max(0, Math.round(numeric)));
+  }
+
   function normalizeLibraryExercise(item) {
+    const jointDemand = normalizeJointDemand(item.jointDemand || item.joint_demand || item.demandArticular || item.articularDemand || {});
+    const existingRelations = Array.isArray(item.relations) ? item.relations.map((relation) => ({
+      id: relation.id || createId('library-relation'),
+      relatedExerciseId: relation.relatedExerciseId || relation.related_exercise_id || '',
+      relationType: relation.relationType || relation.relation_type || 'alternative_to',
+      notes: relation.notes || '',
+      relatedExerciseName: relation.relatedExerciseName || relation.related_exercise_name || ''
+    })) : [];
+
     return {
       id: item.id || createId('library-exercise'),
       name: item.name || 'Ejercicio',
@@ -241,14 +326,11 @@
         : (Array.isArray(item.equipment_keys) ? item.equipment_keys.slice() : []),
       technicalLevel: item.technicalLevel || item.technical_level || 'beginner',
       loadType: item.loadType || item.load_type || 'external_load',
+      jointDemand,
       active: item.active !== false,
-      relations: Array.isArray(item.relations) ? item.relations.map((relation) => ({
-        id: relation.id || createId('library-relation'),
-        relatedExerciseId: relation.relatedExerciseId || relation.related_exercise_id || '',
-        relationType: relation.relationType || relation.relation_type || 'alternative_to',
-        notes: relation.notes || '',
-        relatedExerciseName: relation.relatedExerciseName || relation.related_exercise_name || ''
-      })) : []
+      baseExerciseId: item.baseExerciseId || item.base_exercise_id || item.baseId || '',
+      alternativeGroupId: item.alternativeGroupId || item.alternative_group_id || item.alternativeGroup || '',
+      relations: existingRelations
     };
   }
 
@@ -264,12 +346,14 @@
   function normalizeTrainingSet(setEntry, index) {
     const rawType = String(setEntry.setType || setEntry.set_type || 'S').trim().toUpperCase();
     const setType = rawType === 'A' || rawType === 'T' || rawType === 'S' ? rawType : 'S';
+    const rir = setEntry.rir === '' || setEntry.rir === undefined || setEntry.rir === null ? null : Number(setEntry.rir);
     return {
       setNumber: Number(setEntry.setNumber || index + 1),
       weight: Number(setEntry.weight || 0),
       reps: Number(setEntry.reps || 0),
       completed: setEntry.completed !== false,
       setType,
+      rir: Number.isFinite(rir) ? rir : null,
       createdAt: setEntry.createdAt || new Date().toISOString(),
       techniqueStatus: setEntry.techniqueStatus || 'pending',
       coachValidated: Boolean(setEntry.coachValidated),
@@ -311,6 +395,112 @@
       exercises: Array.isArray(session.exercises)
         ? session.exercises.map((exercise, exerciseIndex) => normalizeTrainingExercise(exercise, exerciseIndex))
         : []
+    };
+  }
+
+  function normalizeTrainingProgramExercise(exercise, index) {
+    const repRangeMin = Number(exercise.repRangeMin ?? exercise.rep_min ?? exercise.repMin ?? exercise.plannedRepMin ?? 1);
+    const repRangeMax = Number(exercise.repRangeMax ?? exercise.rep_max ?? exercise.repMax ?? exercise.plannedRepMax ?? repRangeMin);
+    const plannedSets = Number(exercise.sets ?? exercise.plannedSets ?? exercise.planned_sets ?? 1);
+    const approximations = Array.isArray(exercise.approximations)
+      ? exercise.approximations.map((item, itemIndex) => ({
+        id: item.id || createId('program-approximation'),
+        label: item.label || `A${itemIndex + 1}`,
+        weight: Number(item.weight || 0),
+        reps: Number(item.reps || 0)
+      }))
+      : [];
+    const effectiveSets = Array.isArray(exercise.effectiveSets)
+      ? exercise.effectiveSets.map((item, itemIndex) => ({
+        id: item.id || createId('program-set'),
+        label: item.label || `S${itemIndex + 1}`,
+        weight: Number(item.weight || 0),
+        reps: Number(item.reps || 0)
+      }))
+      : [];
+
+    return {
+      id: exercise.id || createId('program-exercise'),
+      libraryExerciseId: exercise.libraryExerciseId || exercise.library_exercise_id || '',
+      exerciseName: exercise.exerciseName || exercise.name || `Ejercicio ${index + 1}`,
+      category: exercise.category || 'OTROS',
+      notes: exercise.notes || '',
+      sets: Number.isFinite(plannedSets) && plannedSets > 0 ? plannedSets : 1,
+      repMin: Number.isFinite(repRangeMin) && repRangeMin > 0 ? repRangeMin : 1,
+      repMax: Number.isFinite(repRangeMax) && repRangeMax >= repRangeMin ? repRangeMax : (repRangeMin || 1),
+      repRangeMin: Number.isFinite(repRangeMin) && repRangeMin > 0 ? repRangeMin : 1,
+      repRangeMax: Number.isFinite(repRangeMax) && repRangeMax >= repRangeMin ? repRangeMax : (repRangeMin || 1),
+      targetWeight: Number(exercise.targetWeight ?? exercise.weight ?? 0),
+      restSeconds: Number(exercise.restSeconds ?? 90),
+      zone: exercise.zone || '',
+      weightConvention: exercise.weightConvention || 'external',
+      approximations,
+      effectiveSets
+    };
+  }
+
+  function normalizeTrainingProgramDay(day, index) {
+    return {
+      id: day.id || createId('program-day'),
+      name: day.name || `Día ${index + 1}`,
+      order: Number(day.order || index + 1),
+      exercises: Array.isArray(day.exercises)
+        ? day.exercises.map((exercise, exerciseIndex) => normalizeTrainingProgramExercise(exercise, exerciseIndex))
+        : []
+    };
+  }
+
+  function normalizeTrainingProgram(program) {
+    return {
+      id: program.id || createId('program'),
+      name: program.name || 'Programa de entrenamiento',
+      objective: program.objective || '',
+      startDate: program.startDate || '',
+      durationWeeks: Number(program.durationWeeks || 0),
+      weeklyFrequency: Number(program.weeklyFrequency || 0),
+      assignedClientIds: Array.isArray(program.assignedClientIds) ? program.assignedClientIds.filter(Boolean) : [],
+      days: Array.isArray(program.days)
+        ? program.days.map((day, index) => normalizeTrainingProgramDay(day, index)).sort((a, b) => Number(a.order || 0) - Number(b.order || 0))
+        : [],
+      createdAt: program.createdAt || new Date().toISOString(),
+      updatedAt: program.updatedAt || new Date().toISOString()
+    };
+  }
+
+  function normalizeTrainingProgramAssignment(assignment, state) {
+    const programId = assignment.programId || assignment.program?.id || '';
+    const baseProgram = programId && state?.trainingsV08?.programs?.length
+      ? state.trainingsV08.programs.find((program) => program.id === programId)
+      : (assignment.program || null);
+    const baseProgramNormalized = baseProgram ? normalizeTrainingProgram(baseProgram) : null;
+    const days = Array.isArray(assignment.days) && assignment.days.length
+      ? assignment.days.map((day, index) => normalizeTrainingProgramDay(day, index))
+      : (baseProgramNormalized?.days || []).map((day, index) => ({ ...day, id: day.id || createId('assignment-day'), order: index + 1, exercises: day.exercises.map((exercise) => ({ ...exercise, id: exercise.id || createId('assignment-exercise') })) }));
+    const weeklyDays = Array.isArray(assignment.weeklyDays)
+      ? assignment.weeklyDays.map((item) => Number(item)).filter((item) => Number.isInteger(item) && item >= 1 && item <= 7)
+      : (Array.isArray(assignment.daysOfWeek) ? assignment.daysOfWeek.map((item) => Number(item)).filter((item) => Number.isInteger(item) && item >= 1 && item <= 7) : []);
+    const durationWeeks = Number.isFinite(Number(assignment.durationWeeks))
+      ? Number(assignment.durationWeeks)
+      : (Number(baseProgramNormalized?.durationWeeks) || 4);
+    const resolvedWeeklyFrequency = Number.isFinite(Number(assignment.weeklyFrequency))
+      ? Number(assignment.weeklyFrequency)
+      : (weeklyDays.length ? weeklyDays.length : (Number(baseProgramNormalized?.weeklyFrequency) || 3));
+
+    return {
+      id: assignment.id || createId('program-assignment'),
+      programId,
+      clientId: assignment.clientId || '',
+      clientName: assignment.clientName || '',
+      programName: assignment.programName || baseProgramNormalized?.name || 'Programa',
+      objective: assignment.objective || baseProgramNormalized?.objective || '',
+      startDate: assignment.startDate || baseProgramNormalized?.startDate || '',
+      durationWeeks,
+      weeklyDays: [...new Set(weeklyDays)].sort((a, b) => a - b),
+      weeklyFrequency: resolvedWeeklyFrequency,
+      status: assignment.status || 'active',
+      days: days.map((day, index) => ({ ...day, order: index + 1 })),
+      createdAt: assignment.createdAt || new Date().toISOString(),
+      updatedAt: assignment.updatedAt || new Date().toISOString()
     };
   }
 
@@ -408,12 +598,16 @@
       phone,
       email: client.email || '',
       birth_date: client.birth_date || '',
+      age: client.age === '' || client.age === undefined || client.age === null ? '' : Math.max(1, Math.min(120, Math.floor(Number(client.age) || 1))),
       training_days: client.training_days || '',
       service,
       monthly_value: monthlyValue,
       amount: Number(client.amount ?? monthlyValue),
       schedule_notes: client.schedule_notes || client.schedule || '',
       objective: client.objective || '',
+      training_experience: client.training_experience || '',
+      avoid_exercises: client.avoid_exercises || '',
+      intake_comment: client.intake_comment || '',
       injuries: client.injuries || '',
       observations: client.observations || '',
       emergency_contact: client.emergency_contact || '',
@@ -421,6 +615,16 @@
       start_date: client.start_date || '',
       renewal_date: renewalDate,
       renewal_day: renewalDay,
+      sessions_total: Math.max(0, Math.floor(Number(client.sessions_total ?? 0) || 0)),
+      sessions_used: Math.max(0, Math.floor(Number(client.sessions_used ?? 0) || 0)),
+      training_modality: client.training_modality === 'group' ? 'group' : 'personalized',
+      training_group_size: Math.max(2, Math.min(4, Math.floor(Number(client.training_group_size || 2)))),
+      training_attendance: Array.isArray(client.training_attendance) ? client.training_attendance.map((entry) => ({
+        sessionKey: String(entry.sessionKey || ''),
+        date: String(entry.date || ''),
+        time: String(entry.time || ''),
+        markedAt: String(entry.markedAt || '')
+      })) : [],
       payment_status: paymentStatus,
       client_status: clientStatus,
       status: paymentStatus,
@@ -610,7 +814,9 @@
           active: plan.active !== false,
           notes: plan.notes || ''
         })),
-        sessions: mergedSessions
+        sessions: mergedSessions,
+        programs: normalizeArray(parsed.trainingsV08?.programs, base.trainingsV08.programs, normalizeTrainingProgram),
+        assignments: normalizeArray(parsed.trainingsV08?.assignments, base.trainingsV08.assignments, (assignment) => normalizeTrainingProgramAssignment(assignment, { trainingsV08: { programs: parsed.trainingsV08?.programs || [] } }))
       },
       exerciseLibrary: normalizeArray(parsed.exerciseLibrary, base.exerciseLibrary, normalizeLibraryExercise),
       sportsProfiles: normalizeArray(parsed.sportsProfiles, base.sportsProfiles, normalizeSportsProfile),
@@ -640,7 +846,26 @@
   }
 
   function saveState(state) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    try {
+      const serialized = JSON.stringify(state);
+      localStorage.setItem(STORAGE_KEY, serialized);
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw === null) {
+        throw new Error('saveState no escribió valhalla_v07');
+      }
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object') {
+        throw new Error('saveState escribió un estado inválido');
+      }
+      return raw;
+    } catch (error) {
+      const message = error?.message || 'No se pudo guardar el estado en localStorage';
+      console.error(message, error);
+      if (window && typeof window.dispatchEvent === 'function') {
+        window.dispatchEvent(new CustomEvent('valhalla:storage-error', { detail: { message, error } }));
+      }
+      throw new Error(message);
+    }
   }
 
   function exportState(state) {
@@ -665,6 +890,8 @@
     normalizeLibraryExercise,
     normalizeSportsProfile,
     normalizeSportsConsideration,
-    normalizeMovementStatus
+    normalizeMovementStatus,
+    normalizeTrainingProgram,
+    normalizeTrainingProgramAssignment
   };
 })();

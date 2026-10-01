@@ -5,10 +5,14 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#080808">
   <link rel="manifest" href="./manifest.json">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <title>VALHALLA Finanzas</title>
   <link rel="stylesheet" href="./assets/css/styles.css">
 </head>
 <body>
+  <main id="onboardingView" class="onboarding-view hidden"></main>
   <div class="app" id="app">
     <header class="app-header">
       <div class="brand">
@@ -178,6 +182,16 @@
             <button class="secondary" type="button" data-client-filter="inactive">Inactivos</button>
           </div>
         </div>
+          <button class="secondary" id="importWhatsAppBtn" type="button">Importar desde WhatsApp</button>
+          <div id="whatsAppImportPanel" class="whatsapp-import-panel hidden">
+            <label for="whatsAppImportText">Pega el mensaje de ingreso</label>
+            <textarea id="whatsAppImportText" rows="8" placeholder="INGRESO NUEVO ALUMNO&#10;Nombre completo: ..."></textarea>
+            <div class="inline-actions">
+              <button class="primary" id="parseWhatsAppImportBtn" type="button">Pre-llenar nuevo cliente</button>
+              <button class="ghost" id="cancelWhatsAppImportBtn" type="button">Cerrar</button>
+            </div>
+            <div id="whatsAppImportMessage" class="notice"></div>
+          </div>
         <div id="clientMessage" class="notice"></div>
       </div>
 
@@ -245,6 +259,10 @@
               <label for="clientBirthDate">Fecha de nacimiento</label>
               <input id="clientBirthDate" name="birthDate" type="date">
             </div>
+            <div>
+              <label for="clientAge">Edad (años)</label>
+              <input id="clientAge" name="age" type="number" min="1" max="120">
+            </div>
           </div>
           <div class="row">
             <div>
@@ -254,6 +272,29 @@
             <div>
               <label for="clientSchedule">Horario</label>
               <input id="clientSchedule" name="schedule" type="text" placeholder="19:00 - 20:00">
+            </div>
+          </div>
+          <div class="row">
+            <div>
+              <label for="clientSessionsTotal">Sesiones contratadas</label>
+              <input id="clientSessionsTotal" name="sessionsTotal" type="number" min="0" step="1" value="8">
+            </div>
+            <div>
+              <label for="clientSessionsUsed">Sesiones usadas</label>
+              <input id="clientSessionsUsed" name="sessionsUsed" type="number" min="0" step="1" value="0">
+            </div>
+          </div>
+          <div class="row">
+            <div>
+              <label for="clientTrainingModality">Modalidad</label>
+              <select id="clientTrainingModality" name="trainingModality">
+                <option value="personalized">Personalizado</option>
+                <option value="group">Grupo</option>
+              </select>
+            </div>
+            <div>
+              <label for="clientTrainingGroupSize">Personas en grupo</label>
+              <input id="clientTrainingGroupSize" name="trainingGroupSize" type="number" min="2" max="4" step="1" placeholder="2 a 4">
             </div>
           </div>
           <div class="row">
@@ -269,6 +310,25 @@
           <div>
             <label for="clientObjective">Objetivo</label>
             <input id="clientObjective" name="objective" type="text">
+          </div>
+          <div class="row">
+            <div>
+              <label for="clientTrainingExperience">Experiencia</label>
+              <select id="clientTrainingExperience" name="trainingExperience">
+                <option value="">Por definir</option>
+                <option value="Principiante">Principiante</option>
+                <option value="Intermedio">Intermedio</option>
+                <option value="Avanzado">Avanzado</option>
+              </select>
+            </div>
+            <div>
+              <label for="clientAvoidExercises">Ejercicios que debe evitar</label>
+              <input id="clientAvoidExercises" name="avoidExercises" type="text">
+            </div>
+          </div>
+          <div>
+            <label for="clientIntakeComment">Comentario de ingreso</label>
+            <textarea id="clientIntakeComment" name="intakeComment"></textarea>
           </div>
           <div>
             <label for="clientInjuries">Lesiones</label>
@@ -316,13 +376,645 @@
         </div>
         <div id="sportsProfilePanel" class="client-detail"></div>
       </div>
+
+      <datalist id="exerciseLibraryOptions"></datalist>
     </section>
 
-    <section id="trainings" class="hidden">
+    <section id="trainings" class="hidden" data-view="today">
       <div class="card">
         <div class="section-title">
-          <h2>Entrenamiento real v0.8</h2>
+          <h2>Entrenamientos</h2>
         </div>
+        <div class="inline-actions" id="trainingViewTabs">
+          <button class="secondary active" type="button" data-training-view="today">HOY</button>
+          <button class="secondary" type="button" data-training-view="planning">PLANIFICACIÓN</button>
+          <button class="secondary" type="button" data-training-view="group">MODO GRUPO</button>
+          <button class="secondary" type="button" data-training-view="progress">PROGRESO</button>
+        </div>
+        <div id="trainingViewMessage" class="notice"></div>
+      </div>
+
+      <div id="trainingTodayView" class="card">
+        <div class="section-title">
+          <h2>HOY</h2>
+        </div>
+        <section class="training-agenda-panel" aria-labelledby="trainingAgendaTitle">
+          <div class="section-title"><h3 id="trainingAgendaTitle">Agenda de hoy</h3><span id="trainingAgendaDate" class="pill"></span></div>
+          <div id="trainingAgendaToday" class="training-agenda-list"></div>
+          <h3 class="agenda-upcoming-title">Próximos entrenamientos</h3>
+          <div id="trainingAgendaUpcoming" class="training-agenda-list"></div>
+        </section>
+        <div class="row">
+          <div>
+            <label for="studentId">Alumno</label>
+            <select id="studentId" name="clientId"></select>
+            <div id="trainingClientNotice" class="notice"></div>
+          </div>
+          <div>
+            <label for="sessionCreateMode">Nueva sesión</label>
+            <select id="sessionCreateMode" name="sessionCreateMode">
+              <option value="scratch" selected>Desde cero</option>
+              <option value="template">Desde plantilla</option>
+            </select>
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label for="sessionTemplateId">Plantilla para nueva sesión</label>
+            <select id="sessionTemplateId" name="sessionTemplateId"></select>
+          </div>
+          <div>
+            <label for="trainingSessionId">Sesión activa</label>
+            <select id="trainingSessionId" name="sessionId"></select>
+          </div>
+        </div>
+        <div class="inline-actions">
+          <button class="secondary" id="createSessionBtn" type="button">Nueva sesión</button>
+          <button class="ghost" id="duplicateSessionBtn" type="button">Duplicar sesión</button>
+          <button class="ghost" id="saveAsTemplateBtn" type="button">Guardar como plantilla</button>
+        </div>
+        <div class="row">
+          <div>
+            <label for="routineName">Título de sesión</label>
+            <input id="routineName" name="title" placeholder="Sesión Fuerza Tren Inferior" required>
+          </div>
+          <div>
+            <label for="routineDate">Fecha</label>
+            <input id="routineDate" name="date" type="date" required>
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label for="sessionStatus">Estado de sesión</label>
+            <select id="sessionStatus" name="status">
+              <option value="planned">Planificada</option>
+              <option value="in_progress" selected>En progreso</option>
+              <option value="completed">Completada</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label for="sessionNotes">Notas de sesión</label>
+          <textarea id="sessionNotes" name="sessionNotes" placeholder="Objetivo general, foco técnico, observaciones del día"></textarea>
+        </div>
+        <div class="row">
+          <div>
+            <label for="exercise">Ejercicio</label>
+            <input id="exercise" name="exerciseName" placeholder="Sentadilla Smith" list="exerciseLibraryOptions" required>
+            <input id="exerciseId" name="exerciseId" type="hidden" value="">
+          </div>
+          <div>
+            <label for="techniqueNotes">Notas del entrenador para este ejercicio</label>
+            <input id="techniqueNotes" name="coachNotes" placeholder="Controlar profundidad y ritmo">
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label for="sets">Series planificadas</label>
+            <input id="sets" name="plannedSets" type="number" min="1" required>
+          </div>
+          <div>
+            <label for="plannedRepMin">Rango de repeticiones</label>
+            <div class="row training-rep-range">
+              <input id="plannedRepMin" name="plannedRepMin" type="number" min="1" placeholder="Mín" required>
+              <input id="plannedRepMax" name="plannedRepMax" type="number" min="1" placeholder="Máx" required>
+            </div>
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label for="weight">Peso objetivo</label>
+            <input id="weight" name="targetWeight" type="number" min="0" step="0.1" placeholder="Opcional">
+          </div>
+          <div>
+            <label for="restPreset">Descanso rápido</label>
+            <select id="restPreset" name="restPreset">
+              <option value="60">60 segundos</option>
+              <option value="90" selected>90 segundos</option>
+              <option value="95">95 segundos</option>
+              <option value="120">120 segundos</option>
+              <option value="custom">Personalizado</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label for="rest">Descanso (segundos)</label>
+          <input id="rest" name="restSeconds" placeholder="90" required>
+        </div>
+        <button class="primary" type="submit">Guardar ejercicio en sesión</button>
+        <div id="routineMessage" class="notice"></div>
+      </div>
+
+      <div id="trainingPlanningView" class="card hidden">
+        <div class="section-title">
+          <h2>PLANIFICACIÓN</h2>
+          <button class="secondary small" id="newProgramBtn" type="button">Nuevo programa</button>
+        </div>
+
+        <div id="planningWizard" class="planning-wizard">
+          <div class="planning-stepper" aria-label="Progreso del plan">
+            <span class="planning-step completed"><span class="step-mark">✓</span> Alumnos</span>
+            <span class="planning-step completed"><span class="step-mark">✓</span> Programa</span>
+            <span class="planning-step active"><span class="step-mark">●</span> Rutina</span>
+            <span class="planning-step pending"><span class="step-mark">○</span> Revisar</span>
+          </div>
+
+          <div id="planningStep1" class="planning-step-panel">
+            <h3>NUEVA PROGRAMACIÓN</h3>
+            <div class="muted">Paso 1 de 4</div>
+            <h4>¿PARA QUIÉN ES?</h4>
+            <div id="planningClientGrid" class="planning-client-grid"></div>
+            <div id="planningClientSelectionSummary" class="planning-summary-inline">0 alumnos seleccionados</div>
+            <div class="planning-panel-box">
+              <div class="section-title compact">
+                <strong>USAR PROGRAMACIÓN GUARDADA COMO BASE</strong>
+              </div>
+              <select id="planningBaseProgramSelect">
+                <option value="">Selecciona un programa guardado...</option>
+              </select>
+              <div class="inline-actions">
+                <button class="secondary small" id="planningLoadBaseProgramBtn" type="button">CARGAR COMO BASE</button>
+              </div>
+            </div>
+            <div class="inline-actions">
+              <button class="primary" id="planningContinueStep1" type="button">CONTINUAR</button>
+            </div>
+            <div class="planning-panel-box">
+              <div class="section-title compact">
+                <strong>PROGRAMACIONES GUARDADAS</strong>
+              </div>
+              <div id="planningSavedPrograms" class="planning-program-list"></div>
+            </div>
+          </div>
+
+          <div id="planningStep2" class="planning-step-panel hidden">
+            <h3>CONFIGURA EL PROGRAMA</h3>
+            <div class="planning-field-block">
+              <label for="planningProgramName">NOMBRE</label>
+              <input id="planningProgramName" type="text" placeholder="Ej: Hipertrofia inicial">
+            </div>
+            <div class="planning-field-block">
+              <label>OBJETIVO</label>
+              <div id="planningObjectiveOptions" class="planning-chip-grid">
+                <button class="planning-option-btn active" type="button" data-program-objective="Fuerza">Fuerza</button>
+                <button class="planning-option-btn" type="button" data-program-objective="Hipertrofia">Hipertrofia</button>
+                <button class="planning-option-btn" type="button" data-program-objective="Pérdida de grasa">Pérdida de grasa</button>
+                <button class="planning-option-btn" type="button" data-program-objective="Acondicionamiento">Acondicionamiento</button>
+                <button class="planning-option-btn" type="button" data-program-objective="Mixto">Mixto</button>
+                <button class="planning-option-btn" type="button" data-program-objective="Otro">Otro</button>
+              </div>
+            </div>
+            <div class="planning-field-block">
+              <label>DURACIÓN</label>
+              <div class="planning-chip-grid">
+                <button class="planning-duration-btn active" type="button" data-program-duration="4">4 semanas</button>
+                <button class="planning-duration-btn" type="button" data-program-duration="6">6 semanas</button>
+                <button class="planning-duration-btn" type="button" data-program-duration="8">8 semanas</button>
+                <button class="planning-duration-btn" type="button" data-program-duration="custom">Otra</button>
+              </div>
+              <input id="planningCustomDuration" class="hidden" type="number" min="1" placeholder="Otra duración">
+            </div>
+            <div class="planning-field-block">
+              <label>FRECUENCIA</label>
+              <div class="planning-chip-grid">
+                <button class="planning-frequency-btn active" type="button" data-program-frequency="2">2 días</button>
+                <button class="planning-frequency-btn" type="button" data-program-frequency="3">3 días</button>
+                <button class="planning-frequency-btn" type="button" data-program-frequency="4">4 días</button>
+                <button class="planning-frequency-btn" type="button" data-program-frequency="5">5 días</button>
+              </div>
+            </div>
+            <div class="planning-field-block">
+              <label for="planningProgramStartDate">FECHA DE INICIO</label>
+              <input id="planningProgramStartDate" type="date">
+            </div>
+            <div class="inline-actions">
+              <button class="secondary" id="planningBackToStep1" type="button">← ATRÁS</button>
+              <button class="primary" id="planningContinueStep2" type="button">CONTINUAR →</button>
+            </div>
+          </div>
+
+          <div id="planningStep3" class="planning-step-panel hidden">
+            <h3>ARMA LA RUTINA</h3>
+            <div id="planningDayTabs" class="planning-day-tabs"></div>
+            <div class="planning-day-header">
+              <h4 id="planningCurrentDayLabel">DÍA A</h4>
+            </div>
+            <div id="planningExerciseList" class="planning-exercise-list"></div>
+            <div id="planningExerciseEmptyState" class="planning-empty-state hidden">
+              <div class="muted">Todavía no agregaste ejercicios.</div>
+              <button class="primary" id="planningAddFirstExercise" type="button">+ AGREGAR PRIMER EJERCICIO</button>
+            </div>
+
+            <div id="routineBuilderRoot"></div>
+
+            <div class="planning-cta-block">
+              <div id="planningStep3Message" class="planning-inline-message hidden">Agrega al menos un ejercicio para continuar.</div>
+              <div class="inline-actions">
+                <button class="secondary" id="planningBackToStep2" type="button">← ATRÁS</button>
+                <button class="primary" id="planningContinueStep3" type="button" disabled>CONTINUAR A REVISIÓN →</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="planningStep4" class="planning-step-panel hidden">
+            <h3>REVISAR</h3>
+            <div id="planningReviewSummary" class="planning-review-summary"></div>
+            <div class="inline-actions">
+              <button class="secondary" id="planningBackToStep3" type="button">← EDITAR</button>
+              <button class="primary" id="planningSaveProgramWizardBtn" type="button">GUARDAR PROGRAMACIÓN</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="planningLegacyWrapper" class="hidden">
+          <form id="programForm" class="form-grid">
+            <input id="programId" type="hidden" value="">
+            <div class="row">
+              <div>
+                <label for="programName">Nombre del programa</label>
+                <input id="programName" type="text" placeholder="Hipertrofia inicial">
+              </div>
+              <div>
+                <label for="programObjective">Objetivo</label>
+                <input id="programObjective" type="text" placeholder="Hipertrofia">
+              </div>
+            </div>
+            <div class="row">
+              <div>
+                <label for="programStartDate">Fecha de inicio</label>
+                <input id="programStartDate" type="date">
+              </div>
+              <div>
+                <label for="programDurationWeeks">Duración en semanas</label>
+                <input id="programDurationWeeks" type="number" min="1" value="4">
+              </div>
+            </div>
+            <div class="row">
+              <div>
+                <label for="programWeeklyFrequency">Frecuencia semanal</label>
+                <input id="programWeeklyFrequency" type="number" min="1" value="3">
+              </div>
+              <div>
+                <label for="programAssignedClients">Alumnos</label>
+                <select id="programAssignedClients" multiple size="4"></select>
+              </div>
+            </div>
+            <div class="inline-actions">
+              <button class="primary" id="saveProgramBtn" type="button">Guardar programa</button>
+            </div>
+            <div id="programMessage" class="notice" role="status" aria-live="polite"></div>
+          </form>
+          <div class="card training-live-card">
+            <h3>Días del programa</h3>
+            <div id="programDayList" class="training-set-list"></div>
+            <div class="inline-actions">
+              <button class="secondary small" id="addProgramDayBtn" type="button">+ AGREGAR DÍA</button>
+            </div>
+          </div>
+          <div class="card training-live-card">
+            <h3>Editor de ejercicio</h3>
+            <form id="programExerciseForm" class="form-grid">
+              <input id="programExerciseId" type="hidden" value="">
+              <div class="row">
+                <div>
+                  <label for="programExerciseName">Ejercicio</label>
+                  <input id="programExerciseName" type="text" placeholder="Press banca">
+                </div>
+                <div>
+                  <label for="programExerciseCategory">Categoría</label>
+                  <select id="programExerciseCategory">
+                    <option value="PIERNAS">PIERNAS</option>
+                    <option value="PECHO">PECHO</option>
+                    <option value="ESPALDA">ESPALDA</option>
+                    <option value="HOMBROS">HOMBROS</option>
+                    <option value="BÍCEPS">BÍCEPS</option>
+                    <option value="TRÍCEPS">TRÍCEPS</option>
+                    <option value="CORE">CORE</option>
+                    <option value="OTROS">OTROS</option>
+                  </select>
+                </div>
+              </div>
+              <div class="row">
+                <div>
+                  <label for="programExerciseZone">Zona</label>
+                  <select id="programExerciseZone">
+                    <option value="">Otro</option>
+                    <option value="Salón A">Salón A</option>
+                    <option value="Salón B">Salón B</option>
+                    <option value="Patio / Factor">Patio / Factor</option>
+                    <option value="Otro">Otro</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="programExerciseRest">Descanso</label>
+                  <input id="programExerciseRest" type="number" min="0" value="90">
+                </div>
+              </div>
+              <div class="row">
+                <div>
+                  <label for="programExerciseWeight">Peso objetivo</label>
+                  <input id="programExerciseWeight" type="number" min="0" step="0.5" placeholder="Opcional">
+                </div>
+                <div>
+                  <label for="programExerciseRepMin">Rango de reps</label>
+                  <div class="row training-rep-range">
+                    <input id="programExerciseRepMin" type="number" min="1" value="8">
+                    <input id="programExerciseRepMax" type="number" min="1" value="12">
+                  </div>
+                </div>
+              </div>
+              <div>
+                <label for="programExerciseNotes">Notas técnicas</label>
+                <textarea id="programExerciseNotes" placeholder="Foco técnico, ejecución, observaciones"></textarea>
+              </div>
+              <div>
+                <label for="programApproximationMode">Aproximaciones</label>
+                <select id="programApproximationMode">
+                  <option value="none">No</option>
+                  <option value="manual">Sí</option>
+                  <option value="auto">Automático recomendado</option>
+                </select>
+              </div>
+              <div id="programApproximationRows" class="training-set-list"></div>
+              <div class="inline-actions">
+                <button class="ghost small" id="addProgramApproximationBtn" type="button">+ APROXIMACIÓN</button>
+              </div>
+              <div>
+                <label>Series efectivas</label>
+                <div id="programEffectiveSetRows" class="training-set-list"></div>
+              </div>
+              <div class="inline-actions">
+                <button class="ghost small" id="addProgramEffectiveSetBtn" type="button">+ SERIE EFECTIVA</button>
+              </div>
+              <div class="inline-actions">
+                <button class="primary small" id="saveProgramExerciseBtn" type="button">Guardar ejercicio</button>
+                <button class="secondary small" id="clearProgramExerciseBtn" type="button">Limpiar</button>
+              </div>
+            </form>
+          </div>
+          <div class="card training-live-card">
+            <h3>Biblioteca de ejercicios</h3>
+            <div class="row">
+              <div>
+                <label for="exerciseCategorySelect">Categoría</label>
+                <select id="exerciseCategorySelect">
+                  <option value="PIERNAS">PIERNAS</option>
+                  <option value="PECHO">PECHO</option>
+                  <option value="ESPALDA">ESPALDA</option>
+                  <option value="HOMBROS">HOMBROS</option>
+                  <option value="BÍCEPS">BÍCEPS</option>
+                  <option value="TRÍCEPS">TRÍCEPS</option>
+                  <option value="CORE">CORE</option>
+                  <option value="OTROS">OTROS</option>
+                </select>
+              </div>
+              <div>
+                <label for="exerciseLibrarySearch">Buscar</label>
+                <input id="exerciseLibrarySearch" type="search" placeholder="Buscar ejercicio">
+              </div>
+            </div>
+            <div id="exerciseLibraryList" class="training-set-list"></div>
+          </div>
+          <div id="programList" class="training-set-list"></div>
+        </div>
+      </div>
+
+      <div id="trainingProgressView" class="card hidden">
+        <div class="section-title">
+          <h2>PROGRESO</h2>
+        </div>
+        <div class="row">
+          <div>
+            <label for="historyClientId">Cliente</label>
+            <select id="historyClientId"></select>
+          </div>
+          <div>
+            <label for="historyExercise">Ejercicio</label>
+            <input id="historyExercise" type="text" placeholder="Ej: Sentadilla">
+          </div>
+        </div>
+        <div id="trainingProgressSummary" class="notice"></div>
+      </div>
+
+      <div id="trainingGroupView" class="card hidden group-mode-view">
+        <div class="section-title group-mode-header">
+          <h2>MODO GRUPO</h2>
+          <label for="groupSessionDate">Fecha de sesión<input id="groupSessionDate" type="date"></label>
+        </div>
+        <div id="groupSessionClients" class="group-session-clients"></div>
+        <div id="groupSessionMessage" class="notice"></div>
+        <div id="groupSessionRows" class="group-session-rows"></div>
+      </div>
+
+      <div class="card training-live-card training-execution-panel">
+        <div class="section-title">
+          <h2 id="currentExerciseTitle">Serie activa</h2>
+          <span class="pill" id="setProgressLabel">Serie 1 de 1</span>
+        </div>
+        <div id="trainingLastRecord" class="notice">Sin registro anterior</div>
+        <div class="row training-live-row">
+          <div>
+            <label for="setWeightInput">Peso (kg)</label>
+            <input id="setWeightInput" type="number" min="0" step="0.1" inputmode="decimal">
+            <div class="chips training-weight-chips">
+              <button class="chip" type="button" data-weight-delta="-5">-5</button>
+              <button class="chip" type="button" data-weight-delta="-2.5">-2,5</button>
+              <button class="chip" type="button" data-weight-delta="2.5">+2,5</button>
+              <button class="chip" type="button" data-weight-delta="5">+5</button>
+            </div>
+          </div>
+          <div>
+            <label for="setRepsInput">Repeticiones</label>
+            <input id="setRepsInput" type="number" min="0" step="1" inputmode="numeric">
+            <label class="muted"><input id="setCompletedInput" type="checkbox" checked> Serie completada</label>
+            <input id="editingSetNumber" type="hidden" value="">
+          </div>
+        </div>
+        <button class="primary" id="saveSetBtn" type="button">Guardar serie</button>
+        <div id="setRecordNotice" class="notice"></div>
+        <div id="setEntryList" class="training-set-list"></div>
+      </div>
+
+      <div class="card training-execution-panel">
+        <h2>Sesiones del cliente</h2>
+        <div id="trainingsStudents"></div>
+      </div>
+
+      <div class="card training-execution-panel">
+        <div class="section-title">
+          <h2>Plantillas</h2>
+          <button class="secondary small" id="newTemplateBtn" type="button">Nueva plantilla</button>
+        </div>
+        <form id="templateForm" class="form-grid">
+          <input id="templateId" type="hidden" value="">
+          <div class="row">
+            <div>
+              <label for="templateName">Nombre</label>
+              <input id="templateName" type="text" placeholder="Piernas A — Fuerza" required>
+            </div>
+            <div>
+              <label for="templateAssignDate">Fecha para asignar</label>
+              <input id="templateAssignDate" type="date">
+            </div>
+          </div>
+          <div>
+            <label for="templateNotes">Notas</label>
+            <textarea id="templateNotes" placeholder="Notas generales de la plantilla"></textarea>
+          </div>
+          <div class="inline-actions">
+            <button class="primary" id="saveTemplateBtn" type="button">Guardar plantilla</button>
+            <button class="secondary" id="assignTemplateBtn" type="button">Asignar plantilla</button>
+          </div>
+          <div id="templateMessage" class="notice"></div>
+        </form>
+        <div class="card training-live-card">
+          <h3>Ejercicios de plantilla</h3>
+          <form id="templateExerciseForm" class="form-grid">
+            <input id="templateExerciseId" type="hidden" value="">
+            <div class="row">
+              <div>
+                <label for="templateExerciseName">Ejercicio</label>
+                <input id="templateExerciseName" type="text" placeholder="Sentadilla Smith" list="exerciseLibraryOptions" required>
+              </div>
+              <div>
+                <label for="templateExerciseNotes">Nota técnica</label>
+                <input id="templateExerciseNotes" type="text" placeholder="Controlar profundidad">
+              </div>
+            </div>
+            <div class="row">
+              <div>
+                <label for="templateExerciseSets">Series</label>
+                <input id="templateExerciseSets" type="number" min="1" required>
+              </div>
+              <div>
+                <label for="templateExerciseRepMin">Reps mín</label>
+                <input id="templateExerciseRepMin" type="number" min="1" required>
+              </div>
+              <div>
+                <label for="templateExerciseRepMax">Reps máx</label>
+                <input id="templateExerciseRepMax" type="number" min="1" required>
+              </div>
+            </div>
+            <div class="row">
+              <div>
+                <label for="templateExerciseWeight">Peso objetivo</label>
+                <input id="templateExerciseWeight" type="number" min="0" step="0.1" placeholder="Opcional">
+              </div>
+              <div>
+                <label for="templateExerciseRest">Descanso (s)</label>
+                <input id="templateExerciseRest" type="number" min="1" required>
+              </div>
+            </div>
+            <button class="primary" id="saveTemplateExerciseBtn" type="button">Guardar ejercicio en plantilla</button>
+          </form>
+          <div id="templateExerciseList" class="training-set-list"></div>
+        </div>
+        <div id="templateList" class="training-set-list"></div>
+      </div>
+
+      <div class="card">
+        <div class="section-title">
+          <h2>Biblioteca de Ejercicios</h2>
+          <button class="secondary small" id="newLibraryExerciseBtn" type="button">Nuevo ejercicio</button>
+        </div>
+        <form id="librarySearchForm" class="form-grid">
+          <div class="row">
+            <div>
+              <label for="librarySearch">Buscar</label>
+              <input id="librarySearch" type="search" placeholder="Buscar ejercicio">
+            </div>
+            <div>
+              <label for="libraryPatternFilter">Patrón</label>
+              <select id="libraryPatternFilter">
+                <option value="">Todos</option>
+              </select>
+            </div>
+          </div>
+          <div class="row">
+            <div>
+              <label for="libraryMuscleFilter">Músculo principal</label>
+              <select id="libraryMuscleFilter">
+                <option value="">Todos</option>
+              </select>
+            </div>
+            <div>
+              <label for="libraryTechnicalLevelFilter">Nivel técnico</label>
+              <select id="libraryTechnicalLevelFilter">
+                <option value="">Todos</option>
+              </select>
+            </div>
+          </div>
+        </form>
+        <form id="libraryExerciseForm" class="form-grid">
+          <input id="libraryExerciseId" type="hidden" value="">
+          <div class="row">
+            <div>
+              <label for="libraryExerciseName">Nombre</label>
+              <input id="libraryExerciseName" type="text" required>
+            </div>
+            <div>
+              <label for="libraryExercisePattern">Patrón</label>
+              <select id="libraryExercisePattern"></select>
+            </div>
+          </div>
+          <div class="row">
+            <div>
+              <label for="libraryExercisePrimaryMuscle">Músculo principal</label>
+              <select id="libraryExercisePrimaryMuscle"></select>
+            </div>
+            <div>
+              <label for="libraryExerciseTechnicalLevel">Nivel técnico</label>
+              <select id="libraryExerciseTechnicalLevel"></select>
+            </div>
+          </div>
+          <div class="row">
+            <div>
+              <label for="libraryExerciseLoadType">Tipo de carga</label>
+              <select id="libraryExerciseLoadType"></select>
+            </div>
+            <div>
+              <label for="libraryExerciseActive">Estado</label>
+              <select id="libraryExerciseActive">
+                <option value="true">Activo</option>
+                <option value="false">Inactivo</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label for="libraryExerciseDescription">Descripción</label>
+            <textarea id="libraryExerciseDescription"></textarea>
+          </div>
+          <div>
+            <label for="libraryExerciseSecondaryMuscles">Músculos secundarios</label>
+            <input id="libraryExerciseSecondaryMuscles" type="text" placeholder="Ej: glutes, hamstrings">
+          </div>
+          <div>
+            <label for="libraryExerciseEquipments">Equipamiento</label>
+            <input id="libraryExerciseEquipments" type="text" placeholder="Ej: barbell, power_rack">
+          </div>
+          <div class="row">
+            <div>
+              <label for="libraryRelationTarget">Relación con otro ejercicio</label>
+              <input id="libraryRelationTarget" type="text" list="exerciseLibraryOptions" placeholder="Ejercicio relacionado">
+              <input id="libraryRelationTargetId" type="hidden" value="">
+            </div>
+            <div>
+              <label for="libraryRelationType">Tipo de relación</label>
+              <select id="libraryRelationType">
+                <option value="">Sin relación</option>
+                <option value="variant_of">VARIANT_OF</option>
+                <option value="alternative_to">ALTERNATIVE_TO</option>
+                <option value="regression_of">REGRESSION_OF</option>
+                <option value="progression_of">PROGRESSION_OF</option>
+              </select>
+            </div>
+          </div>
+          <button class="primary" id="saveLibraryExerciseBtn" type="button">Guardar ejercicio</button>
+          <div id="libraryMessage" class="notice"></div>
+        </form>
+        <div id="libraryExerciseList" class="training-set-list"></div>
+      </div>
+    </section>
         <form id="routineForm" class="form-grid">
           <div class="row">
             <div>
@@ -380,7 +1072,7 @@
           <div class="row">
             <div>
               <label for="exercise">Ejercicio</label>
-              <input id="exercise" name="exerciseName" placeholder="Sentadilla Smith" required>
+              <input id="exercise" name="exerciseName" placeholder="Sentadilla Smith" list="exerciseLibraryOptions" required>
               <input id="exerciseId" name="exerciseId" type="hidden" value="">
             </div>
             <div>
@@ -513,7 +1205,7 @@
             <div class="row">
               <div>
                 <label for="templateExerciseName">Ejercicio</label>
-                <input id="templateExerciseName" type="text" placeholder="Sentadilla Smith" required>
+                <input id="templateExerciseName" type="text" placeholder="Sentadilla Smith" list="exerciseLibraryOptions" required>
               </div>
               <div>
                 <label for="templateExerciseNotes">Nota técnica</label>
@@ -549,6 +1241,156 @@
           <div id="templateExerciseList" class="training-set-list"></div>
         </div>
         <div id="templateList" class="training-set-list"></div>
+      </div>
+
+      <div class="card">
+        <div class="section-title">
+          <h2>Biblioteca de Ejercicios</h2>
+          <button class="secondary small" id="newLibraryExerciseBtn" type="button">Nuevo ejercicio</button>
+        </div>
+        <form id="librarySearchForm" class="form-grid">
+          <div class="row">
+            <div>
+              <label for="librarySearch">Buscar</label>
+              <input id="librarySearch" type="search" placeholder="Buscar ejercicio">
+            </div>
+            <div>
+              <label for="libraryPatternFilter">Patrón</label>
+              <select id="libraryPatternFilter">
+                <option value="">Todos</option>
+              </select>
+            </div>
+          </div>
+          <div class="row">
+            <div>
+              <label for="libraryMuscleFilter">Músculo principal</label>
+              <select id="libraryMuscleFilter">
+                <option value="">Todos</option>
+              </select>
+            </div>
+            <div>
+              <label for="libraryTechnicalLevelFilter">Nivel técnico</label>
+              <select id="libraryTechnicalLevelFilter">
+                <option value="">Todos</option>
+              </select>
+            </div>
+          </div>
+        </form>
+        <form id="libraryExerciseForm" class="form-grid">
+          <input id="libraryExerciseId" type="hidden" value="">
+          <div class="row">
+            <div>
+              <label for="libraryExerciseName">Nombre</label>
+              <input id="libraryExerciseName" type="text" required>
+            </div>
+            <div>
+              <label for="libraryExercisePattern">Patrón</label>
+              <select id="libraryExercisePattern"></select>
+            </div>
+          </div>
+          <div class="row">
+            <div>
+              <label for="libraryExercisePrimaryMuscle">Músculo principal</label>
+              <select id="libraryExercisePrimaryMuscle"></select>
+            </div>
+            <div>
+              <label for="libraryExerciseTechnicalLevel">Nivel técnico</label>
+              <select id="libraryExerciseTechnicalLevel"></select>
+            </div>
+          </div>
+          <div class="row">
+            <div>
+              <label for="libraryExerciseLoadType">Tipo de carga</label>
+              <select id="libraryExerciseLoadType"></select>
+            </div>
+            <div>
+              <label for="libraryExerciseActive">Estado</label>
+              <select id="libraryExerciseActive">
+                <option value="true">Activo</option>
+                <option value="false">Inactivo</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label for="libraryExerciseDescription">Descripción</label>
+            <textarea id="libraryExerciseDescription"></textarea>
+          </div>
+          <div>
+            <label>Demanda articular (0 = baja / 1 = media / 2 = alta)</label>
+            <div class="library-demand-grid">
+              <div>
+                <label for="libraryExerciseBackDemand">Espalda</label>
+                <select id="libraryExerciseBackDemand">
+                  <option value="0">0</option>
+                  <option value="1">1</option>
+                  <option value="2">2</option>
+                </select>
+              </div>
+              <div>
+                <label for="libraryExerciseShoulderDemand">Hombro</label>
+                <select id="libraryExerciseShoulderDemand">
+                  <option value="0">0</option>
+                  <option value="1">1</option>
+                  <option value="2">2</option>
+                </select>
+              </div>
+              <div>
+                <label for="libraryExerciseKneeDemand">Rodilla</label>
+                <select id="libraryExerciseKneeDemand">
+                  <option value="0">0</option>
+                  <option value="1">1</option>
+                  <option value="2">2</option>
+                </select>
+              </div>
+              <div>
+                <label for="libraryExerciseHipDemand">Cadera</label>
+                <select id="libraryExerciseHipDemand">
+                  <option value="0">0</option>
+                  <option value="1">1</option>
+                  <option value="2">2</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          <div>
+            <label for="libraryExerciseSecondaryMuscles">Músculos secundarios</label>
+            <input id="libraryExerciseSecondaryMuscles" type="text" placeholder="Ej: glutes, hamstrings">
+          </div>
+          <div>
+            <label for="libraryExerciseEquipments">Equipamiento</label>
+            <input id="libraryExerciseEquipments" type="text" placeholder="Ej: barbell, power_rack">
+          </div>
+          <div class="row">
+            <div>
+              <label for="libraryExerciseBase">Base / ejercicio principal</label>
+              <input id="libraryExerciseBase" type="text" list="exerciseLibraryOptions" placeholder="Ej: Sentadilla">
+            </div>
+            <div>
+              <label for="libraryExerciseAlternativeGroup">Grupo de alternativas</label>
+              <input id="libraryExerciseAlternativeGroup" type="text" placeholder="sentadilla-principal">
+            </div>
+          </div>
+          <div class="row">
+            <div>
+              <label for="libraryRelationTarget">Relación con otro ejercicio</label>
+              <input id="libraryRelationTarget" type="text" list="exerciseLibraryOptions" placeholder="Ejercicio relacionado">
+              <input id="libraryRelationTargetId" type="hidden" value="">
+            </div>
+            <div>
+              <label for="libraryRelationType">Tipo de relación</label>
+              <select id="libraryRelationType">
+                <option value="">Sin relación</option>
+                <option value="variant_of">VARIANT_OF</option>
+                <option value="alternative_to">ALTERNATIVE_TO</option>
+                <option value="regression_of">REGRESSION_OF</option>
+                <option value="progression_of">PROGRESSION_OF</option>
+              </select>
+            </div>
+          </div>
+          <button class="primary" id="saveLibraryExerciseBtn" type="button">Guardar ejercicio</button>
+          <div id="libraryMessage" class="notice"></div>
+        </form>
+        <div id="libraryExerciseList" class="training-set-list"></div>
       </div>
     </section>
 
@@ -648,6 +1490,11 @@
             <input id="reserve" name="reserve" type="number" min="0">
           </div>
           <div>
+            <label for="coachWhatsAppNumber">Número de WhatsApp para ingreso de alumnos</label>
+            <input id="coachWhatsAppNumber" name="coachWhatsAppNumber" type="tel" inputmode="tel" placeholder="56912345678">
+            <small class="muted">Incluye código de país, solo números.</small>
+          </div>
+          <div>
             <label for="magicBudget">Presupuesto mensual Magic</label>
             <input id="magicBudget" name="magicBudget" type="number" min="0">
           </div>
@@ -661,6 +1508,16 @@
           </div>
           <button class="primary" type="submit">Guardar ajustes</button>
         </form>
+      </div>
+      <div class="card onboarding-qr-settings">
+        <h2>Código QR de registro</h2>
+        <div id="onboardingQr" class="onboarding-qr" aria-label="Código QR de registro"></div>
+        <label for="onboardingUrl">URL de ingreso</label>
+        <div class="inline-actions onboarding-link-row">
+          <input id="onboardingUrl" type="url" readonly>
+          <button class="secondary" id="copyOnboardingUrlBtn" type="button">Copiar link</button>
+        </div>
+        <div id="onboardingQrMessage" class="notice"></div>
       </div>
       <div class="card">
         <h2>Cuentas</h2>
@@ -694,6 +1551,8 @@
   <script src="./assets/js/auth.js"></script>
   <script src="./assets/js/cloud-data.js"></script>
   <script src="./assets/js/finance.js"></script>
+  <script src="./assets/js/qrcode-generator.js"></script>
+  <script src="./assets/js/onboarding.js"></script>
   <script src="./assets/js/app.js"></script>
 </body>
 </html>

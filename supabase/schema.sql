@@ -278,6 +278,7 @@ create table if not exists public.training_exercises (
   owner_id uuid not null references public.profiles(id) on delete cascade,
   client_id uuid not null references public.clients(id) on delete cascade,
   session_id text not null references public.training_sessions(id) on delete cascade,
+  library_exercise_id uuid,
   exercise_name text not null,
   exercise_order integer not null default 1,
   planned_sets integer not null default 1,
@@ -315,6 +316,56 @@ create table if not exists public.training_sets (
 create or replace trigger trg_training_sets_updated_at
 before update on public.training_sets
 for each row execute function public.set_updated_at();
+
+-- Biblioteca de ejercicios v1
+create table if not exists public.library_exercises (
+  id uuid primary key default gen_random_uuid(),
+  owner_id uuid not null references public.profiles(id) on delete cascade,
+  name text not null,
+  normalized_name text not null,
+  description text,
+  pattern text not null check (pattern in ('squat', 'hinge', 'horizontal_push', 'vertical_push', 'horizontal_pull', 'vertical_pull', 'lunge', 'carry', 'rotation', 'anti_rotation', 'core_flexion', 'core_extension', 'isolation', 'locomotion', 'cardio', 'mobility', 'other')) default 'other',
+  primary_muscle text not null check (primary_muscle in ('quadriceps', 'hamstrings', 'glutes', 'calves', 'chest', 'lats', 'upper_back', 'traps', 'front_delts', 'lateral_delts', 'rear_delts', 'biceps', 'triceps', 'forearms', 'abdominals', 'obliques', 'spinal_erectors', 'adductors', 'abductors', 'full_body')) default 'full_body',
+  technical_level text not null check (technical_level in ('beginner', 'intermediate', 'advanced')) default 'beginner',
+  load_type text not null check (load_type in ('external_load', 'bodyweight', 'machine', 'cardio', 'mobility')) default 'external_load',
+  active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (owner_id, normalized_name)
+);
+
+create or replace trigger trg_library_exercises_updated_at
+before update on public.library_exercises
+for each row execute function public.set_updated_at();
+
+create table if not exists public.library_exercise_secondary_muscles (
+  id uuid primary key default gen_random_uuid(),
+  owner_id uuid not null references public.profiles(id) on delete cascade,
+  exercise_id uuid not null references public.library_exercises(id) on delete cascade,
+  muscle_key text not null check (muscle_key in ('quadriceps', 'hamstrings', 'glutes', 'calves', 'chest', 'lats', 'upper_back', 'traps', 'front_delts', 'lateral_delts', 'rear_delts', 'biceps', 'triceps', 'forearms', 'abdominals', 'obliques', 'spinal_erectors', 'adductors', 'abductors', 'full_body')),
+  created_at timestamptz not null default now(),
+  unique (exercise_id, muscle_key)
+);
+
+create table if not exists public.library_exercise_equipments (
+  id uuid primary key default gen_random_uuid(),
+  owner_id uuid not null references public.profiles(id) on delete cascade,
+  exercise_id uuid not null references public.library_exercises(id) on delete cascade,
+  equipment_key text not null check (equipment_key in ('bodyweight', 'barbell', 'semi_olympic_bar', 'dumbbell', 'kettlebell', 'smith_machine', 'power_rack', 'bench', 'cable', 'resistance_band', 'trx', 'leg_press', 'leg_extension', 'leg_curl', 'hip_abductor_machine', 'hip_adductor_machine', 'hip_thrust_machine', 'bike', 'skierg', 'box', 'step', 'medicine_ball', 'sandbag', 'other')),
+  created_at timestamptz not null default now(),
+  unique (exercise_id, equipment_key)
+);
+
+create table if not exists public.library_exercise_relations (
+  id uuid primary key default gen_random_uuid(),
+  owner_id uuid not null references public.profiles(id) on delete cascade,
+  exercise_id uuid not null references public.library_exercises(id) on delete cascade,
+  related_exercise_id uuid not null references public.library_exercises(id) on delete cascade,
+  relation_type text not null check (relation_type in ('variant_of', 'alternative_to', 'regression_of', 'progression_of')),
+  notes text,
+  created_at timestamptz not null default now(),
+  unique (exercise_id, related_exercise_id, relation_type)
+);
 
 -- Ficha deportiva v1
 create table if not exists public.client_sports_profiles (
@@ -360,6 +411,7 @@ create table if not exists public.client_movement_statuses (
   id uuid primary key default gen_random_uuid(),
   owner_id uuid not null references public.profiles(id) on delete cascade,
   client_id uuid not null references public.clients(id) on delete cascade,
+  library_exercise_id uuid,
   movement_name text not null,
   movement_key text not null,
   status text not null check (status in ('dominado', 'tolerado', 'en_aprendizaje', 'no_evaluado', 'adaptar', 'restringido')) default 'no_evaluado',
@@ -397,9 +449,15 @@ create index if not exists idx_training_sessions_owner_client_date on public.tra
 create index if not exists idx_training_exercises_session_order on public.training_exercises (session_id, exercise_order);
 create index if not exists idx_training_sets_exercise_set on public.training_sets (exercise_id, set_number);
 create index if not exists idx_training_sets_client_created on public.training_sets (client_id, created_at desc);
+create index if not exists idx_library_exercises_owner_active on public.library_exercises (owner_id, active, pattern, primary_muscle, technical_level);
+create index if not exists idx_library_exercises_normalized_name on public.library_exercises (owner_id, normalized_name);
+create index if not exists idx_library_exercise_secondary_muscles_exercise on public.library_exercise_secondary_muscles (exercise_id, muscle_key);
+create index if not exists idx_library_exercise_equipments_exercise on public.library_exercise_equipments (exercise_id, equipment_key);
+create index if not exists idx_library_exercise_relations_exercise on public.library_exercise_relations (exercise_id, relation_type);
 create index if not exists idx_client_sports_profiles_owner_client on public.client_sports_profiles (owner_id, client_id);
 create index if not exists idx_client_sports_considerations_client_status on public.client_sports_considerations (client_id, status, noted_on desc);
 create index if not exists idx_client_movement_statuses_client_key on public.client_movement_statuses (client_id, movement_key);
+create index if not exists idx_client_movement_statuses_library_exercise on public.client_movement_statuses (client_id, library_exercise_id);
 
 -- Habilitar RLS
 alter table public.profiles enable row level security;
@@ -416,6 +474,10 @@ alter table public.training_plans enable row level security;
 alter table public.training_sessions enable row level security;
 alter table public.training_exercises enable row level security;
 alter table public.training_sets enable row level security;
+alter table public.library_exercises enable row level security;
+alter table public.library_exercise_secondary_muscles enable row level security;
+alter table public.library_exercise_equipments enable row level security;
+alter table public.library_exercise_relations enable row level security;
 alter table public.client_sports_profiles enable row level security;
 alter table public.client_sports_considerations enable row level security;
 alter table public.client_movement_statuses enable row level security;
@@ -502,6 +564,30 @@ with check (public.current_user_role() = 'admin' and owner_id = auth.uid());
 
 drop policy if exists training_sets_admin_policy on public.training_sets;
 create policy training_sets_admin_policy on public.training_sets
+for all
+using (public.current_user_role() = 'admin' and owner_id = auth.uid())
+with check (public.current_user_role() = 'admin' and owner_id = auth.uid());
+
+drop policy if exists library_exercises_admin_policy on public.library_exercises;
+create policy library_exercises_admin_policy on public.library_exercises
+for all
+using (public.current_user_role() = 'admin' and owner_id = auth.uid())
+with check (public.current_user_role() = 'admin' and owner_id = auth.uid());
+
+drop policy if exists library_exercise_secondary_muscles_admin_policy on public.library_exercise_secondary_muscles;
+create policy library_exercise_secondary_muscles_admin_policy on public.library_exercise_secondary_muscles
+for all
+using (public.current_user_role() = 'admin' and owner_id = auth.uid())
+with check (public.current_user_role() = 'admin' and owner_id = auth.uid());
+
+drop policy if exists library_exercise_equipments_admin_policy on public.library_exercise_equipments;
+create policy library_exercise_equipments_admin_policy on public.library_exercise_equipments
+for all
+using (public.current_user_role() = 'admin' and owner_id = auth.uid())
+with check (public.current_user_role() = 'admin' and owner_id = auth.uid());
+
+drop policy if exists library_exercise_relations_admin_policy on public.library_exercise_relations;
+create policy library_exercise_relations_admin_policy on public.library_exercise_relations
 for all
 using (public.current_user_role() = 'admin' and owner_id = auth.uid())
 with check (public.current_user_role() = 'admin' and owner_id = auth.uid());
@@ -629,5 +715,28 @@ begin
     alter table public.client_renewals
       add constraint client_renewals_payment_id_fkey
       foreign key (payment_id) references public.client_payments(id) on delete set null on update cascade;
+  end if;
+end $$;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'training_exercises_library_exercise_id_fkey'
+  ) then
+    alter table public.training_exercises
+      add constraint training_exercises_library_exercise_id_fkey
+      foreign key (library_exercise_id) references public.library_exercises(id) on delete set null on update cascade;
+  end if;
+
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'client_movement_statuses_library_exercise_id_fkey'
+  ) then
+    alter table public.client_movement_statuses
+      add constraint client_movement_statuses_library_exercise_id_fkey
+      foreign key (library_exercise_id) references public.library_exercises(id) on delete set null on update cascade;
   end if;
 end $$;
