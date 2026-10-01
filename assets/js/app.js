@@ -6102,7 +6102,7 @@
 
   function getOnboardingUrl() {
     const currentUrl = window.location.protocol === 'file:'
-      ? 'https://vikingosradical.github.io/valhalla-finanzas-github/index.html'
+      ? 'https://gbnpm24hng-byte.github.io/Valhalla/index.html'
       : window.location.href;
     const onboardingUrl = new URL(currentUrl);
     onboardingUrl.search = '';
