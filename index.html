@@ -220,6 +220,8 @@
               <label for="clientService">Servicio</label>
               <select id="clientService" name="service" required>
                 <option value="Personalizado">Personalizado</option>
+                <option value="Personalizado (Pareja)">Personalizado (Pareja)</option>
+                <option value="Grupo">Grupo</option>
                 <option value="Semi personalizado">Semi personalizado</option>
                 <option value="Clase">Clase</option>
                 <option value="Otro">Otro</option>
@@ -247,6 +249,7 @@
                 <option value="pending">Pendiente</option>
                 <option value="overdue">Atrasado</option>
                 <option value="uncertain">En duda</option>
+                <option value="not_applicable">Sin cobro</option>
               </select>
             </div>
           </div>
@@ -276,7 +279,7 @@
           </div>
           <div class="row">
             <div>
-              <label for="clientSessionsTotal">Sesiones contratadas</label>
+              <label for="clientSessionsTotal">Sesiones mensuales</label>
               <input id="clientSessionsTotal" name="sessionsTotal" type="number" min="0" step="1" value="8">
             </div>
             <div>
@@ -365,13 +368,6 @@
 
       <div class="card">
         <div class="section-title">
-          <h2>Ficha del cliente</h2>
-        </div>
-        <div id="clientDetail" class="client-detail"></div>
-      </div>
-
-      <div class="card">
-        <div class="section-title">
           <h2>Ficha deportiva</h2>
         </div>
         <div id="sportsProfilePanel" class="client-detail"></div>
@@ -416,6 +412,13 @@
               <option value="scratch" selected>Desde cero</option>
               <option value="template">Desde plantilla</option>
             </select>
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label for="programDaySelect">Sesión del programa para hoy</label>
+            <select id="programDaySelect" disabled><option value="">Selecciona un alumno con programa activo</option></select>
+            <div id="programDayMessage" class="meta" role="status"></div>
           </div>
         </div>
         <div class="row">
@@ -826,6 +829,8 @@
           <div>
             <label for="setRepsInput">Repeticiones</label>
             <input id="setRepsInput" type="number" min="0" step="1" inputmode="numeric">
+            <label for="setRirInput">RIR (repeticiones en reserva)</label>
+            <input id="setRirInput" type="number" min="0" max="10" step="1" inputmode="numeric">
             <label class="muted"><input id="setCompletedInput" type="checkbox" checked> Serie completada</label>
             <input id="editingSetNumber" type="hidden" value="">
           </div>
@@ -1143,6 +1148,8 @@
           <div>
             <label for="setRepsInput">Repeticiones</label>
             <input id="setRepsInput" type="number" min="0" step="1" inputmode="numeric">
+            <label for="setRirInput">RIR (repeticiones en reserva)</label>
+            <input id="setRirInput" type="number" min="0" max="10" step="1" inputmode="numeric">
             <label class="muted"><input id="setCompletedInput" type="checkbox" checked> Serie completada</label>
             <input id="editingSetNumber" type="hidden" value="">
           </div>

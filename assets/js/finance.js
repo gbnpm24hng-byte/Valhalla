@@ -57,7 +57,7 @@
     const dashboard = calculateDashboard(state, referenceDate, selectedSegment);
     const reserve = Number(state.profile.minimum_reserve || 0);
     const savingsGoal = Number(state.profile.savings_goal || 0);
-    const activeClients = (state.clients || []).filter((client) => client.continues && client.status !== 'paid');
+    const activeClients = (state.clients || []).filter((client) => client.continues && client.status !== 'paid' && client.payment_status !== 'not_applicable');
     const upcomingItems = dashboard.upcomingItems || [];
 
     return [

@@ -9,6 +9,14 @@
   const cloudDataApi = window.VALHALLA.cloudData;
 
   const state = dataApi.loadState();
+  const currentSessionMonth = getTodayLocalDate().slice(0, 7);
+  let sessionMonthChanged = false;
+  state.clients.forEach((client) => {
+    sessionMonthChanged = dataApi.resetClientSessionMonth(client, currentSessionMonth) || sessionMonthChanged;
+  });
+  if (sessionMonthChanged) {
+    dataApi.saveState(state);
+  }
   const nutritionUi = {
     selectedClientId: state.clients[0]?.id || '',
     editingPlanId: null,
@@ -16,6 +24,8 @@
   };
   const trainingUi = {
     selectedClientId: '',
+    programDayClientId: '',
+    selectedProgramDayId: '',
     selectedExercise: '',
     activeSessionId: '',
     activeExerciseId: '',
@@ -85,7 +95,8 @@
     search: '',
     filter: 'all',
     editingId: null,
-    detailId: state.clients[0]?.id || '',
+    detailId: '',
+    detailType: '',
     formOpen: false,
     saving: false,
     notice: '',
@@ -134,7 +145,6 @@
     accountSettings: document.getElementById('accountSettings'),
     accountSettingsMessage: document.getElementById('accountSettingsMessage'),
     clientList: document.getElementById('clientList'),
-    clientDetail: document.getElementById('clientDetail'),
     clientFormPanel: document.getElementById('clientFormPanel'),
     clientForm: document.getElementById('clientForm'),
     clientFormTitle: document.getElementById('clientFormTitle'),
@@ -145,7 +155,6 @@
     clientCancelBtn: document.getElementById('clientCancelBtn'),
     clientSubmitBtn: document.getElementById('clientSubmitBtn'),
     clientCount: document.getElementById('clientCount'),
-    sportsProfilePanel: document.getElementById('sportsProfilePanel'),
     trainingsStudents: document.getElementById('trainingsStudents'),
     routineForm: document.getElementById('routineForm'),
     routineMessage: document.getElementById('routineMessage'),
@@ -156,6 +165,8 @@
     trainingAgendaDate: document.getElementById('trainingAgendaDate'),
     trainingAgendaToday: document.getElementById('trainingAgendaToday'),
     trainingAgendaUpcoming: document.getElementById('trainingAgendaUpcoming'),
+    programDaySelect: document.getElementById('programDaySelect'),
+    programDayMessage: document.getElementById('programDayMessage'),
     trainingPlanningView: document.getElementById('trainingPlanningView'),
     trainingProgressView: document.getElementById('trainingProgressView'),
     trainingGroupView: document.getElementById('trainingGroupView'),
@@ -202,6 +213,7 @@
     setProgressLabel: document.getElementById('setProgressLabel'),
     setWeightInput: document.getElementById('setWeightInput'),
     setRepsInput: document.getElementById('setRepsInput'),
+    setRirInput: document.getElementById('setRirInput'),
     setCompletedInput: document.getElementById('setCompletedInput'),
     saveSetBtn: document.getElementById('saveSetBtn'),
     setEntryList: document.getElementById('setEntryList'),
@@ -581,12 +593,8 @@
   }
 
   function renderSportsProfilePanel(client) {
-    if (!els.sportsProfilePanel) {
-      return;
-    }
     if (!client) {
-      els.sportsProfilePanel.innerHTML = '<div class="muted">Selecciona un cliente para revisar su ficha deportiva.</div>';
-      return;
+      return '';
     }
 
     ensureSportsState();
@@ -598,7 +606,8 @@
 
     const optionMarkup = (options, selectedValue, allowEmpty = false, emptyLabel = 'Sin definir') => `${allowEmpty ? `<option value="">${emptyLabel}</option>` : ''}${options.map((value) => `<option value="${value}" ${selectedValue === value ? 'selected' : ''}>${escapeHtml(getSportsLabel(value))}</option>`).join('')}`;
 
-    els.sportsProfilePanel.innerHTML = `
+    return `
+      <section class="client-detail-inline sports-profile-inline" data-client-detail-panel="${escapeHtml(client.id)}" data-client-panel-type="sports" aria-label="Ficha deportiva de ${escapeHtml(getClientDisplayName(client))}">
       <div class="client-detail-card">
         <div class="section-title">
           <div>
@@ -761,7 +770,8 @@
               </div>
             </div>`).join('') : '<div class="muted">Aún no hay cargas registradas en el historial.</div>'}
         </div>
-      </div>`;
+      </div>
+      </section>`;
   }
 
   async function refreshSportsDataFromCloud() {
@@ -959,17 +969,15 @@
       .sort((first, second) => String(second.updatedAt || '').localeCompare(String(first.updatedAt || '')))[0] || null;
   }
 
-  function getGroupSessionDay(assignment, sessionDate) {
+  function getSelectedTrainingProgramDay(clientId, assignment = getActiveTrainingAssignment(clientId)) {
     const days = Array.isArray(assignment?.days) ? assignment.days : [];
     if (!days.length) {
       return { day: null, index: -1 };
     }
-    const date = new Date(`${sessionDate || getTodayLocalDate()}T00:00:00`);
-    const weekday = date.getDay() || 7;
-    const scheduledWeekdays = Array.isArray(assignment.weeklyDays) ? assignment.weeklyDays.map(Number) : [];
-    const scheduledIndex = scheduledWeekdays.indexOf(weekday);
-    const index = scheduledIndex >= 0 ? scheduledIndex : 0;
-    return { day: days[index] || days[0], index: days[index] ? index : 0 };
+    const client = getClientById(clientId);
+    const selectedDayId = client?.last_training_program_id === assignment.id ? client.last_training_day_id : '';
+    const index = days.findIndex((day) => day.id === selectedDayId);
+    return { day: index >= 0 ? days[index] : null, index };
   }
 
   function getGroupRowData(clientId) {
@@ -977,7 +985,7 @@
     if (!assignment) {
       return null;
     }
-    const { day, index: dayIndex } = getGroupSessionDay(assignment, groupSessionUi.sessionDate);
+    const { day, index: dayIndex } = getSelectedTrainingProgramDay(clientId, assignment);
     const exercises = Array.isArray(day?.exercises) ? day.exercises : [];
     const draft = groupSessionUi.drafts[clientId];
     const planExercise = exercises.find((exercise) => exercise.id === draft?.planExerciseId) || exercises[0] || null;
@@ -1501,6 +1509,60 @@
 
     persist();
     return { ok: true, session };
+  }
+
+  function startProgramDaySession(clientId, programDayId) {
+    const client = getClientById(clientId);
+    const assignment = getActiveTrainingAssignment(clientId);
+    const day = assignment?.days?.find((item) => item.id === programDayId);
+    if (!client || !assignment || !day) {
+      return false;
+    }
+
+    client.last_training_program_id = assignment.id;
+    client.last_training_day_id = day.id;
+    trainingUi.programDayClientId = client.id;
+    trainingUi.selectedProgramDayId = day.id;
+
+    const sessionDate = getTodayLocalDate();
+    let session = getTrainingSessionsByClient(client.id).find((item) =>
+      item.programAssignmentId === assignment.id && item.programDayId === day.id && item.date === sessionDate && item.status !== 'completed'
+    );
+    if (!session) {
+      session = {
+        id: dataApi.createId('tx-session'),
+        clientId: client.id,
+        programAssignmentId: assignment.id,
+        programId: assignment.programId,
+        programDayId: day.id,
+        programDayName: day.name,
+        planId: null,
+        groupSessionId: null,
+        date: sessionDate,
+        title: day.name,
+        status: 'in_progress',
+        notes: `Programa: ${assignment.programName || 'Programa'}`,
+        exercises: (day.exercises || []).map((exercise, index) => ({
+          id: dataApi.createId('tx-exercise'),
+          programExerciseId: exercise.id,
+          exerciseName: exercise.exerciseName,
+          order: index + 1,
+          plannedSets: Math.max(1, Number(exercise.sets || 1)),
+          plannedRepMin: exercise.repRangeMin ?? null,
+          plannedRepMax: exercise.repRangeMax ?? null,
+          targetWeight: exercise.targetWeight === null || exercise.targetWeight === undefined ? 0 : Number(exercise.targetWeight || 0),
+          restSeconds: Number(exercise.restSeconds || 90),
+          coachNotes: exercise.notes || '',
+          sets: []
+        }))
+      };
+      state.trainingsV08.sessions.push(session);
+    }
+
+    setActiveSessionForClient(client.id, session.id);
+    dataApi.saveState(state);
+    render();
+    return true;
   }
 
   function setTemplateMessage(message, tone = 'neutral') {
@@ -4703,6 +4765,9 @@
     if (client.client_status === 'inactive' || client.active === false) {
       return 'muted';
     }
+    if (client.payment_status === 'not_applicable') {
+      return 'muted';
+    }
     if (client.payment_status === 'overdue') {
       return 'bad';
     }
@@ -4717,7 +4782,8 @@
       paid: 'Pagado',
       pending: 'Pendiente',
       overdue: 'Atrasado',
-      uncertain: 'En duda'
+      uncertain: 'En duda',
+      not_applicable: 'Sin cobro'
     };
     return labels[client.payment_status] || 'Pendiente';
   }
@@ -4950,6 +5016,7 @@
       schedule_notes: payload.schedule || '',
       sessions_total: Math.max(0, Math.floor(Number(payload.sessionsTotal || 0))),
       sessions_used: Math.max(0, Math.floor(Number(payload.sessionsUsed || 0))),
+      sessions_month: existingClient?.sessions_month || getTodayLocalDate().slice(0, 7),
       training_modality: payload.trainingModality === 'group' ? 'group' : 'personalized',
       training_group_size: payload.trainingModality === 'group' ? Math.max(2, Math.min(4, Math.floor(Number(payload.trainingGroupSize || 2)))) : 1,
       training_attendance: Array.isArray(existingClient?.training_attendance) ? existingClient.training_attendance : [],
@@ -4972,32 +5039,29 @@
   }
 
   function renderClientDetail(client) {
-    if (!els.clientDetail) {
-      return;
-    }
-
     if (!client) {
-      els.clientDetail.innerHTML = '<div class="muted">Selecciona "Ver ficha" para revisar el detalle completo.</div>';
-      return;
+      return '';
     }
+    const assignment = getActiveTrainingAssignment(client.id);
+    const formatProgramEntry = (entry) => {
+      const load = entry.weight === null || entry.weight === undefined ? 'Peso por completar' : `${Number(entry.weight)} kg`;
+      const reps = entry.reps === null || entry.reps === undefined ? 'reps por completar' : `${Number(entry.reps)} reps`;
+      const rir = entry.rir === null || entry.rir === undefined ? 'RIR por completar' : `RIR ${Number(entry.rir)}`;
+      return `${escapeHtml(entry.label)}: ${load} × ${reps} · ${rir}`;
+    };
 
-    els.clientDetail.innerHTML = `
-      <div class="client-detail-card">
-        <div class="client-card-head">
-          <div>
-            <h3>${escapeHtml(getClientDisplayName(client))}</h3>
-            <div class="meta">${escapeHtml(client.phone || 'Sin teléfono')}</div>
-          </div>
-          <span class="client-badge ${getClientStatusTone(client)}">${escapeHtml(getClientStatusLabel(client))}</span>
-        </div>
+    return `
+      <section class="client-detail-inline" data-client-detail-panel="${escapeHtml(client.id)}" data-client-panel-type="details" aria-label="Ficha de ${escapeHtml(getClientDisplayName(client))}">
         <div class="client-detail-grid">
+          <div><strong>Teléfono</strong><div class="meta">${escapeHtml(client.phone || 'Sin teléfono')}</div></div>
+          <div><strong>Estado de pago</strong><div class="meta">${escapeHtml(getClientStatusLabel(client))}</div></div>
           <div><strong>Servicio</strong><div class="meta">${escapeHtml(client.service || 'Sin servicio')}</div></div>
           <div><strong>Estado del cliente</strong><div class="meta">${escapeHtml(getClientPresenceLabel(client))}</div></div>
           <div><strong>Valor mensual</strong><div class="meta">${financeApi.formatCurrency(Number(client.monthly_value ?? client.amount ?? 0))}</div></div>
           <div><strong>Fecha de renovación</strong><div class="meta">${escapeHtml(getClientRenewalLabel(client))}</div></div>
           <div><strong>Horario</strong><div class="meta">${escapeHtml(client.schedule_notes || 'Sin horario')}</div></div>
           <div><strong>Días de entrenamiento</strong><div class="meta">${escapeHtml(client.training_days || 'Sin información')}</div></div>
-          <div><strong>Sesiones disponibles</strong><div class="meta">${Math.max(0, Number(client.sessions_total || 0) - Number(client.sessions_used || 0))}/${Number(client.sessions_total || 0)}</div></div>
+          <div><strong>Sesiones disponibles</strong><div class="meta">${Math.max(0, Number(client.sessions_total || 0) - Number(client.sessions_used || 0))}/${Number(client.sessions_total || 0)} — puedes reagendar durante la semana sin problema.</div></div>
           <div><strong>Modalidad</strong><div class="meta">${client.training_modality === 'group' ? `Grupo (${Number(client.training_group_size || 2)})` : 'Personalizado'}</div></div>
           <div><strong>Correo</strong><div class="meta">${escapeHtml(client.email || 'Sin correo')}</div></div>
           <div><strong>Objetivo</strong><div class="meta">${escapeHtml(client.objective || 'Sin objetivo')}</div></div>
@@ -5007,11 +5071,27 @@
           <div><strong>Observaciones</strong><div class="meta">${escapeHtml(client.observations || 'Sin observaciones')}</div></div>
           <div><strong>Fecha de inicio</strong><div class="meta">${escapeHtml(formatClientDate(client.start_date))}</div></div>
         </div>
+        <section class="client-program-detail">
+          <div class="section-title compact"><h3>Programa actual</h3>${assignment ? `<span class="pill">${Number(assignment.durationWeeks || 4)} semanas</span>` : ''}</div>
+          ${assignment ? `<strong>${escapeHtml(assignment.programName || 'Programa')}</strong>
+            ${(assignment.days || []).map((day) => `
+              <div class="client-program-day">
+                <strong>${escapeHtml(day.name)}</strong>
+                <ul>${(day.exercises || []).map((exercise) => `
+                  <li>
+                    <strong>${escapeHtml(exercise.exerciseName)}</strong> · ${Number(exercise.sets || 0)} series${exercise.targetWeight === null || exercise.targetWeight === undefined ? '' : ` · ${Number(exercise.targetWeight)} kg objetivo`}
+                    <div class="meta">Aproximaciones: ${(exercise.approximations || []).length ? exercise.approximations.map(formatProgramEntry).join(' · ') : 'Sin aproximaciones'}</div>
+                    <div class="meta">Series efectivas: ${(exercise.effectiveSets || []).length ? exercise.effectiveSets.map(formatProgramEntry).join(' · ') : 'Sin series definidas'}</div>
+                    ${exercise.notes ? `<div class="meta">${escapeHtml(exercise.notes)}</div>` : ''}
+                  </li>`).join('')}</ul>
+              </div>`).join('')}` : '<div class="meta">No hay programa activo asignado.</div>'}
+          ${client.last_training_day_id ? `<div class="meta">Última sesión elegida: ${escapeHtml(assignment?.days?.find((day) => day.id === client.last_training_day_id)?.name || '')}</div>` : ''}
+        </section>
         <div class="inline-actions">
           <button class="secondary" type="button" data-client-sports="${client.id}">Ficha deportiva</button>
           ${client.client_status === 'active' && client.active !== false ? `<button class="primary" type="button" data-client-student-view="${client.id}">Vista alumno</button>` : '<span class="muted">Vista alumno disponible para clientes activos</span>'}
         </div>
-      </div>`;
+      </section>`;
   }
 
   function renderAuthPanel() {
@@ -5286,7 +5366,7 @@
     }
 
     const visibleClients = getVisibleClients();
-    const selectedClient = clientUi.detailId ? (visibleClients.find((client) => client.id === clientUi.detailId) || clientUi.records.find((client) => client.id === clientUi.detailId)) : visibleClients[0] || null;
+    const selectedClient = clientUi.detailId ? (visibleClients.find((client) => client.id === clientUi.detailId) || clientUi.records.find((client) => client.id === clientUi.detailId)) : null;
 
     if (els.clientCount) {
       els.clientCount.textContent = `${visibleClients.length} cliente${visibleClients.length === 1 ? '' : 's'}`;
@@ -5321,7 +5401,7 @@
       const scheduleLabel = escapeHtml(client.schedule_notes || 'Sin horario');
       const whatsappPhone = normalizeChileanPhoneForWhatsApp(client.phone);
       return `
-        <article class="client-card">
+        <article class="client-card" data-client-card="${escapeHtml(client.id)}">
           <div class="client-card-head">
             <div>
               <h3>${escapeHtml(getClientDisplayName(client))}</h3>
@@ -5335,16 +5415,15 @@
             <div><strong>Estado del cliente</strong><div class="meta">${escapeHtml(getClientPresenceLabel(client))}</div></div>
           </div>
           <div class="inline-actions client-actions">
-            <button class="ghost small" type="button" data-client-view="${client.id}">Ver ficha</button>
-            <button class="ghost small" type="button" data-client-sports="${client.id}">Ficha deportiva</button>
+            <button class="ghost small" type="button" data-client-view="${client.id}" aria-expanded="${clientUi.detailId === client.id && clientUi.detailType === 'details'}">${clientUi.detailId === client.id && clientUi.detailType === 'details' ? 'Cerrar ficha' : 'Ver ficha'}</button>
+            <button class="ghost small" type="button" data-client-sports="${client.id}" aria-expanded="${clientUi.detailId === client.id && clientUi.detailType === 'sports'}">${clientUi.detailId === client.id && clientUi.detailType === 'sports' ? 'Cerrar ficha deportiva' : 'Ficha deportiva'}</button>
             <button class="secondary small" type="button" data-client-edit="${client.id}">Editar</button>
             <button class="secondary small" type="button" data-client-whatsapp="${client.id}" ${whatsappPhone ? '' : 'disabled'}>WhatsApp</button>
           </div>
+          ${clientUi.detailId === client.id ? (clientUi.detailType === 'sports' ? renderSportsProfilePanel(client) : renderClientDetail(client)) : ''}
         </article>`;
     }).join('') : emptyMessage;
 
-    renderClientDetail(selectedClient);
-    renderSportsProfilePanel(selectedClient);
     if (clientUi.notice && els.clientMessage) {
       els.clientMessage.textContent = clientUi.notice;
       els.clientMessage.classList.toggle('ok', clientUi.noticeTone === 'ok');
@@ -5727,10 +5806,31 @@
 
   function selectClientDetail(clientId) {
     const client = (clientUi.records || []).find((item) => item.id === clientId);
-    if (client) {
-      clientUi.detailId = client.id;
-      renderClients();
+    if (!client) {
+      return;
     }
+    const currentId = clientUi.detailId;
+    const currentPanel = document.querySelector('[data-client-detail-panel]');
+    if (currentId === client.id) {
+      currentPanel?.remove();
+      clientUi.detailId = '';
+      document.querySelectorAll('[data-client-view]').forEach((button) => {
+        button.textContent = 'Ver ficha';
+        button.setAttribute('aria-expanded', 'false');
+      });
+      return;
+    }
+
+    currentPanel?.remove();
+    document.querySelectorAll('[data-client-view]').forEach((button) => {
+      const expanded = button.getAttribute('data-client-view') === client.id;
+      button.textContent = expanded ? 'Cerrar ficha' : 'Ver ficha';
+      button.setAttribute('aria-expanded', String(expanded));
+    });
+    clientUi.detailId = client.id;
+    const card = [...document.querySelectorAll('[data-client-card]')]
+      .find((element) => element.getAttribute('data-client-card') === client.id);
+    card?.querySelector('.client-actions')?.insertAdjacentHTML('afterend', renderClientDetail(client));
   }
 
   function getClientAgendaWeekdays(client) {
@@ -5761,9 +5861,9 @@
 
   function getAgendaRoutine(clientId, dateValue) {
     const assignment = getActiveTrainingAssignment(clientId);
-    const { day } = getGroupSessionDay(assignment, dateValue);
+    const { day } = getSelectedTrainingProgramDay(clientId, assignment);
     if (!day) {
-      return 'Sin rutina asignada';
+      return assignment ? 'Selecciona una sesión del programa' : 'Sin rutina asignada';
     }
     const dayName = String(day.name || 'Rutina').replace(/^(lunes|martes|miercoles|jueves|viernes|sabado|domingo|lun|mar|mie|jue|vie|sab|dom)\s*[—–-]\s*/i, '') || day.name;
     const exerciseNames = (day.exercises || []).map((exercise) => exercise.exerciseName).filter(Boolean);
@@ -5773,13 +5873,22 @@
   function getAgendaSlotsForDate(date) {
     const dateValue = getAgendaDateValue(date);
     const weekday = date.getDay() || 7;
+    const dayAliases = [
+      ['lunes', 'lun'], ['martes', 'mar'], ['miercoles', 'mie'], ['jueves', 'jue'],
+      ['viernes', 'vie'], ['sabado', 'sab'], ['domingo', 'dom']
+    ];
     const slotsByKey = new Map();
     getActiveTrainingClients().forEach((client) => {
       if (!getClientAgendaWeekdays(client).includes(weekday)) {
         return;
       }
-      const timeMatch = String(client.schedule_notes || '').match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/);
-      const time = timeMatch ? `${timeMatch[1].padStart(2, '0')}:${timeMatch[2]}` : 'Sin hora';
+      const schedule = String(client.schedule_notes || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const namedTimes = [...schedule.matchAll(/\b(lunes|lun|martes|mar|miercoles|mie|jueves|jue|viernes|vie|sabado|sab|domingo|dom)\s+([01]?\d|2[0-3]):([0-5]\d)\b/g)];
+      const dayTime = namedTimes.find((match) => dayAliases[weekday - 1].includes(match[1]));
+      const timeMatch = dayTime || schedule.match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/);
+      const hour = dayTime ? dayTime[2] : timeMatch?.[1];
+      const minute = dayTime ? dayTime[3] : timeMatch?.[2];
+      const time = timeMatch ? `${hour.padStart(2, '0')}:${minute}` : 'Sin hora';
       const modality = client.training_modality === 'group' ? 'group' : 'personalized';
       const groupSize = modality === 'group' ? Number(client.training_group_size || 2) : 1;
       const slotKey = modality === 'group' ? `${time}:group:${groupSize}` : `${time}:client:${client.id}`;
@@ -5792,7 +5901,7 @@
         routine: getAgendaRoutine(client.id, dateValue),
         total: Number(client.sessions_total || 0),
         used: Number(client.sessions_used || 0),
-        attended: false
+        attendance: null
       });
     });
     return Array.from(slotsByKey.entries()).map(([slotKey, slot]) => {
@@ -5800,26 +5909,43 @@
       const sessionKey = `${dateValue}:${slotKey}:${clientIds.join(',')}`;
       slot.students.forEach((student) => {
         const client = getClientById(student.id);
-        student.attended = (client?.training_attendance || []).some((entry) => entry.sessionKey === sessionKey);
+        student.attendance = (client?.training_attendance || []).find((entry) => entry.sessionKey === sessionKey) || null;
       });
       return { ...slot, sessionKey, dateValue, key: slotKey };
     }).sort((first, second) => first.time.localeCompare(second.time));
   }
 
   function renderAgendaSlot(slot, showAttendanceAction = false) {
-    const complete = slot.students.every((student) => student.attended);
-    const canMark = slot.students.some((student) => !student.attended && student.total > student.used);
     const modeLabel = slot.modality === 'group' ? `Grupo (${slot.groupSize})` : 'Personalizado';
+    const statusLabels = { attended: 'Asistió', rescheduled: 'Reagendada', no_show: 'No asistió' };
     return `
       <article class="training-agenda-slot">
         <div class="training-agenda-slot-heading"><strong>${escapeHtml(slot.time)}</strong><span class="pill">${modeLabel}</span></div>
         <div class="training-agenda-students">${slot.students.map((student) => `
           <div class="training-agenda-student">
             <div><strong>${escapeHtml(student.name)}</strong><div class="meta">${escapeHtml(student.routine)}</div></div>
-            <span class="training-session-balance">${Math.max(0, student.total - student.used)}/${student.total}</span>
+            <div class="training-agenda-student-actions">
+              <span class="training-session-balance">Sesiones disponibles: ${Math.max(0, student.total - student.used)}/${student.total} — puedes reagendar durante la semana sin problema.</span>
+              ${showAttendanceAction ? student.attendance
+                ? `<span class="training-attendance-status ${escapeHtml(student.attendance.status)}">${statusLabels[student.attendance.status] || 'Asistió'}</span>`
+                : student.total > student.used
+                  ? `<button class="secondary small" type="button" data-agenda-attend="${escapeHtml(slot.sessionKey)}" data-client-id="${escapeHtml(student.id)}">Marcar asistencia</button>
+                    <button class="secondary small" type="button" data-agenda-reschedule="${escapeHtml(slot.sessionKey)}" data-client-id="${escapeHtml(student.id)}">Cancelar / reagendar</button>
+                    <button class="ghost small" type="button" data-agenda-no-show="${escapeHtml(slot.sessionKey)}" data-client-id="${escapeHtml(student.id)}">Marcar no asistió</button>`
+                  : '<span class="meta">Plan sin sesiones disponibles</span>'
+                : ''}
+            </div>
+            ${showAttendanceAction && !student.attendance && student.total > student.used ? `
+              <form class="agenda-reschedule-form hidden" data-agenda-reschedule-form="${escapeHtml(slot.sessionKey)}" data-client-id="${escapeHtml(student.id)}">
+                <label>Fecha de la sesión original<input type="date" name="sessionDate" value="${escapeHtml(slot.dateValue)}" readonly></label>
+                <label>Días de anticipación<input type="number" name="noticeDays" min="0" step="1" required></label>
+                <label>¿Quién pidió el cambio?<select name="requestedBy" required><option value="">Selecciona</option><option value="student">El alumno</option><option value="coach">El entrenador</option></select></label>
+                <label>Motivo<textarea name="reason" rows="2"></textarea></label>
+                <p class="notice">Con 7 o más días de aviso, o si lo pidió el entrenador, queda como Reagendada sin descuento. Con menos de 7 días pedido por el alumno, se registra como No asistió y descuenta la sesión.</p>
+                <div class="inline-actions"><button class="primary small" type="submit">Confirmar decisión</button><button class="secondary small" type="button" data-agenda-reschedule-close>Cancelar</button></div>
+              </form>` : ''}
           </div>`).join('')}
         </div>
-        ${showAttendanceAction ? `<button class="${complete ? 'secondary' : 'primary'} small" type="button" data-agenda-attend="${escapeHtml(slot.sessionKey)}" ${complete || !canMark ? 'disabled' : ''}>${complete ? 'Asistencia marcada' : canMark ? 'Marcar asistencia' : 'Plan sin sesiones disponibles'}</button>` : ''}
       </article>`;
   }
 
@@ -5848,29 +5974,55 @@
     }
   }
 
-  function markAgendaAttendance(sessionKey) {
+  function recordAgendaStatus(sessionKey, clientId, status, details = {}) {
     const today = new Date(`${getTodayLocalDate()}T00:00:00`);
     const slot = getAgendaSlotsForDate(today).find((item) => item.sessionKey === sessionKey);
     if (!slot) {
       return;
     }
+    const student = slot.students.find((item) => item.id === clientId);
+    const client = getClientById(clientId);
+    if (!student || !client || student.attendance || Number(client.sessions_used || 0) >= Number(client.sessions_total || 0)) {
+      return;
+    }
     const markedAt = new Date().toISOString();
-    slot.students.forEach((student) => {
-      const client = getClientById(student.id);
-      if (!client || student.attended || Number(client.sessions_used || 0) >= Number(client.sessions_total || 0)) {
-        return;
-      }
-      if (!Array.isArray(client.training_attendance)) {
-        client.training_attendance = [];
-      }
-      if (client.training_attendance.some((entry) => entry.sessionKey === sessionKey)) {
-        return;
-      }
-      client.training_attendance.push({ sessionKey, date: slot.dateValue, time: slot.time, markedAt });
-      client.sessions_used = Math.min(Number(client.sessions_total || 0), Number(client.sessions_used || 0) + 1);
+    if (!Array.isArray(client.training_attendance)) {
+      client.training_attendance = [];
+    }
+    if (client.training_attendance.some((entry) => entry.sessionKey === sessionKey)) {
+      return;
+    }
+    client.training_attendance.push({
+      sessionKey,
+      date: slot.dateValue,
+      time: slot.time,
+      markedAt,
+      status,
+      reason: String(details.reason || '').trim(),
+      noticeDays: details.noticeDays ?? null,
+      requestedBy: details.requestedBy || ''
     });
+    if (status !== 'rescheduled') {
+      client.sessions_used = Math.min(Number(client.sessions_total || 0), Number(client.sessions_used || 0) + 1);
+    }
     dataApi.saveState(state);
     render();
+  }
+
+  function markAgendaAttendance(sessionKey, clientId) {
+    recordAgendaStatus(sessionKey, clientId, 'attended');
+  }
+
+  function handleAgendaRescheduleSubmit(form) {
+    const formData = new FormData(form);
+    const noticeDays = Number(formData.get('noticeDays'));
+    const requestedBy = String(formData.get('requestedBy') || '');
+    const status = noticeDays >= 7 || requestedBy === 'coach' ? 'rescheduled' : 'no_show';
+    recordAgendaStatus(form.getAttribute('data-agenda-reschedule-form'), form.getAttribute('data-client-id'), status, {
+      noticeDays,
+      requestedBy,
+      reason: formData.get('reason')
+    });
   }
 
   function renderTrainings() {
@@ -5888,6 +6040,29 @@
       ? trainingUi.selectedClientId
       : (activeClients[0]?.id || '');
     trainingUi.selectedClientId = selectedClientId;
+
+    const selectedClient = getClientById(selectedClientId);
+    const selectedAssignment = getActiveTrainingAssignment(selectedClientId);
+    if (trainingUi.programDayClientId !== selectedClientId) {
+      const savedDayId = selectedClient?.last_training_program_id === selectedAssignment?.id
+        ? selectedClient.last_training_day_id
+        : '';
+      trainingUi.programDayClientId = selectedClientId;
+      trainingUi.selectedProgramDayId = selectedAssignment?.days?.some((day) => day.id === savedDayId) ? savedDayId : '';
+    }
+    if (els.programDaySelect) {
+      const dayOptions = (selectedAssignment?.days || []).map((day) => `<option value="${escapeHtml(day.id)}">${escapeHtml(day.name)}</option>`).join('');
+      els.programDaySelect.innerHTML = dayOptions || '<option value="">No hay programa activo asignado</option>';
+      els.programDaySelect.value = trainingUi.selectedProgramDayId;
+      els.programDaySelect.disabled = !dayOptions;
+    }
+    if (els.programDayMessage) {
+      els.programDayMessage.textContent = !selectedAssignment
+        ? 'Este alumno no tiene un programa activo asignado.'
+        : trainingUi.selectedProgramDayId
+          ? 'El día elegido se guardará como parte de la sesión y su historial.'
+          : 'Elige manualmente qué día del programa vas a ejecutar.';
+    }
 
     if (!findSessionById(trainingUi.activeSessionId) || findSessionById(trainingUi.activeSessionId)?.clientId !== selectedClientId) {
       setActiveSessionForClient(selectedClientId);
@@ -5977,7 +6152,7 @@
             <div class="training-set-item ${exercise.id === activeExercise?.id ? 'is-active' : ''}">
               <div>
                 <strong>${index + 1}. ${escapeHtml(exercise.exerciseName)}</strong>
-                <div class="meta">${Number(exercise.plannedSets || 0)} × ${Number(exercise.plannedRepMin || 0)}-${Number(exercise.plannedRepMax || 0)} · ${Number(exercise.restSeconds || 0)} s</div>
+                <div class="meta">${Number(exercise.plannedSets || 0)} × ${exercise.plannedRepMin == null || exercise.plannedRepMax == null ? 'reps por definir' : `${Number(exercise.plannedRepMin)}-${Number(exercise.plannedRepMax)} reps`} · ${Number(exercise.restSeconds || 0)} s</div>
                 <div class="meta">${Number(exercise.targetWeight || 0) > 0 ? `${Number(exercise.targetWeight || 0)} kg objetivo` : 'Sin peso objetivo'}${exercise.coachNotes ? ` · ${escapeHtml(exercise.coachNotes)}` : ''}</div>
               </div>
               <div class="inline-actions">
@@ -6022,7 +6197,7 @@
             <div class="training-set-item">
               <div>
                 <strong>Serie ${Number(setEntry.setNumber || 0)}</strong>
-                <div class="meta">${Number(setEntry.weight || 0)} kg × ${Number(setEntry.reps || 0)} · ${setEntry.completed !== false ? 'Completada' : 'No completada'}</div>
+                <div class="meta">${Number(setEntry.weight || 0)} kg × ${Number(setEntry.reps || 0)} · ${setEntry.rir == null ? 'RIR pendiente' : `RIR ${Number(setEntry.rir)}`} · ${setEntry.completed !== false ? 'Completada' : 'No completada'}</div>
                 <div class="meta">${setEntry.personalRecord ? 'Posible nuevo récord' : ''}</div>
               </div>
               <button class="secondary small" type="button" data-set-edit="${Number(setEntry.setNumber || 0)}">Corregir</button>
@@ -6826,8 +7001,10 @@
 
     const weight = Number(els.setWeightInput?.value || 0);
     const reps = Number(els.setRepsInput?.value || 0);
+    const rirValue = String(els.setRirInput?.value || '').trim();
+    const rir = rirValue ? Number(rirValue) : null;
     const completed = els.setCompletedInput ? els.setCompletedInput.checked : true;
-    if (!Number.isFinite(weight) || weight < 0 || !Number.isFinite(reps) || reps < 0) {
+    if (!Number.isFinite(weight) || weight < 0 || !Number.isFinite(reps) || reps < 0 || (rir !== null && (!Number.isFinite(rir) || rir < 0 || rir > 10))) {
       if (els.setRecordNotice) {
         els.setRecordNotice.textContent = 'Peso y repeticiones deben ser válidos.';
       }
@@ -6844,6 +7021,7 @@
     if (existingSet) {
       existingSet.weight = weight;
       existingSet.reps = reps;
+      existingSet.rir = rir;
       existingSet.completed = completed;
       existingSet.setType = getSetType(existingSet);
       existingSet.techniqueStatus = existingSet.techniqueStatus || 'pending';
@@ -6854,6 +7032,7 @@
         setNumber: nextSetNumber,
         weight,
         reps,
+        rir,
         completed,
         setType: 'S',
         createdAt: new Date().toISOString(),
@@ -6870,6 +7049,9 @@
     }
     if (els.setRepsInput) {
       els.setRepsInput.value = '';
+    }
+    if (els.setRirInput) {
+      els.setRirInput.value = '';
     }
     if (els.setRecordNotice) {
       els.setRecordNotice.textContent = isPotentialPr ? '🏆 Posible nuevo récord' : 'Serie guardada.';
@@ -7443,7 +7625,34 @@
     const trainingViewButton = target.closest('[data-training-view]');
     const agendaAttendanceButton = target.closest('[data-agenda-attend]');
     if (agendaAttendanceButton && !agendaAttendanceButton.disabled) {
-      markAgendaAttendance(agendaAttendanceButton.getAttribute('data-agenda-attend'));
+      markAgendaAttendance(
+        agendaAttendanceButton.getAttribute('data-agenda-attend'),
+        agendaAttendanceButton.getAttribute('data-client-id')
+      );
+      return;
+    }
+
+    const agendaRescheduleButton = target.closest('[data-agenda-reschedule]');
+    if (agendaRescheduleButton) {
+      const form = agendaRescheduleButton.closest('.training-agenda-student')?.querySelector('[data-agenda-reschedule-form]');
+      form?.classList.remove('hidden');
+      form?.querySelector('[name="noticeDays"]')?.focus();
+      return;
+    }
+
+    const agendaRescheduleCloseButton = target.closest('[data-agenda-reschedule-close]');
+    if (agendaRescheduleCloseButton) {
+      agendaRescheduleCloseButton.closest('[data-agenda-reschedule-form]')?.classList.add('hidden');
+      return;
+    }
+
+    const agendaNoShowButton = target.closest('[data-agenda-no-show]');
+    if (agendaNoShowButton) {
+      recordAgendaStatus(
+        agendaNoShowButton.getAttribute('data-agenda-no-show'),
+        agendaNoShowButton.getAttribute('data-client-id'),
+        'no_show'
+      );
       return;
     }
 
@@ -8136,6 +8345,9 @@
         if (els.setRepsInput) {
           els.setRepsInput.value = String(Number(setEntry.reps || 0));
         }
+        if (els.setRirInput) {
+          els.setRirInput.value = setEntry.rir == null ? '' : String(setEntry.rir);
+        }
         if (els.setCompletedInput) {
           els.setCompletedInput.checked = setEntry.completed !== false;
         }
@@ -8326,6 +8538,11 @@
   function handleDynamicFormSubmit(event) {
     const form = event.target;
     if (!(form instanceof HTMLFormElement)) {
+      return;
+    }
+    if (form.matches('[data-agenda-reschedule-form]')) {
+      event.preventDefault();
+      handleAgendaRescheduleSubmit(form);
       return;
     }
     if (form.id === 'sportsProfileForm') {
@@ -8623,11 +8840,21 @@
   });
   els.studentId?.addEventListener('change', (event) => {
     trainingUi.selectedClientId = event.target.value || '';
+    trainingUi.programDayClientId = '';
     setActiveSessionForClient(trainingUi.selectedClientId);
     if (els.historyClientId) {
       els.historyClientId.value = trainingUi.selectedClientId;
     }
     renderTrainings();
+  });
+  els.programDaySelect?.addEventListener('change', (event) => {
+    const selectedDayId = event.target.value || '';
+    if (!selectedDayId) {
+      return;
+    }
+    if (!startProgramDaySession(trainingUi.selectedClientId, selectedDayId) && els.programDayMessage) {
+      els.programDayMessage.textContent = 'No se pudo abrir ese día del programa.';
+    }
   });
   els.sessionCreateMode?.addEventListener('change', () => {
     renderTrainings();

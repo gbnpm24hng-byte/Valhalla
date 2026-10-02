@@ -217,6 +217,36 @@ h1, h2, h3, h4, h5, h6, p { margin: 0; }
   gap: 12px;
 }
 
+.client-detail-inline {
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 12px;
+}
+
+.client-program-detail {
+  display: grid;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.client-program-day {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.client-program-day ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 18px;
+}
+
 .client-card-head {
   display: flex;
   justify-content: space-between;
@@ -1294,12 +1324,69 @@ button.small {
 .training-agenda-student {
   padding-top: 8px;
   border-top: 1px solid var(--border);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, auto);
+  align-items: start;
 }
 
 .training-session-balance {
   flex: 0 0 auto;
   color: var(--accent);
   font-weight: 700;
+}
+
+.training-agenda-student-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.training-attendance-status {
+  padding: 5px 8px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.training-attendance-status.attended {
+  background: rgba(90, 156, 104, 0.16);
+  color: var(--success);
+}
+
+.training-attendance-status.rescheduled {
+  background: rgba(214, 169, 40, 0.16);
+  color: var(--accent);
+}
+
+.training-attendance-status.no_show {
+  background: rgba(215, 90, 90, 0.16);
+  color: var(--danger);
+}
+
+.agenda-reschedule-form {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+
+.agenda-reschedule-form label,
+.agenda-reschedule-form .notice,
+.agenda-reschedule-form .inline-actions {
+  grid-column: 1 / -1;
+}
+
+.agenda-reschedule-form input,
+.agenda-reschedule-form select,
+.agenda-reschedule-form textarea {
+  width: 100%;
 }
 
 .training-agenda-upcoming {
@@ -1531,4 +1618,7 @@ button.small {
   .group-confirm-row { align-items: stretch; flex-direction: column; }
   .group-confirm-row label,
   .group-confirm-row button { width: 100%; }
+  .training-agenda-student { grid-template-columns: 1fr; }
+  .training-agenda-student-actions { justify-content: flex-start; }
+  .agenda-reschedule-form { grid-template-columns: 1fr; }
 }

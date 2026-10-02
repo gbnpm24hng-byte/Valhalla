@@ -84,3 +84,16 @@ test('getDashboardHighlights builds the dashboard cards for the new home shell',
   assert.equal(highlights[4].summary, '$200.000');
   assert.equal(highlights[4].buttonLabel, 'Configurar');
 });
+
+test('dashboard payment review excludes clients without a charge', () => {
+  const state = createFinanceState();
+  state.clients = [
+    { id: 'paid', status: 'paid', payment_status: 'paid', continues: true },
+    { id: 'pending', status: 'pending', payment_status: 'pending', continues: true },
+    { id: 'internal', status: 'not_applicable', payment_status: 'not_applicable', continues: true }
+  ];
+
+  const clientsCard = getDashboardHighlights(state, new Date('2026-08-15')).find((card) => card.title === 'Clientes');
+
+  assert.equal(clientsCard.detail, '1 pagos por revisar');
+});

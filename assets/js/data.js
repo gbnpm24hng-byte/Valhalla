@@ -363,16 +363,19 @@
 
   function normalizeTrainingExercise(exercise, index) {
     const plannedSets = Number(exercise.plannedSets || exercise.sets || 1);
-    const plannedRepMin = Number(exercise.plannedRepMin || exercise.reps || 1);
-    const plannedRepMax = Number(exercise.plannedRepMax || exercise.reps || plannedRepMin);
+    const rawRepMin = exercise.plannedRepMin === null ? null : (exercise.plannedRepMin || exercise.reps || 1);
+    const rawRepMax = exercise.plannedRepMax === null ? null : (exercise.plannedRepMax || exercise.reps || rawRepMin);
+    const plannedRepMin = rawRepMin === null ? null : Number(rawRepMin);
+    const plannedRepMax = rawRepMax === null ? null : Number(rawRepMax);
     return {
       id: exercise.id || createId('tx-exercise'),
+      programExerciseId: exercise.programExerciseId || '',
       exerciseName: exercise.exerciseName || exercise.exercise || 'Ejercicio',
       order: Number(exercise.order || index + 1),
       plannedSets: plannedSets > 0 ? plannedSets : 1,
-      plannedRepMin: plannedRepMin > 0 ? plannedRepMin : 1,
-      plannedRepMax: plannedRepMax >= plannedRepMin ? plannedRepMax : plannedRepMin,
-      targetWeight: Number(exercise.targetWeight || exercise.weight || 0),
+      plannedRepMin: plannedRepMin === null ? null : plannedRepMin > 0 ? plannedRepMin : 1,
+      plannedRepMax: plannedRepMax === null ? null : plannedRepMax >= plannedRepMin ? plannedRepMax : plannedRepMin,
+      targetWeight: exercise.targetWeight === null ? null : Number(exercise.targetWeight || exercise.weight || 0),
       restSeconds: Number(exercise.restSeconds || 90),
       coachNotes: exercise.coachNotes || exercise.techniqueNotes || '',
       sets: Array.isArray(exercise.sets)
@@ -386,6 +389,10 @@
     return {
       id: session.id || createId('tx-session'),
       clientId: session.clientId || session.studentId || '',
+      programAssignmentId: session.programAssignmentId || '',
+      programId: session.programId || '',
+      programDayId: session.programDayId || '',
+      programDayName: session.programDayName || '',
       planId: session.planId || null,
       groupSessionId: session.groupSessionId || null,
       date: session.date || '',
@@ -399,23 +406,30 @@
   }
 
   function normalizeTrainingProgramExercise(exercise, index) {
-    const repRangeMin = Number(exercise.repRangeMin ?? exercise.rep_min ?? exercise.repMin ?? exercise.plannedRepMin ?? 1);
-    const repRangeMax = Number(exercise.repRangeMax ?? exercise.rep_max ?? exercise.repMax ?? exercise.plannedRepMax ?? repRangeMin);
+    const rawRepRangeMin = exercise.repRangeMin === null || exercise.repMin === null
+      ? null
+      : (exercise.repRangeMin ?? exercise.rep_min ?? exercise.repMin ?? exercise.plannedRepMin ?? 1);
+    const rawRepRangeMax = exercise.repRangeMax === null || exercise.repMax === null
+      ? null
+      : (exercise.repRangeMax ?? exercise.rep_max ?? exercise.repMax ?? exercise.plannedRepMax ?? rawRepRangeMin);
+    const repRangeMin = rawRepRangeMin === null || rawRepRangeMin === '' ? null : Number(rawRepRangeMin);
+    const repRangeMax = rawRepRangeMax === null || rawRepRangeMax === '' ? null : Number(rawRepRangeMax);
     const plannedSets = Number(exercise.sets ?? exercise.plannedSets ?? exercise.planned_sets ?? 1);
     const approximations = Array.isArray(exercise.approximations)
       ? exercise.approximations.map((item, itemIndex) => ({
         id: item.id || createId('program-approximation'),
         label: item.label || `A${itemIndex + 1}`,
-        weight: Number(item.weight || 0),
-        reps: Number(item.reps || 0)
+        weight: item.weight === null ? null : Number(item.weight || 0),
+        reps: item.reps === null ? null : Number(item.reps || 0)
       }))
       : [];
     const effectiveSets = Array.isArray(exercise.effectiveSets)
       ? exercise.effectiveSets.map((item, itemIndex) => ({
         id: item.id || createId('program-set'),
         label: item.label || `S${itemIndex + 1}`,
-        weight: Number(item.weight || 0),
-        reps: Number(item.reps || 0)
+        weight: item.weight === null ? null : Number(item.weight || 0),
+        reps: item.reps === null ? null : Number(item.reps || 0),
+        rir: item.rir === '' || item.rir === undefined || item.rir === null ? null : Number(item.rir)
       }))
       : [];
 
@@ -426,11 +440,11 @@
       category: exercise.category || 'OTROS',
       notes: exercise.notes || '',
       sets: Number.isFinite(plannedSets) && plannedSets > 0 ? plannedSets : 1,
-      repMin: Number.isFinite(repRangeMin) && repRangeMin > 0 ? repRangeMin : 1,
-      repMax: Number.isFinite(repRangeMax) && repRangeMax >= repRangeMin ? repRangeMax : (repRangeMin || 1),
-      repRangeMin: Number.isFinite(repRangeMin) && repRangeMin > 0 ? repRangeMin : 1,
-      repRangeMax: Number.isFinite(repRangeMax) && repRangeMax >= repRangeMin ? repRangeMax : (repRangeMin || 1),
-      targetWeight: Number(exercise.targetWeight ?? exercise.weight ?? 0),
+      repMin: repRangeMin === null ? null : Number.isFinite(repRangeMin) && repRangeMin > 0 ? repRangeMin : 1,
+      repMax: repRangeMax === null ? null : Number.isFinite(repRangeMax) && repRangeMax >= repRangeMin ? repRangeMax : (repRangeMin || 1),
+      repRangeMin: repRangeMin === null ? null : Number.isFinite(repRangeMin) && repRangeMin > 0 ? repRangeMin : 1,
+      repRangeMax: repRangeMax === null ? null : Number.isFinite(repRangeMax) && repRangeMax >= repRangeMin ? repRangeMax : (repRangeMin || 1),
+      targetWeight: exercise.targetWeight === null || exercise.weight === null ? null : Number(exercise.targetWeight ?? exercise.weight ?? 0),
       restSeconds: Number(exercise.restSeconds ?? 90),
       zone: exercise.zone || '',
       weightConvention: exercise.weightConvention || 'external',
@@ -617,13 +631,20 @@
       renewal_day: renewalDay,
       sessions_total: Math.max(0, Math.floor(Number(client.sessions_total ?? 0) || 0)),
       sessions_used: Math.max(0, Math.floor(Number(client.sessions_used ?? 0) || 0)),
+      sessions_month: String(client.sessions_month || ''),
       training_modality: client.training_modality === 'group' ? 'group' : 'personalized',
       training_group_size: Math.max(2, Math.min(4, Math.floor(Number(client.training_group_size || 2)))),
       training_attendance: Array.isArray(client.training_attendance) ? client.training_attendance.map((entry) => ({
         sessionKey: String(entry.sessionKey || ''),
         date: String(entry.date || ''),
         time: String(entry.time || ''),
-        markedAt: String(entry.markedAt || '')
+        markedAt: String(entry.markedAt || ''),
+        status: ['attended', 'rescheduled', 'no_show'].includes(entry.status) ? entry.status : 'attended',
+        reason: String(entry.reason || ''),
+        noticeDays: entry.noticeDays === undefined || entry.noticeDays === null || entry.noticeDays === ''
+          ? null
+          : Math.max(0, Math.floor(Number(entry.noticeDays) || 0)),
+        requestedBy: ['student', 'coach'].includes(entry.requestedBy) ? entry.requestedBy : ''
       })) : [],
       payment_status: paymentStatus,
       client_status: clientStatus,
@@ -632,6 +653,22 @@
       continues: client.continues !== undefined ? client.continues : clientStatus !== 'inactive'
     };
     return normalized;
+  }
+
+  function resetClientSessionMonth(client, currentMonth) {
+    const month = String(currentMonth || '').slice(0, 7);
+    if (!client || !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
+      return false;
+    }
+    const lastMonth = String(client.sessions_month || '');
+    if (lastMonth === month) {
+      return false;
+    }
+    if (lastMonth) {
+      client.sessions_used = 0;
+    }
+    client.sessions_month = month;
+    return true;
   }
 
   function normalizeNutritionProfile(profile) {
@@ -802,8 +839,12 @@
       financialGoals: mergeArrayById(base.financialGoals, parsed.financialGoals, normalizeFinancialGoal),
       debts: mergeArrayById(base.debts, parsed.debts, normalizeDebt),
       trainings: {
-        students: mergeArrayById(base.trainings.students, parsed.trainings?.students, (item) => item),
-        routines: mergeArrayById(base.trainings.routines, parsed.trainings?.routines, (item) => item)
+        students: Array.isArray(parsed.trainings?.students)
+          ? mergeArrayById([], parsed.trainings.students, (item) => item)
+          : base.trainings.students,
+        routines: Array.isArray(parsed.trainings?.routines)
+          ? mergeArrayById([], parsed.trainings.routines, (item) => item)
+          : base.trainings.routines
       },
       trainingModelVersion: parsed.trainingModelVersion || '0.8.0',
       trainingsV08: {
@@ -887,6 +928,7 @@
     importState,
     createId,
     normalizeClient,
+    resetClientSessionMonth,
     normalizeLibraryExercise,
     normalizeSportsProfile,
     normalizeSportsConsideration,
