@@ -614,7 +614,7 @@
             <h3>${escapeHtml(getClientDisplayName(client))}</h3>
             <div class="meta">Resumen rápido deportivo</div>
           </div>
-          <button class="secondary small" type="button" data-client-sports="${client.id}">Ficha deportiva</button>
+          <button class="secondary small" type="button" data-client-sports="${client.id}" aria-expanded="true">Cerrar ficha deportiva</button>
         </div>
         <div class="client-detail-grid">
           <div><strong>Objetivo</strong><div class="meta">${escapeHtml(summary.primaryGoal)}</div></div>
@@ -5597,6 +5597,7 @@
       clientUi.records = nextRecords;
       state.clients = nextRecords.map((client) => normalizeClientRecord(client));
       clientUi.detailId = normalizedSavedClient.id;
+      clientUi.detailType = clientUi.detailType || 'details';
       clientUi.formOpen = false;
       clientUi.editingId = null;
       clearClientForm();
@@ -5801,36 +5802,38 @@
     }
     toggleClientForm(true, client);
     clientUi.detailId = client.id;
+    clientUi.detailType = clientUi.detailType || 'details';
     renderClients();
   }
 
-  function selectClientDetail(clientId) {
+  function selectClientDetail(clientId, type = 'details') {
     const client = (clientUi.records || []).find((item) => item.id === clientId);
     if (!client) {
       return;
     }
-    const currentId = clientUi.detailId;
-    const currentPanel = document.querySelector('[data-client-detail-panel]');
-    if (currentId === client.id) {
-      currentPanel?.remove();
-      clientUi.detailId = '';
-      document.querySelectorAll('[data-client-view]').forEach((button) => {
-        button.textContent = 'Ver ficha';
-        button.setAttribute('aria-expanded', 'false');
-      });
-      return;
-    }
+    const panelType = type === 'sports' ? 'sports' : 'details';
+    const isOpen = clientUi.detailId === client.id && (clientUi.detailType || 'details') === panelType;
+    document.querySelector('[data-client-detail-panel]')?.remove();
+    clientUi.detailId = isOpen ? '' : client.id;
+    clientUi.detailType = isOpen ? '' : panelType;
 
-    currentPanel?.remove();
     document.querySelectorAll('[data-client-view]').forEach((button) => {
-      const expanded = button.getAttribute('data-client-view') === client.id;
+      const expanded = !isOpen && panelType === 'details' && button.getAttribute('data-client-view') === client.id;
       button.textContent = expanded ? 'Cerrar ficha' : 'Ver ficha';
       button.setAttribute('aria-expanded', String(expanded));
     });
-    clientUi.detailId = client.id;
+    document.querySelectorAll('[data-client-sports]').forEach((button) => {
+      const expanded = !isOpen && panelType === 'sports' && button.getAttribute('data-client-sports') === client.id;
+      button.textContent = expanded ? 'Cerrar ficha deportiva' : 'Ficha deportiva';
+      button.setAttribute('aria-expanded', String(expanded));
+    });
+    if (isOpen) {
+      return;
+    }
+
     const card = [...document.querySelectorAll('[data-client-card]')]
       .find((element) => element.getAttribute('data-client-card') === client.id);
-    card?.querySelector('.client-actions')?.insertAdjacentHTML('afterend', renderClientDetail(client));
+    card?.querySelector('.client-actions')?.insertAdjacentHTML('afterend', panelType === 'sports' ? renderSportsProfilePanel(client) : renderClientDetail(client));
   }
 
   function getClientAgendaWeekdays(client) {
@@ -7485,9 +7488,7 @@
 
     const clientSportsId = target.getAttribute('data-client-sports');
     if (clientSportsId) {
-      clientUi.detailId = clientSportsId;
-      renderClients();
-      els.sportsProfilePanel?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      selectClientDetail(clientSportsId, 'sports');
       return;
     }
 
