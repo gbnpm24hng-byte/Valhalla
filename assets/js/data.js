@@ -819,10 +819,13 @@
 
   function mergeWithDefaults(parsed) {
     const base = createInitialState();
+    // Una lista guardada (aunque esté vacía) reemplaza a la de ejemplo; los valores por defecto
+    // solo se usan cuando el dato guardado no trae esa lista.
+    const mergeList = (defaults, incoming, normalizeItem) => mergeArrayById(Array.isArray(incoming) ? [] : defaults, incoming, normalizeItem);
     const legacyMigratedSessions = migrateLegacyRoutinesToV08(parsed.trainings?.routines || []);
     const parsedSessions = Array.isArray(parsed.trainingsV08?.sessions) ? parsed.trainingsV08.sessions : [];
     const mergedSessions = mergeTrainingSessionsById(parsedSessions, legacyMigratedSessions);
-    const recurringSource = Array.isArray(parsed.recurringTransactions) && parsed.recurringTransactions.length
+    const recurringSource = Array.isArray(parsed.recurringTransactions) && (parsed.recurringTransactions.length || !Array.isArray(parsed.recurring))
       ? parsed.recurringTransactions
       : (Array.isArray(parsed.recurring) ? parsed.recurring : base.recurring);
     const merged = {
@@ -830,14 +833,14 @@
       ...parsed,
       profile: { ...base.profile, ...(parsed.profile || {}) },
       settings: { ...base.settings, ...(parsed.settings || {}) },
-      accounts: mergeArrayById(base.accounts, parsed.accounts, normalizeAccount),
-      categories: mergeArrayById(base.categories, parsed.categories, (item) => ({ id: item.id || createId('category'), name: item.name || 'Categoría', group: item.group || 'personal' })),
-      recurring: mergeArrayById(base.recurring, recurringSource, (item) => item),
-      recurringTransactions: mergeArrayById(base.recurringTransactions, recurringSource, (item) => item),
-      clients: mergeArrayById(base.clients, parsed.clients, normalizeClient),
-      movements: mergeArrayById(base.movements, parsed.movements, (item) => item),
-      financialGoals: mergeArrayById(base.financialGoals, parsed.financialGoals, normalizeFinancialGoal),
-      debts: mergeArrayById(base.debts, parsed.debts, normalizeDebt),
+      accounts: mergeList(base.accounts, parsed.accounts, normalizeAccount),
+      categories: mergeList(base.categories, parsed.categories, (item) => ({ id: item.id || createId('category'), name: item.name || 'Categoría', group: item.group || 'personal' })),
+      recurring: mergeList(base.recurring, recurringSource, (item) => item),
+      recurringTransactions: mergeList(base.recurringTransactions, recurringSource, (item) => item),
+      clients: mergeList(base.clients, parsed.clients, normalizeClient),
+      movements: mergeList(base.movements, parsed.movements, (item) => item),
+      financialGoals: mergeList(base.financialGoals, parsed.financialGoals, normalizeFinancialGoal),
+      debts: mergeList(base.debts, parsed.debts, normalizeDebt),
       trainings: {
         students: Array.isArray(parsed.trainings?.students)
           ? mergeArrayById([], parsed.trainings.students, (item) => item)
@@ -915,6 +918,9 @@
 
   function importState(raw) {
     const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('Respaldo inválido');
+    }
     return mergeWithDefaults(parsed);
   }
 

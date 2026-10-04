@@ -124,3 +124,27 @@ test('training sessions retain the manually selected program day and set RIR', (
   assert.equal(session.exercises[0].programExerciseId, 'program-squat');
   assert.equal(session.exercises[0].sets[0].rir, 1);
 });
+
+test('importing a backup replaces every list instead of merging it with the defaults', () => {
+  const backup = createInitialState();
+  backup.clients = [{ id: 'backup-client', full_name: 'Cliente del respaldo' }];
+  backup.accounts = [{ id: 'backup-account', name: 'Cuenta del respaldo', isMain: true }];
+  backup.categories = [{ id: 'backup-category', name: 'Categoría del respaldo', group: 'personal' }];
+  backup.debts = [];
+  backup.financialGoals = [];
+  backup.recurringTransactions = [];
+  backup.recurring = [];
+
+  const imported = importState(JSON.stringify(backup));
+
+  assert.deepEqual(imported.clients.map((client) => client.id), ['backup-client']);
+  assert.deepEqual(imported.accounts.map((account) => account.id), ['backup-account']);
+  assert.deepEqual(imported.categories.map((category) => category.id), ['backup-category']);
+  assert.deepEqual(imported.debts, []);
+  assert.deepEqual(imported.financialGoals, []);
+  assert.deepEqual(imported.recurringTransactions, []);
+  assert.throws(() => importState('[]'));
+
+  const legacyBackup = { clients: backup.clients };
+  assert.equal(importState(JSON.stringify(legacyBackup)).accounts.length, createInitialState().accounts.length);
+});

@@ -7227,12 +7227,16 @@
     reader.onload = () => {
       try {
         const imported = dataApi.importState(reader.result);
+        Object.keys(state).forEach((key) => {
+          delete state[key];
+        });
         Object.assign(state, imported);
         persist();
         els.importMessage.textContent = 'Datos importados correctamente.';
       } catch (error) {
         els.importMessage.textContent = 'No se pudo importar el archivo.';
       }
+      event.target.value = '';
     };
     reader.readAsText(file);
   }
