@@ -8931,6 +8931,13 @@
     }
   });
 
+  // Acceso al estado en memoria para la sincronización (cloud-sync.js): es la misma
+  // fuente que persist() guarda, así lo subido coincide con lo guardado en el equipo.
+  window.VALHALLA.appState = {
+    get: () => state,
+    saveNow: () => dataApi.saveState(state)
+  };
+
   window.addEventListener('valhalla:auth-changed', renderAuthPanel);
 
   show('home');

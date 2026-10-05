@@ -207,6 +207,7 @@
   window.VALHALLA = window.VALHALLA || {};
   window.VALHALLA.auth = {
     isConfigured,
+    getClient,
     isSdkLoaded: () => Boolean(getClient()),
     signIn,
     signOut,

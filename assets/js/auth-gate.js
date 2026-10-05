@@ -115,6 +115,7 @@
     appEl?.classList.add('hidden');
     document.body.classList.add('auth-locked');
     removeHeaderSession();
+    window.dispatchEvent(new CustomEvent('valhalla:auth-locked'));
     gateEl.innerHTML = `<section class="auth-card card">${brandMarkup()}${innerHtml}</section>`;
     gateEl.classList.remove('hidden');
   }
