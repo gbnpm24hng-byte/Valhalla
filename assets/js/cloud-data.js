@@ -4,8 +4,13 @@
   const supabaseApi = window.VALHALLA.supabase;
   const dataApi = window.VALHALLA.data;
 
+  // Capa de tablas antiguas (schema.sql: clients, training_plans, ...). Queda desactivada:
+  // esas tablas no existen en el proyecto nuevo y usan ids uuid que no calzan con los de la app.
+  // La sincronización nueva (coach_state y tablas de alumno) va en otro módulo.
+  const LEGACY_TABLES_ENABLED = false;
+
   function isAvailable() {
-    return Boolean(supabaseApi && typeof supabaseApi.isCloudEnabled === 'function' && supabaseApi.isCloudEnabled());
+    return Boolean(LEGACY_TABLES_ENABLED && supabaseApi && typeof supabaseApi.isCloudEnabled === 'function' && supabaseApi.isCloudEnabled());
   }
 
   function getSupabaseClient() {
@@ -152,10 +157,10 @@
       return { data: null, error: 'Supabase SDK no disponible' };
     }
 
+    // auth_user_id es la cuenta del alumno, no la del entrenador: no se completa aquí.
     const nextPayload = {
       ...payload,
-      owner_id: ownerContext.ownerId,
-      auth_user_id: ownerContext.authUserId
+      owner_id: ownerContext.ownerId
     };
 
     const { data, error } = await client.from('clients').insert(nextPayload).select().single();

@@ -1,5 +1,8 @@
-﻿const CACHE='valhalla-v0.8.3-onboarding';
-const ASSETS=['./','./index.html','./manifest.json','./assets/css/styles.css?v=0.8.3','./assets/images/logo-vikingos.png','./assets/js/config.js','./assets/js/data.js','./assets/js/supabase.js','./assets/js/auth.js','./assets/js/cloud-data.js','./assets/js/finance.js','./assets/js/qrcode-generator.js','./assets/js/onboarding.js','./assets/js/app.js','./docs/VISION.md','./docs/ROADMAP.md','./docs/BACKLOG.md','./docs/ARCHITECTURE.md','./docs/DATABASE.md','./docs/CODING_RULES.md','./docs/AI.md','./docs/CHANGELOG.md'];
+﻿const CACHE='valhalla-v0.8.4-auth';
+// SDK de Supabase fijado a una versión exacta (ver index.html). Es inmutable, así que se
+// sirve desde caché para que la pantalla de acceso también cargue sin conexión.
+const SUPABASE_SDK_URL='https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js';
+const ASSETS=['./','./index.html','./manifest.json','./assets/css/styles.css?v=0.8.4','./assets/images/logo-vikingos.png','./assets/js/config.js','./assets/js/data.js','./assets/js/supabase.js','./assets/js/auth.js','./assets/js/cloud-data.js','./assets/js/finance.js','./assets/js/qrcode-generator.js','./assets/js/onboarding.js','./assets/js/auth-gate.js','./assets/js/app.js','./docs/VISION.md','./docs/ROADMAP.md','./docs/BACKLOG.md','./docs/ARCHITECTURE.md','./docs/DATABASE.md','./docs/CODING_RULES.md','./docs/AI.md','./docs/CHANGELOG.md'];
 
 self.addEventListener('install', event => {
   self.skipWaiting();
@@ -19,6 +22,16 @@ self.addEventListener('fetch', event => {
   const { request } = event;
   const url = new URL(request.url);
   const isSameOrigin = url.origin === self.location.origin;
+  if (request.method === 'GET' && request.url === SUPABASE_SDK_URL) {
+    event.respondWith(caches.match(request).then(cached => cached || fetch(request).then(response => {
+      if (response.ok) {
+        const copy = response.clone();
+        caches.open(CACHE).then(cache => cache.put(request, copy));
+      }
+      return response;
+    })));
+    return;
+  }
   if (request.method !== 'GET' || !isSameOrigin) {
     return;
   }

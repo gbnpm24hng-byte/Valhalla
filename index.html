@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <title>VALHALLA Finanzas</title>
-  <link rel="stylesheet" href="./assets/css/styles.css?v=0.8.3">
+  <link rel="stylesheet" href="./assets/css/styles.css?v=0.8.4">
 </head>
 <body>
   <main id="onboardingView" class="onboarding-view hidden"></main>
@@ -1219,7 +1219,8 @@
   </nav>
 
   <script src="./assets/js/config.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- supabase-js fijado a una versión exacta; integrity = SHA-384 del archivo publicado en npm -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js" integrity="sha384-Rj26LVGvoeRVR6+mwQmFfcR3QOBEwT+ZmuCWpuiqeTzJpCs0ER4ITAWGb4Hiy3Ok" crossorigin="anonymous"></script>
   <script src="./assets/js/data.js"></script>
   <script src="./assets/js/supabase.js"></script>
   <script src="./assets/js/auth.js"></script>
@@ -1227,6 +1228,7 @@
   <script src="./assets/js/finance.js"></script>
   <script src="./assets/js/qrcode-generator.js"></script>
   <script src="./assets/js/onboarding.js"></script>
+  <script src="./assets/js/auth-gate.js"></script>
   <script src="./assets/js/app.js"></script>
 </body>
 </html>

@@ -1622,3 +1622,120 @@ button.small {
   .training-agenda-student-actions { justify-content: flex-start; }
   .agenda-reschedule-form { grid-template-columns: 1fr; }
 }
+
+/* Pantalla de acceso (auth-gate.js) */
+.auth-locked .nav {
+  display: none !important;
+}
+
+.app-header .user-pill {
+  max-width: 190px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.auth-gate {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 400px;
+  display: grid;
+  gap: 18px;
+  padding: 28px 22px;
+  border-color: rgba(214, 169, 40, 0.28);
+  background: linear-gradient(160deg, rgba(214, 169, 40, 0.10), rgba(214, 169, 40, 0.02) 45%), var(--surface);
+}
+
+.auth-brand {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  text-align: center;
+}
+
+.auth-brand-mark {
+  width: 140px;
+  min-width: 140px;
+  height: 56px;
+  margin-bottom: 6px;
+}
+
+.auth-title {
+  color: var(--accent);
+  font-size: 2.6rem;
+  line-height: 1;
+}
+
+.auth-subtitle {
+  color: var(--muted);
+  font-size: 0.9rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.auth-heading {
+  font-size: 1.6rem;
+  text-align: center;
+}
+
+.auth-form {
+  display: grid;
+  gap: 14px;
+}
+
+.auth-form label {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.auth-form input {
+  width: 100%;
+}
+
+.auth-status {
+  color: var(--muted);
+  text-align: center;
+}
+
+.auth-message {
+  margin-top: 0;
+}
+
+.auth-message--bad {
+  color: var(--bad);
+  border-color: rgba(215, 90, 90, 0.4);
+  background: rgba(215, 90, 90, 0.10);
+}
+
+.auth-footnote {
+  color: var(--muted);
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+.auth-outage {
+  display: grid;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.auth-offline-banner {
+  margin: 0 0 16px;
+  color: var(--warn);
+  border-color: rgba(201, 140, 47, 0.4);
+}
+
+/* Con sesión, el encabezado suma correo y "Cerrar sesión": en teléfono las acciones
+   bajan a su propia fila (la regla de 520px ya les da todo el ancho). */
+@media (max-width: 520px) {
+  .app-header { flex-wrap: wrap; }
+}

@@ -927,6 +927,7 @@
   window.VALHALLA = window.VALHALLA || {};
   window.VALHALLA.data = {
     STORAGE_KEY,
+    LEGACY_STORAGE_KEYS,
     createInitialState,
     loadState,
     saveState,

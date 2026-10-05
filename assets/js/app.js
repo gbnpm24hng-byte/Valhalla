@@ -381,20 +381,8 @@
     nutritionProgress: document.getElementById('nutritionProgress')
   };
 
+  // Siempre guarda el estado en memoria, haya o no sesión iniciada.
   function persist() {
-    if (cloudUi.sessionActive) {
-      const localState = dataApi.loadState() || {};
-      const snapshot = {
-        ...state,
-        clients: Array.isArray(localState.clients) ? localState.clients : [],
-        trainingModelVersion: localState.trainingModelVersion || '0.8.0',
-        trainingsV08: localState.trainingsV08 || { plans: [], sessions: [] }
-      };
-      dataApi.saveState(snapshot);
-      render();
-      return;
-    }
-
     if (supabaseApi && typeof supabaseApi.saveData === 'function') {
       supabaseApi.saveData(state);
     } else {
@@ -429,8 +417,10 @@
     return Boolean(isCloudMode() && cloudUi.sessionActive && cloudUi.ownerId);
   }
 
+  // "Sesión cloud" aquí significa la capa de tablas antiguas (cloud-data.js), hoy desactivada.
+  // El inicio de sesión lo maneja auth-gate.js; los datos siguen solo en este dispositivo.
   async function refreshCloudSessionState() {
-    if (!isCloudMode() || !cloudDataApi || typeof cloudDataApi.getOwnerContext !== 'function') {
+    if (!isCloudMode() || !cloudDataApi || typeof cloudDataApi.isAvailable !== 'function' || !cloudDataApi.isAvailable() || typeof cloudDataApi.getOwnerContext !== 'function') {
       cloudUi.sessionActive = false;
       cloudUi.ownerId = '';
       cloudUi.authUserId = '';
@@ -2804,17 +2794,17 @@
   }
 
   function persistProgramInLocalStorage(program) {
-    const snapshot = dataApi.loadState();
-    snapshot.trainingsV08 = snapshot.trainingsV08 || { plans: [], sessions: [], programs: [], assignments: [] };
-    snapshot.trainingsV08.programs = Array.isArray(snapshot.trainingsV08.programs) ? [...snapshot.trainingsV08.programs] : [];
-    const existingIndex = snapshot.trainingsV08.programs.findIndex((item) => item.id === program.id);
+    ensureTrainingsV08State();
+    const programs = Array.isArray(state.trainingsV08.programs) ? [...state.trainingsV08.programs] : [];
+    const existingIndex = programs.findIndex((item) => item.id === program.id);
     if (existingIndex >= 0) {
-      snapshot.trainingsV08.programs[existingIndex] = program;
+      programs[existingIndex] = program;
     } else {
-      snapshot.trainingsV08.programs.unshift(program);
+      programs.unshift(program);
     }
+    state.trainingsV08.programs = programs;
 
-    dataApi.saveState(snapshot);
+    dataApi.saveState(state);
 
     const verification = dataApi.loadState();
     const verified = Array.isArray(verification.trainingsV08?.programs)
@@ -5099,43 +5089,17 @@
       return;
     }
 
+    // El inicio de sesión vive en auth-gate.js; aquí solo se informa la cuenta activa.
     if (supabaseApi && typeof supabaseApi.isCloudEnabled === 'function' && supabaseApi.isCloudEnabled()) {
+      const user = window.VALHALLA.authGate?.getUser?.();
       els.authPanel.innerHTML = `
         <div class="card">
-          <h3>Acceso Cloud</h3>
-          <form id="cloudLoginForm" class="form-grid">
-            <div>
-              <label for="cloudEmail">Correo</label>
-              <input id="cloudEmail" name="email" type="email" placeholder="correo@ejemplo.com" required>
-            </div>
-            <div>
-              <label for="cloudPassword">Contraseña</label>
-              <input id="cloudPassword" name="password" type="password" placeholder="••••••••" required>
-            </div>
-            <button class="primary" type="submit">Entrar</button>
-          </form>
-          <div id="cloudAuthMessage" class="notice">Modo Cloud activo. La autenticación se preparará con Supabase cuando la sesión esté disponible.</div>
+          <h3>Cuenta</h3>
+          <p class="muted">${user?.email ? `Sesión iniciada como ${escapeHtml(user.email)}.` : 'Sesión iniciada.'}</p>
+          <div class="notice">Por ahora tus datos se guardan solo en este dispositivo. La sincronización con la nube llegará en la próxima fase.</div>
+          <button class="secondary" type="button" id="authPanelLogout">Cerrar sesión</button>
         </div>`;
-
-      const loginForm = document.getElementById('cloudLoginForm');
-      const authMessage = document.getElementById('cloudAuthMessage');
-      if (loginForm && authMessage && window.VALHALLA.auth && typeof window.VALHALLA.auth.signIn === 'function') {
-        loginForm.addEventListener('submit', async (event) => {
-          event.preventDefault();
-          const email = document.getElementById('cloudEmail').value;
-          const password = document.getElementById('cloudPassword').value;
-          authMessage.textContent = 'Procesando autenticación...';
-          const response = await window.VALHALLA.auth.signIn(email, password);
-          if (response.ok) {
-            authMessage.textContent = 'Sesión lista para Supabase.';
-            await refreshCloudSessionState();
-            await refreshClients();
-            await refreshTrainingsV08FromCloud();
-          } else {
-            authMessage.textContent = response.error || 'No se pudo iniciar sesión.';
-          }
-        });
-      }
+      document.getElementById('authPanelLogout')?.addEventListener('click', () => window.VALHALLA.authGate?.signOut?.());
       return;
     }
 
@@ -8966,6 +8930,8 @@
       updatePlanDraftFromInputs(event);
     }
   });
+
+  window.addEventListener('valhalla:auth-changed', renderAuthPanel);
 
   show('home');
   render();
