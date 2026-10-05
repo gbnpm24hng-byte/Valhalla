@@ -7191,12 +7191,23 @@
     reader.onload = () => {
       try {
         const imported = dataApi.importState(reader.result);
-        Object.keys(state).forEach((key) => {
-          delete state[key];
-        });
-        Object.assign(state, imported);
-        persist();
-        els.importMessage.textContent = 'Datos importados correctamente.';
+        // Reemplaza el estado completo (nunca combina listas).
+        const apply = () => {
+          Object.keys(state).forEach((key) => {
+            delete state[key];
+          });
+          Object.assign(state, imported);
+          persist();
+          els.importMessage.textContent = 'Datos importados correctamente.';
+        };
+        // Con la nube configurada pasa a ser "Restaurar en la nube": confirmación,
+        // respaldo previo y subida con la versión correcta (cloud-sync.js).
+        if (window.VALHALLA.cloudSync?.restoreFromBackup) {
+          els.importMessage.textContent = '';
+          window.VALHALLA.cloudSync.restoreFromBackup(imported, apply);
+        } else {
+          apply();
+        }
       } catch (error) {
         els.importMessage.textContent = 'No se pudo importar el archivo.';
       }
@@ -7205,11 +7216,12 @@
     reader.readAsText(file);
   }
 
+  // Respaldo completo del equipo (incluidas las finanzas). No depende de la nube.
   function exportData() {
     const blob = new Blob([dataApi.exportState(state)], { type: 'application/json' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = 'valhalla.json';
+    link.download = `valhalla-respaldo-${getTodayLocalDate()}.json`;
     link.click();
     URL.revokeObjectURL(link.href);
   }

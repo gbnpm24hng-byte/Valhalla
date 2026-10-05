@@ -901,6 +901,10 @@
       if (!parsed || typeof parsed !== 'object') {
         throw new Error('saveState escribió un estado inválido');
       }
+      // Ya quedó guardado en el equipo; la sincronización (cloud-sync.js) sube después.
+      if (window && typeof window.dispatchEvent === 'function') {
+        window.dispatchEvent(new CustomEvent('valhalla:state-saved'));
+      }
       return raw;
     } catch (error) {
       const message = error?.message || 'No se pudo guardar el estado en localStorage';

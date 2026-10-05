@@ -1829,3 +1829,30 @@ button.small {
   display: grid;
   gap: 10px;
 }
+
+/* El indicador de sincronización es un botón (toca para reintentar o resolver). */
+button.sync-badge {
+  min-height: auto;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 0.8rem;
+  font-weight: 700;
+  box-shadow: none;
+}
+
+.sync-diff-list {
+  font-size: 0.92rem;
+  color: var(--muted);
+}
+
+.sync-diff-list ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+.sync-diff-list li {
+  color: var(--warn);
+}

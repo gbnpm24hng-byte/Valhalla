@@ -162,16 +162,43 @@
     };
   }
 
+  // Quita lo que cambia entre dos estados de fábrica aunque el contenido sea el mismo:
+  // ids aleatorios, fechas de creación y campos vacíos ('' frente a ausente).
+  function stripVolatile(value) {
+    if (Array.isArray(value)) {
+      return value.map(stripVolatile);
+    }
+    if (value && typeof value === 'object') {
+      const result = {};
+      Object.keys(value).forEach((key) => {
+        const item = value[key];
+        if (/^(id|createdAt|updatedAt|created_at|updated_at)$/.test(key) || item === '' || item === null || item === undefined) {
+          return;
+        }
+        result[key] = stripVolatile(item);
+      });
+      return result;
+    }
+    return value;
+  }
+
+  // ¿Lo sincronizable de este equipo es solo el contenido de fábrica (ejercicios por
+  // defecto, sin clientes)? Ese estado cuenta como "equipo sin datos".
+  function isFactoryDefault(payload, factoryPayload) {
+    return canonicalize(stripVolatile(payload || {})) === canonicalize(stripVolatile(factoryPayload || {}));
+  }
+
   // Decide qué hacer al iniciar sesión como entrenador.
   //  - cloudRow: fila de coach_state (o null si no hay)
   //  - localStored: true si este equipo tiene estado guardado en localStorage
+  //  - localIsFactory: true si lo guardado es solo el contenido de fábrica (cuenta como vacío)
   //  - localPayload: lo que este equipo subiría (buildCloudPayload del estado local)
   //  - meta: marca de última sincronización de este equipo (o null)
-  function decideSyncAction({ cloudRow, localStored, localPayload, meta, ownerId }) {
+  function decideSyncAction({ cloudRow, localStored, localIsFactory, localPayload, meta, ownerId }) {
     if (!cloudRow) {
       return 'offer-upload';
     }
-    if (!localStored) {
+    if (!localStored || localIsFactory) {
       return 'load-cloud';
     }
     if (compare(localPayload, cloudRow.data).identical) {
@@ -207,8 +234,78 @@
     return base;
   }
 
+  // ---------------------------------------------------------------------------
+  // Fase A3: guardado automático
+  // ---------------------------------------------------------------------------
+
+  // Protección contra subir un estado vacío o muy reducido sin querer.
+  // Bloquea si la nube tiene clientes y lo que se sube tiene 0, o menos de la mitad.
+  function evaluateUploadGuard(localClients, cloudClients) {
+    const local = Number(localClients) || 0;
+    const cloud = Number(cloudClients) || 0;
+    if (cloud > 0 && local === 0) {
+      return { blocked: true, reason: 'empty', local, cloud };
+    }
+    if (cloud > 0 && local < cloud / 2) {
+      return { blocked: true, reason: 'shrink', local, cloud };
+    }
+    return { blocked: false, reason: '', local, cloud };
+  }
+
+  // Qué hacer con un cambio local cuando el equipo ya está sincronizado con una versión.
+  //  - 'skip': lo local es idéntico a lo último guardado en la nube.
+  //  - 'confirm': la protección bloquea la subida automática y nadie la aprobó.
+  //  - 'save': subir con "where version = meta.version".
+  function decideAutosave({ payloadHash, localClients, meta }) {
+    if (!meta || payloadHash === meta.cloudHash) {
+      return 'skip';
+    }
+    const guard = evaluateUploadGuard(localClients, meta.cloudClients);
+    if (guard.blocked && meta.approvedHash !== payloadHash) {
+      return 'confirm';
+    }
+    return 'save';
+  }
+
+  // Qué clientes cambian entre dos lados (para explicar un conflicto aunque los
+  // conteos coincidan). Devuelve nombres.
+  function clientDifferences(localPayload, cloudData) {
+    const byId = (payload) => new Map((payload?.clients || []).map((client) => [String(client.id), client]));
+    const local = byId(localPayload);
+    const cloud = byId(cloudData);
+    const name = (client) => client.full_name || client.name || String(client.id);
+    return {
+      onlyLocal: [...local.keys()].filter((id) => !cloud.has(id)).map((id) => name(local.get(id))),
+      onlyCloud: [...cloud.keys()].filter((id) => !local.has(id)).map((id) => name(cloud.get(id))),
+      changed: [...local.keys()].filter((id) => cloud.has(id) && canonicalize(local.get(id)) !== canonicalize(cloud.get(id))).map((id) => name(local.get(id)))
+    };
+  }
+
+  // Resultado de "update ... where version = X ... returning version".
+  //  - 'saved': se actualizó exactamente una fila.
+  //  - 'conflict': otra copia guardó antes (0 filas, o el trigger rechazó la versión).
+  //  - 'retry': Supabase no respondió; el cambio queda pendiente y se reintenta.
+  //  - 'rejected': Supabase respondió con un error (permiso, validación).
+  function classifySaveResult({ rows, error, unavailable }) {
+    if (unavailable) {
+      return 'retry';
+    }
+    if (error) {
+      return /VERSION_CONFLICT/.test(String(error.message || '')) ? 'conflict' : 'rejected';
+    }
+    if (Array.isArray(rows) && rows.length === 1) {
+      return 'saved';
+    }
+    return 'conflict';
+  }
+
   window.VALHALLA = window.VALHALLA || {};
   window.VALHALLA.syncCore = {
+    evaluateUploadGuard,
+    isFactoryDefault,
+    clientDifferences,
+    decideAutosave,
+    classifySaveResult,
     SYNCED_KEYS,
     SYNCED_SETTINGS_FIELDS,
     LOCAL_ONLY_KEYS,

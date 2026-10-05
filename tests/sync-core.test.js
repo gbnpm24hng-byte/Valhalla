@@ -150,3 +150,69 @@ test('ida y vuelta estable: lo que se carga de la nube y se vuelve a leer es id�
   const reloaded = sync.buildCloudPayload(dataApi.loadState());
   assert.equal(sync.compare(reloaded, fromCloud).identical, true, 'normalizar al recargar no debe cambiar los datos');
 });
+
+// ---------------------------------------------------------------------------
+// Fase A3: guardado automático
+// ---------------------------------------------------------------------------
+
+test('protección: bloquea subir 0 clientes o menos de la mitad de los que hay en la nube', () => {
+  assert.deepEqual(sync.evaluateUploadGuard(0, 5), { blocked: true, reason: 'empty', local: 0, cloud: 5 });
+  assert.equal(sync.evaluateUploadGuard(2, 5).reason, 'shrink');
+  assert.equal(sync.evaluateUploadGuard(2, 4).blocked, false, 'exactamente la mitad no bloquea');
+  assert.equal(sync.evaluateUploadGuard(4, 5).blocked, false, 'borrar un cliente es normal');
+  assert.equal(sync.evaluateUploadGuard(0, 0).blocked, false, 'si la nube tampoco tiene clientes no hay nada que proteger');
+  assert.equal(sync.evaluateUploadGuard(9, 5).blocked, false);
+});
+
+test('decisión de guardado automático', () => {
+  const meta = { version: 3, cloudHash: 'abc', cloudClients: 10 };
+  assert.equal(sync.decideAutosave({ payloadHash: 'abc', localClients: 10, meta }), 'skip', 'idéntico a la nube');
+  assert.equal(sync.decideAutosave({ payloadHash: 'xyz', localClients: 10, meta }), 'save');
+  assert.equal(sync.decideAutosave({ payloadHash: 'xyz', localClients: 9, meta }), 'save');
+  assert.equal(sync.decideAutosave({ payloadHash: 'xyz', localClients: 0, meta }), 'confirm', 'vacío');
+  assert.equal(sync.decideAutosave({ payloadHash: 'xyz', localClients: 3, meta }), 'confirm', 'reducción fuerte');
+  assert.equal(sync.decideAutosave({ payloadHash: 'xyz', localClients: 3, meta: { ...meta, approvedHash: 'xyz' } }), 'save', 'aprobado explícitamente');
+  assert.equal(sync.decideAutosave({ payloadHash: 'otro', localClients: 3, meta: { ...meta, approvedHash: 'xyz' } }), 'confirm', 'la aprobación vale solo para ese contenido');
+  assert.equal(sync.decideAutosave({ payloadHash: 'xyz', localClients: 3, meta: null }), 'skip', 'sin sincronización previa no hay guardado automático');
+});
+
+test('clasificación del resultado de guardar con control de versión', () => {
+  assert.equal(sync.classifySaveResult({ rows: [{ version: 4 }] }), 'saved');
+  assert.equal(sync.classifySaveResult({ rows: [] }), 'conflict', '0 filas: otra copia guardó antes');
+  assert.equal(sync.classifySaveResult({ error: { code: 'P0001', message: 'VERSION_CONFLICT: versión actual 5, recibida 4' } }), 'conflict');
+  assert.equal(sync.classifySaveResult({ error: { message: 'Failed to fetch' }, unavailable: true }), 'retry');
+  assert.equal(sync.classifySaveResult({ error: { code: '23514', message: 'violates check constraint' } }), 'rejected');
+  assert.equal(sync.classifySaveResult({ error: { code: '42501', message: 'permission denied' } }), 'rejected');
+});
+
+test('detalle del conflicto: qué clientes están solo en un lado o cambiaron', () => {
+  const base = { clients: [{ id: 'a', full_name: 'Ana' }, { id: 'b', full_name: 'Beto', sessions_total: 8 }] };
+  const local = { clients: [...base.clients.slice(0, 1), { id: 'b', full_name: 'Beto', sessions_total: 12 }, { id: 'c', full_name: 'Carla' }] };
+  const cloud = { clients: [...base.clients, { id: 'd', full_name: 'Dani' }] };
+  assert.deepEqual(sync.clientDifferences(local, cloud), { onlyLocal: ['Carla'], onlyCloud: ['Dani'], changed: ['Beto'] });
+  assert.deepEqual(sync.clientDifferences(base, base), { onlyLocal: [], onlyCloud: [], changed: [] });
+});
+
+test('estado de fábrica (3 ejercicios, sin clientes) cuenta como equipo sin datos', () => {
+  const factory = sync.buildCloudPayload(dataApi.createInitialState());
+  // Otro estado de fábrica: ids aleatorios distintos y normalizado al guardar/leer.
+  const savedFactory = sync.buildCloudPayload(dataApi.importState(JSON.stringify(dataApi.createInitialState())));
+  assert.equal(sync.isFactoryDefault(savedFactory, factory), true);
+  assert.equal(sync.isFactoryDefault(sync.buildCloudPayload(dataApi.createInitialState()), factory), true);
+
+  const withClient = JSON.parse(JSON.stringify(savedFactory));
+  withClient.clients.push({ id: 'x', full_name: 'Cliente real' });
+  assert.equal(sync.isFactoryDefault(withClient, factory), false);
+
+  const editedLibrary = JSON.parse(JSON.stringify(savedFactory));
+  editedLibrary.exerciseLibrary[0].name = 'Sentadilla búlgara';
+  assert.equal(sync.isFactoryDefault(editedLibrary, factory), false, 'una galería editada no es de fábrica');
+
+  const withWhatsapp = JSON.parse(JSON.stringify(savedFactory));
+  withWhatsapp.settings.coach_whatsapp_number = '56900000000';
+  assert.equal(sync.isFactoryDefault(withWhatsapp, factory), false);
+
+  const row = { owner_id: 'coach-1', version: 5, data: sync.buildCloudPayload(fakeState()) };
+  assert.equal(sync.decideSyncAction({ cloudRow: row, localStored: true, localIsFactory: true, localPayload: savedFactory, ownerId: 'coach-1' }), 'load-cloud');
+  assert.equal(sync.decideSyncAction({ cloudRow: row, localStored: true, localIsFactory: false, localPayload: withClient, ownerId: 'coach-1' }), 'choose');
+});
