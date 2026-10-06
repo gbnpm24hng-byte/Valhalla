@@ -2225,39 +2225,9 @@
     renderPlanningReview();
   }
 
+  // Categoría del armador: por músculo principal guardado y, si no hay, por nombre (labels.js).
   function getVisualExerciseCategory(exercise) {
-    const haystack = String(
-      exercise?.name ||
-      exercise?.normalizedName ||
-      exercise?.primaryMuscle ||
-      exercise?.primary_muscle ||
-      exercise?.category ||
-      exercise ||
-      ''
-    ).toLowerCase();
-
-    if (/(quadriceps|hamstrings|glutes|adductors|squat|deadlift|hip thrust|split squat|leg press|femoral|estocada|sentadilla|peso muerto|prensa de piernas)/.test(haystack)) {
-      return 'PIERNAS';
-    }
-    if (/(chest|pec|press banca|bench|incline|apertura|pecho)/.test(haystack)) {
-      return 'PECHO';
-    }
-    if (/(lats|upper_back|traps|back|remo|pulldown|lat|espalda|jalon|remo)/.test(haystack)) {
-      return 'ESPALDA';
-    }
-    if (/(front_delts|lateral_delts|rear_delts|shoulder|press militar|elevacion|hombro|delto|shoulders)/.test(haystack)) {
-      return 'HOMBROS';
-    }
-    if (/(biceps|curl|bíceps|curls)/.test(haystack)) {
-      return 'BÍCEPS';
-    }
-    if (/(triceps|patada|extension de tríceps|tríceps|press francés)/.test(haystack)) {
-      return 'TRÍCEPS';
-    }
-    if (/(abdominals|obliques|spinal_erectors|core|plancha|abdominal|crunch|russian twist|hollow|oblicuo|core)/.test(haystack)) {
-      return 'CORE';
-    }
-    return 'OTROS';
+    return labelsApi.routineCategory(exercise);
   }
 
   function getRoutineExerciseCatalog() {
@@ -2274,13 +2244,21 @@
     };
 
     if (library.length) {
-      library.forEach((exercise) => {
+      library
+        .filter((exercise) => exercise && exercise.active !== false)
+        .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'es', { sensitivity: 'base' }))
+        .forEach((exercise) => {
         const category = getVisualExerciseCategory(exercise);
         const entry = {
           id: exercise.id || exercise.libraryExerciseId || dataApi.createId('library-exercise'),
           name: exercise.name || exercise.normalizedName || 'Ejercicio',
           primaryMuscle: exercise.primaryMuscle || exercise.primary_muscle || '',
-          category
+          category,
+          searchText: labelsApi.fold([
+            exercise.name, exercise.normalizedName,
+            labelsApi.label('pattern', exercise.pattern), labelsApi.label('muscle', exercise.primaryMuscle),
+            labelsApi.listLabel('muscle', exercise.secondaryMuscles), labelsApi.listLabel('equipment', exercise.equipments)
+          ].join(' '))
         };
         if (!catalog[category]) {
           catalog[category] = [];
@@ -2295,6 +2273,18 @@
       catalog[category] = fallback[category].map((name) => ({ id: `${category}-${slugifyTrainingPart(name)}`, name, category }));
     });
     return catalog;
+  }
+
+  // Busca un ejercicio del armador en TODAS las categorías (no solo en la abierta).
+  function findRoutineExercise(exerciseId) {
+    const catalog = getRoutineExerciseCatalog();
+    for (const category of Object.keys(catalog)) {
+      const match = (catalog[category] || []).find((item) => item.id === exerciseId);
+      if (match) {
+        return match;
+      }
+    }
+    return null;
   }
 
   function getRoutineBuilderDay() {
@@ -2404,6 +2394,15 @@
       return;
     }
 
+    if (routineBuilder.screen === 'categories' && String(routineBuilder.search || '').trim()) {
+      // Escribir en el buscador de categorías muestra resultados de toda la biblioteca.
+      routineBuilder.screen = 'exerciseList';
+    }
+    if (routineBuilder.screen === 'exerciseList' && !String(routineBuilder.search || '').trim() && !routineBuilder.category) {
+      // Se borró una búsqueda iniciada desde las categorías: se vuelve a las categorías.
+      routineBuilder.screen = 'categories';
+    }
+    const routineCatalog = getRoutineExerciseCatalog();
     if (routineBuilder.screen === 'categories') {
       els.routineBuilderRoot.innerHTML = `
         <div class="planning-panel-box">
@@ -2411,9 +2410,12 @@
             <strong>¿QUÉ QUIERES TRABAJAR?</strong>
             <button class="ghost small" type="button" data-routine-action="back-day">← Volver</button>
           </div>
+          <div class="planning-search-wrap">
+            <input type="search" data-routine-field="search" value="" placeholder="Buscar en toda la biblioteca...">
+          </div>
           <div class="planning-category-grid">
             ${categories.map((category) => `
-              <button class="planning-category-btn" type="button" data-routine-action="open-category" data-category="${category}">${escapeHtml(category)}</button>
+              <button class="planning-category-btn" type="button" data-routine-action="open-category" data-category="${category}">${escapeHtml(category)} <span class="planning-category-count">${(routineCatalog[category] || []).length}</span></button>
             `).join('')}
           </div>
         </div>
@@ -2423,31 +2425,34 @@
 
     if (routineBuilder.screen === 'exerciseList') {
       const category = routineBuilder.category || 'PIERNAS';
-      const catalog = getRoutineExerciseCatalog();
-      const filtered = (catalog[category] || []).filter((exercise) => {
-        const value = String(routineBuilder.search || '').trim().toLowerCase();
-        return !value || String(exercise.name || '').toLowerCase().includes(value);
-      });
+      const catalog = routineCatalog;
+      const searchValue = labelsApi.fold(routineBuilder.search || '');
+      const searchingAll = Boolean(searchValue);
+      const filtered = searchingAll
+        ? Object.keys(catalog).flatMap((key) => catalog[key] || [])
+          .filter((exercise) => String(exercise.searchText || labelsApi.fold(exercise.name)).includes(searchValue))
+          .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'es', { sensitivity: 'base' }))
+        : (catalog[category] || []);
       els.routineBuilderRoot.innerHTML = `
         <div class="planning-panel-box">
           <div class="section-title compact">
             <button class="ghost small" type="button" data-routine-action="back-categories">← CATEGORÍAS</button>
-            <strong>${escapeHtml(category)}</strong>
+            <strong>${searchingAll ? 'TODA LA BIBLIOTECA' : `${escapeHtml(category)} (${filtered.length})`}</strong>
           </div>
           <div class="planning-search-wrap">
-            <input type="search" data-routine-field="search" value="${escapeHtml(String(routineBuilder.search || ''))}" placeholder="Buscar ejercicio...">
+            <input type="search" data-routine-field="search" value="${escapeHtml(String(routineBuilder.search || ''))}" placeholder="Buscar en toda la biblioteca...">
           </div>
           <div class="planning-category-grid">
             ${filtered.length ? filtered.map((exercise) => `
-              <button class="planning-exercise-pick-btn" type="button" data-routine-action="select-exercise" data-exercise-id="${escapeHtml(exercise.id || '')}">${escapeHtml(exercise.name || 'Ejercicio')}</button>
-            `).join('') : '<div class="muted">No hay ejercicios para esta categoría.</div>'}
+              <button class="planning-exercise-pick-btn" type="button" data-routine-action="select-exercise" data-exercise-id="${escapeHtml(exercise.id || '')}">${escapeHtml(exercise.name || 'Ejercicio')}${searchingAll ? ` <span class="planning-category-count">${escapeHtml(exercise.category || '')}</span>` : ''}</button>
+            `).join('') : `<div class="muted">${searchingAll ? 'No hay ejercicios con ese nombre en la biblioteca.' : 'No hay ejercicios en esta categoría.'}</div>`}
           </div>
         </div>
       `;
       return;
     }
 
-    const selectedExercise = getRoutineExerciseCatalog()[routineBuilder.category || 'PIERNAS']?.find((item) => item.id === routineBuilder.exerciseId)
+    const selectedExercise = findRoutineExercise(routineBuilder.exerciseId)
       || { id: routineBuilder.exerciseId || dataApi.createId('library-exercise'), name: 'Ejercicio', category: routineBuilder.category || 'PIERNAS' };
     const selectedName = selectedExercise.name || 'Ejercicio';
     const approx = Array.isArray(routineBuilder.draft.approximations) ? routineBuilder.draft.approximations : [];
@@ -2548,8 +2553,7 @@
     }
 
     const exerciseName = (() => {
-      const libraryItems = getRoutineExerciseCatalog();
-      const localExercise = (libraryItems[routineBuilder.category || 'PIERNAS'] || []).find((item) => item.id === routineBuilder.exerciseId);
+      const localExercise = findRoutineExercise(routineBuilder.exerciseId);
       return localExercise?.name || 'Ejercicio';
     })();
 
@@ -8666,8 +8670,12 @@
     if (action === 'select-exercise') {
       routineBuilder.exerciseId = actionTarget.getAttribute('data-exercise-id') || routineBuilder.exerciseId;
       routineBuilder.screen = 'exerciseForm';
-      const libraryItems = getRoutineExerciseCatalog();
-      const match = (libraryItems[routineBuilder.category || 'PIERNAS'] || []).find((item) => item.id === routineBuilder.exerciseId);
+      const match = findRoutineExercise(routineBuilder.exerciseId);
+      if (match) {
+        // Si se eligió desde la búsqueda, volver lleva a la categoría del ejercicio.
+        routineBuilder.category = match.category || routineBuilder.category;
+        routineBuilder.search = '';
+      }
       if (match && routineBuilder.editingIndex === null) {
         routineBuilder.draft = {
           sets: 3,
@@ -8788,6 +8796,12 @@
     if (field === 'search') {
       routineBuilder.search = event.target.value || '';
       renderRoutineBuilder();
+      const searchInput = els.routineBuilderRoot?.querySelector('[data-routine-field="search"]');
+      if (searchInput) {
+        searchInput.focus();
+        const end = searchInput.value.length;
+        searchInput.setSelectionRange(end, end);
+      }
       return;
     }
 

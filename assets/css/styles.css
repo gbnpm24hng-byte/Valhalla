@@ -1981,3 +1981,15 @@ button.sync-badge {
   margin: 0 0 4px;
   color: var(--accent);
 }
+
+/* Armador de rutinas: cantidad de ejercicios por categoría. */
+.planning-category-count {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(214, 169, 40, 0.16);
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 700;
+}

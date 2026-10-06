@@ -125,6 +125,47 @@
     });
   }
 
+  // ---------------------------------------------------------------------------
+  // Categorías del armador de rutinas (PIERNAS, PECHO, ...). Solo para navegar: no se
+  // guardan en el ejercicio ni en los programas.
+  // 1) Se decide por el músculo principal guardado.
+  // 2) Si no hay músculo o es "cuerpo completo"/"otro", por palabras del nombre.
+  // 3) Si nada coincide, OTROS.
+  // ---------------------------------------------------------------------------
+  const ROUTINE_CATEGORIES = ['PIERNAS', 'PECHO', 'ESPALDA', 'HOMBROS', 'BÍCEPS', 'TRÍCEPS', 'CORE', 'OTROS'];
+
+  const MUSCLE_CATEGORY = {
+    quadriceps: 'PIERNAS', hamstrings: 'PIERNAS', glutes: 'PIERNAS', adductors: 'PIERNAS', calves: 'PIERNAS',
+    chest: 'PECHO',
+    lats: 'ESPALDA', mid_back: 'ESPALDA', upper_back: 'ESPALDA', traps: 'ESPALDA',
+    front_delts: 'HOMBROS', lateral_delts: 'HOMBROS', rear_delts: 'HOMBROS',
+    biceps: 'BÍCEPS',
+    triceps: 'TRÍCEPS',
+    core: 'CORE', abdominals: 'CORE', obliques: 'CORE', spinal_erectors: 'CORE'
+  };
+
+  // Por nombre (sin tildes). El orden importa: "jalón de tríceps" es TRÍCEPS antes que
+  // ESPALDA, y "curl femoral" es PIERNAS antes que BÍCEPS.
+  const NAME_RULES = [
+    ['TRÍCEPS', /tricep|press frances|rompe ?craneos|patada de/],
+    ['PIERNAS', /sentadilla|estocada|zancada|prensa|peso muerto|hip thrust|femoral|cuadricep|gluteo|pantorrilla|gemelo|abduccion|aduccion|squat|deadlift|lunge|leg press/],
+    ['PECHO', /press (de )?banca|press (plano|inclinado|declinado)|press pecho|apertura|cruce de polea|flexion|fondos|pectoral|\bpecho\b|bench|chest/],
+    ['HOMBROS', /press militar|elevacion(es)? (lateral|frontal)|face pull|deltoide|hombro|shoulder/],
+    ['ESPALDA', /remo|jalon|dominada|pulldown|pull ?up|pullover|espalda|dorsal|\brow\b/],
+    ['BÍCEPS', /\bcurl\b|bicep/],
+    ['CORE', /plancha|crunch|abdominal|oblicuo|russian twist|hollow|\bcore\b/]
+  ];
+
+  function routineCategory(exercise) {
+    const muscle = String(exercise?.primaryMuscle || exercise?.primary_muscle || '');
+    if (MUSCLE_CATEGORY[muscle]) {
+      return MUSCLE_CATEGORY[muscle];
+    }
+    const name = fold(exercise?.name || exercise?.normalizedName || exercise?.exerciseName || (typeof exercise === 'string' ? exercise : ''));
+    const rule = NAME_RULES.find(([, pattern]) => pattern.test(name));
+    return rule ? rule[0] : 'OTROS';
+  }
+
   window.VALHALLA = window.VALHALLA || {};
-  window.VALHALLA.labels = { LABELS, label, sortedOptions, listLabel, listCodes, fold };
+  window.VALHALLA.labels = { LABELS, label, sortedOptions, listLabel, listCodes, fold, ROUTINE_CATEGORIES, routineCategory };
 })();
