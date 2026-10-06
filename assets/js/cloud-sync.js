@@ -247,6 +247,7 @@
       actions.insertBefore(badge, document.getElementById('authHeaderLogout'));
     }
     badge.textContent = detail ? `${text} (${detail})` : text;
+    window.dispatchEvent(new CustomEvent('valhalla:sync-status', { detail: { status: kind } }));
     badge.dataset.tone = tone;
     badge.dataset.status = kind;
     badge.title = ({
@@ -975,6 +976,10 @@
     run,
     lastAction: '',
     isActive: () => ctx.ready,
+    statusText: () => {
+      const badge = document.getElementById('syncStatusBadge');
+      return badge ? badge.textContent.replace(/^Nube: /, '') : '';
+    },
     restoreFromBackup,
     status: () => ctx.status
   };

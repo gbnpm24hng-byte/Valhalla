@@ -27,6 +27,9 @@
   // Solo permite seguir con los datos locales cuando Supabase no responde; no da
   // acceso a nada en la nube. Se borra al cerrar sesión o si Supabase rechaza la sesión.
   const ACCESS_CACHE_KEY = 'valhalla_auth_access';
+  // Marca de que en este equipo entró un alumno: solo permite ver sin conexión lo último
+  // que se cargó de SU programa (student-view.js). Se borra al cerrar sesión.
+  const STUDENT_ACCESS_KEY = 'valhalla_student_access';
   // Sin red, el SDK reintenta renovar la sesión durante varios segundos. Pasado este
   // límite se considera "tiempo agotado" (Supabase no responde).
   const VERIFY_TIMEOUT_MS = 6000;
@@ -53,7 +56,34 @@
     }
   }
 
+  function clearStudentAccess() {
+    try {
+      localStorage.removeItem(STUDENT_ACCESS_KEY);
+    } catch (error) {
+      // Nada que limpiar.
+    }
+    window.VALHALLA.studentView?.clearCache?.();
+  }
+
+  function readStudentAccess() {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(STUDENT_ACCESS_KEY) || 'null');
+      return parsed && parsed.userId ? parsed : null;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function writeStudentAccess(user, profile) {
+    try {
+      localStorage.setItem(STUDENT_ACCESS_KEY, JSON.stringify({ userId: user.id, name: profile?.full_name || '' }));
+    } catch (error) {
+      // Sin almacenamiento: no habrá vista sin conexión.
+    }
+  }
+
   function writeAccessCache(user) {
+    clearStudentAccess();
     try {
       localStorage.setItem(ACCESS_CACHE_KEY, JSON.stringify({ userId: user.id, email: user.email || '', kind: 'coach' }));
     } catch (error) {
@@ -61,12 +91,18 @@
     }
   }
 
-  function clearAccessCache() {
+  function clearCoachAccess() {
     try {
       localStorage.removeItem(ACCESS_CACHE_KEY);
     } catch (error) {
       // Nada que limpiar.
     }
+  }
+
+  // Borra las marcas de acceso sin conexión de entrenador y de alumno (y la caché del alumno).
+  function clearAccessCache() {
+    clearCoachAccess();
+    clearStudentAccess();
   }
 
   function hasLocalData() {
@@ -116,6 +152,7 @@
     document.body.classList.add('auth-locked');
     removeHeaderSession();
     window.dispatchEvent(new CustomEvent('valhalla:auth-locked'));
+    gateEl.classList.remove('auth-gate--student');
     gateEl.innerHTML = `<section class="auth-card card">${brandMarkup()}${innerHtml}</section>`;
     gateEl.classList.remove('hidden');
   }
@@ -257,6 +294,19 @@
     });
   }
 
+  // Vista de alumno de solo lectura (student-view.js). La app del entrenador sigue oculta.
+  function showStudentView(user, profile, { offline = false } = {}) {
+    appEl?.classList.add('hidden');
+    document.body.classList.add('auth-locked');
+    removeHeaderSession();
+    window.dispatchEvent(new CustomEvent('valhalla:auth-locked'));
+    currentUser = user;
+    gateEl.classList.add('auth-gate--student');
+    gateEl.innerHTML = '';
+    gateEl.classList.remove('hidden');
+    window.VALHALLA.studentView.render(gateEl, { user, profile, offline, onSignOut: handleSignOut });
+  }
+
   function renderStudent(profile) {
     const name = escapeHtml(profile?.full_name || '');
     renderNotice(
@@ -315,6 +365,11 @@
     const cached = readAccessCache();
     if (cached && (!userId || cached.userId === userId)) {
       openApp({ id: cached.userId, email: cached.email }, { offline: true });
+      return;
+    }
+    const student = readStudentAccess();
+    if (student && window.VALHALLA.studentView && (!userId || student.userId === userId)) {
+      showStudentView({ id: student.userId }, { full_name: student.name }, { offline: true });
       return;
     }
     currentUser = null;
@@ -399,10 +454,18 @@
       return;
     }
 
-    clearAccessCache();
+    clearCoachAccess();
+    if (access.kind !== 'student') {
+      clearStudentAccess();
+    }
     currentUser = user;
     if (access.kind === 'student') {
-      renderStudent(profileResult.profile);
+      if (window.VALHALLA.studentView) {
+        writeStudentAccess(user, profileResult.profile);
+        showStudentView(user, profileResult.profile);
+      } else {
+        renderStudent(profileResult.profile);
+      }
       return;
     }
     renderNotice('Acceso no disponible', escapeHtml(access.message));

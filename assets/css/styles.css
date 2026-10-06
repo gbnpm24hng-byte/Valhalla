@@ -1856,3 +1856,116 @@ button.sync-badge {
 .sync-diff-list li {
   color: var(--warn);
 }
+
+/* Publicar al alumno (publish.js) */
+.client-publish {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+/* Vista de alumno (student-view.js) */
+.auth-gate.auth-gate--student {
+  align-items: flex-start;
+  padding: 16px;
+}
+
+.student-view {
+  width: 100%;
+  max-width: 640px;
+  margin: 0 auto;
+  display: grid;
+  gap: 14px;
+}
+
+.sv-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.sv-title {
+  color: var(--accent);
+  font-size: 1.9rem;
+  line-height: 1;
+}
+
+.sv-card {
+  display: grid;
+  gap: 10px;
+}
+
+.sv-card h2 {
+  font-size: 1.6rem;
+}
+
+.sv-meta {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.sv-day {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 10px 12px;
+  background: var(--surface-2);
+}
+
+.sv-day summary {
+  cursor: pointer;
+  font-weight: 700;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 32px;
+  align-items: center;
+}
+
+.sv-exercises,
+.sv-sets {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.sv-exercise {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.sv-exercise:last-child {
+  border-bottom: 0;
+}
+
+.sv-sets {
+  margin-top: 6px;
+  display: grid;
+  gap: 4px;
+  font-size: 0.92rem;
+}
+
+.sv-set-label {
+  display: inline-block;
+  min-width: 34px;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.sv-effective .sv-set-label {
+  color: var(--accent);
+}
+
+.sv-note {
+  margin-top: 6px;
+  font-size: 0.88rem;
+  color: var(--text);
+  border-left: 3px solid var(--accent);
+  padding-left: 8px;
+}

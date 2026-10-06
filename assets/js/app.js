@@ -5075,6 +5075,7 @@
                     ${exercise.notes ? `<div class="meta">${escapeHtml(exercise.notes)}</div>` : ''}
                   </li>`).join('')}</ul>
               </div>`).join('')}` : '<div class="meta">No hay programa activo asignado.</div>'}
+          ${assignment && window.VALHALLA.publish ? window.VALHALLA.publish.renderStatus(client.id, assignment) : ''}
           ${client.last_training_day_id ? `<div class="meta">Última sesión elegida: ${escapeHtml(assignment?.days?.find((day) => day.id === client.last_training_day_id)?.name || '')}</div>` : ''}
         </section>
         <div class="inline-actions">
@@ -5096,7 +5097,8 @@
         <div class="card">
           <h3>Cuenta</h3>
           <p class="muted">${user?.email ? `Sesión iniciada como ${escapeHtml(user.email)}.` : 'Sesión iniciada.'}</p>
-          <div class="notice">Por ahora tus datos se guardan solo en este dispositivo. La sincronización con la nube llegará en la próxima fase.</div>
+          <div class="notice">Tus datos se guardan primero en este equipo y se sincronizan solos con la nube. Las finanzas se quedan solo en este equipo.</div>
+          <p class="muted" id="authPanelSyncStatus">Estado de la nube: ${escapeHtml(window.VALHALLA.cloudSync?.statusText?.() || 'verificando…')}</p>
           <button class="secondary" type="button" id="authPanelLogout">Cerrar sesión</button>
         </div>`;
       document.getElementById('authPanelLogout')?.addEventListener('click', () => window.VALHALLA.authGate?.signOut?.());
@@ -8951,6 +8953,14 @@
   };
 
   window.addEventListener('valhalla:auth-changed', renderAuthPanel);
+  window.addEventListener('valhalla:sync-status', () => {
+    const statusEl = document.getElementById('authPanelSyncStatus');
+    if (statusEl) {
+      statusEl.textContent = `Estado de la nube: ${window.VALHALLA.cloudSync?.statusText?.() || 'verificando…'}`;
+    }
+  });
+  // Indicador "Publicar al alumno" por cliente (publish.js).
+  window.addEventListener('valhalla:publish-changed', () => renderClients());
 
   show('home');
   render();
