@@ -562,7 +562,8 @@
       getSessionExercises(session).forEach((exercise) => {
         getExerciseSets(exercise).forEach((setEntry) => {
           const weight = Number(setEntry.weight || 0);
-          const reps = Number(setEntry.reps || 0);
+          // Modo Grupo no pide repeticiones (guarda las del plan o 1 si faltan): no se muestran.
+          const reps = session.groupSessionId ? 0 : Number(setEntry.reps || 0);
           if (!Number.isFinite(weight) || weight <= 0) {
             return;
           }
@@ -621,10 +622,13 @@
           <div><strong>Frecuencia</strong><div class="meta">${summary.sessionsPerWeek || 0} sesiones/semana</div></div>
           <div><strong>Duración</strong><div class="meta">${summary.sessionDurationMinutes || 0} min</div></div>
         </div>
+        <div class="inline-actions">
+          <button class="secondary small" type="button" data-sports-open="profile">Editar resumen</button>
+        </div>
       </div>
 
-      <form id="sportsProfileForm" class="form-grid" data-client-id="${client.id}">
-        <div class="section-title"><h3>Resumen</h3></div>
+      <form id="sportsProfileForm" class="form-grid sports-subform hidden" data-sports-form="profile" data-client-id="${client.id}">
+        <div class="section-title"><h3>Editar resumen</h3></div>
         <div class="row">
           <div>
             <label for="sportsPrimaryGoal">Objetivo principal</label>
@@ -669,12 +673,18 @@
             <textarea id="sportsCoachNotes" name="coachNotes">${escapeHtml(profile?.coachNotes || '')}</textarea>
           </div>
         </div>
-        <button class="primary" type="submit">Guardar ficha deportiva</button>
+        <div class="inline-actions">
+          <button class="secondary" type="button" data-sports-cancel="profile">Cancelar</button>
+          <button class="primary" type="submit">Guardar</button>
+        </div>
       </form>
 
       <div class="client-detail-card">
-        <div class="section-title"><h3>Consideraciones</h3></div>
-        <form id="sportsConsiderationForm" class="form-grid" data-client-id="${client.id}">
+        <div class="section-title">
+          <h3>Consideraciones</h3>
+          <button class="secondary small" type="button" data-sports-open="consideration">+ Agregar consideración</button>
+        </div>
+        <form id="sportsConsiderationForm" class="form-grid sports-subform hidden" data-sports-form="consideration" data-client-id="${client.id}">
           <input type="hidden" name="considerationId" value="">
           <div class="row">
             <div>
@@ -700,24 +710,34 @@
               <input id="sportsConsiderationReviewDate" name="reviewDate" type="date">
             </div>
           </div>
-          <button class="secondary" type="submit">Agregar consideración</button>
+          <div class="inline-actions">
+            <button class="secondary" type="button" data-sports-cancel="consideration">Cancelar</button>
+            <button class="primary" type="submit">Agregar consideración</button>
+          </div>
         </form>
-        <div class="training-set-list">
-          ${considerations.length ? considerations.map((item) => `
-            <div class="training-set-item">
-              <div>
+        ${(() => {
+          const considerationItem = (item) => `
+            <div class="training-set-item sports-compact-item">
+              <div title="${escapeHtml(item.description || '')}">
                 <strong>${escapeHtml(item.title)}</strong>
-                <div class="meta">${escapeHtml(getSportsLabel(item.status))} · ${escapeHtml(formatClientDate(item.notedOn))}${item.reviewDate ? ` · Revisar ${escapeHtml(formatClientDate(item.reviewDate))}` : ''}</div>
-                <div class="meta">${escapeHtml(item.description || '')}</div>
+                <div class="meta">${escapeHtml(getSportsLabel(item.status))}${item.reviewDate ? ` · Revisar ${escapeHtml(formatClientDate(item.reviewDate))}` : ''}</div>
               </div>
               <button class="danger small" type="button" data-sports-consideration-delete="${item.id}">Eliminar</button>
-            </div>`).join('') : '<div class="muted">Sin consideraciones registradas.</div>'}
-        </div>
+            </div>`;
+          const active = considerations.filter((item) => item.status !== 'resuelta');
+          const resolved = considerations.filter((item) => item.status === 'resuelta');
+          return `
+            <div class="training-set-list">${active.length ? active.map(considerationItem).join('') : '<div class="muted">Sin consideraciones.</div>'}</div>
+            ${resolved.length ? `<details class="sports-collapse"><summary>Resueltas <span class="pill">${resolved.length}</span></summary><div class="training-set-list">${resolved.map(considerationItem).join('')}</div></details>` : ''}`;
+        })()}
       </div>
 
-      <div class="client-detail-card">
-        <div class="section-title"><h3>Movimientos</h3></div>
-        <form id="movementStatusForm" class="form-grid" data-client-id="${client.id}">
+      <details class="client-detail-card sports-collapse">
+        <summary>Evaluación de movimientos (opcional) <span class="pill">${movements.length}</span></summary>
+        <div class="inline-actions">
+          <button class="secondary small" type="button" data-sports-open="movement">+ Evaluar movimiento</button>
+        </div>
+        <form id="movementStatusForm" class="form-grid sports-subform hidden" data-sports-form="movement" data-client-id="${client.id}">
           <input type="hidden" name="movementStatusId" value="">
           <div class="row">
             <div>
@@ -743,7 +763,10 @@
             <label for="movementCoachNote">Nota del coach</label>
             <textarea id="movementCoachNote" name="coachNote"></textarea>
           </div>
-          <button class="secondary" type="submit">Guardar estado de movimiento</button>
+          <div class="inline-actions">
+            <button class="secondary" type="button" data-sports-cancel="movement">Cancelar</button>
+            <button class="primary" type="submit">Guardar estado de movimiento</button>
+          </div>
         </form>
         <div class="training-set-list">
           ${movements.length ? movements.map((item) => `
@@ -756,7 +779,7 @@
               <button class="danger small" type="button" data-movement-status-delete="${item.id}">Eliminar</button>
             </div>`).join('') : '<div class="muted">Sin movimientos evaluados.</div>'}
         </div>
-      </div>
+      </details>
 
       <div class="client-detail-card">
         <div class="section-title"><h3>Marcas</h3></div>
@@ -765,7 +788,7 @@
             <div class="training-set-item">
               <div>
                 <strong>${escapeHtml(item.movementName)}</strong>
-                <div class="meta">Mejor carga registrada: ${Number(item.weight)} kg × ${Number(item.reps)}${item.date ? ` · ${escapeHtml(formatClientDate(item.date))}` : ''}</div>
+                <div class="meta">Mejor carga registrada: ${Number(item.weight)} kg${Number(item.reps) > 0 ? ` × ${Number(item.reps)}` : ''}${item.date ? ` · ${escapeHtml(formatClientDate(item.date))}` : ''}</div>
               </div>
             </div>`).join('') : '<div class="muted">Aún no hay cargas registradas en el historial.</div>'}
         </div>
@@ -5233,6 +5256,40 @@
     });
   }
 
+  // Ver ficha: en dos columnas solo los datos con información; los vacíos se resumen en
+  // "Datos por completar". Es solo presentación: no cambia ningún dato.
+  function renderClientDetailFields(client) {
+    const text = (value) => String(value ?? '').trim();
+    const monthly = Number(client.monthly_value ?? client.amount ?? 0);
+    const sessionsTotal = Number(client.sessions_total || 0);
+    const fields = [
+      ['Teléfono', text(client.phone)],
+      ['Servicio', text(client.service)],
+      ['Horario', text(client.schedule_notes)],
+      ['Días de entrenamiento', text(client.training_days)],
+      ['Estado de pago', text(getClientStatusLabel(client))],
+      ['Estado del cliente', text(getClientPresenceLabel(client))],
+      ['Valor mensual', monthly > 0 ? financeApi.formatCurrency(monthly) : ''],
+      ['Fecha de renovación', client.renewal_date || client.renewal_day ? getClientRenewalLabel(client) : ''],
+      ['Sesiones disponibles', sessionsTotal > 0 ? `${Math.max(0, sessionsTotal - Number(client.sessions_used || 0))}/${sessionsTotal}` : ''],
+      ['Modalidad', client.training_modality === 'group' ? `Grupo (${Number(client.training_group_size || 2)})` : 'Personalizado'],
+      ['Correo', text(client.email)],
+      ['Objetivo', text(client.objective)],
+      ['Contacto de emergencia', text(client.emergency_contact)],
+      ['Teléfono de emergencia', text(client.emergency_phone)],
+      ['Lesiones', text(client.injuries)],
+      ['Observaciones', text(client.observations)],
+      ['Fecha de inicio', client.start_date ? formatClientDate(client.start_date) : '']
+    ];
+    const filled = fields.filter(([, value]) => value);
+    const missing = fields.filter(([, value]) => !value).map(([label]) => label.toLowerCase());
+    return `
+        <div class="client-detail-grid">
+          ${filled.map(([label, value]) => `<div><strong>${escapeHtml(label)}</strong><div class="meta">${escapeHtml(value)}</div></div>`).join('')}
+        </div>
+        ${missing.length ? `<p class="meta client-detail-missing">Datos por completar: ${escapeHtml(missing.join(', '))}.</p>` : ''}`;
+  }
+
   function renderClientDetail(client) {
     if (!client) {
       return '';
@@ -5247,25 +5304,7 @@
 
     return `
       <section class="client-detail-inline" data-client-detail-panel="${escapeHtml(client.id)}" data-client-panel-type="details" aria-label="Ficha de ${escapeHtml(getClientDisplayName(client))}">
-        <div class="client-detail-grid">
-          <div><strong>Teléfono</strong><div class="meta">${escapeHtml(client.phone || 'Sin teléfono')}</div></div>
-          <div><strong>Estado de pago</strong><div class="meta">${escapeHtml(getClientStatusLabel(client))}</div></div>
-          <div><strong>Servicio</strong><div class="meta">${escapeHtml(client.service || 'Sin servicio')}</div></div>
-          <div><strong>Estado del cliente</strong><div class="meta">${escapeHtml(getClientPresenceLabel(client))}</div></div>
-          <div><strong>Valor mensual</strong><div class="meta">${financeApi.formatCurrency(Number(client.monthly_value ?? client.amount ?? 0))}</div></div>
-          <div><strong>Fecha de renovación</strong><div class="meta">${escapeHtml(getClientRenewalLabel(client))}</div></div>
-          <div><strong>Horario</strong><div class="meta">${escapeHtml(client.schedule_notes || 'Sin horario')}</div></div>
-          <div><strong>Días de entrenamiento</strong><div class="meta">${escapeHtml(client.training_days || 'Sin información')}</div></div>
-          <div><strong>Sesiones disponibles</strong><div class="meta">${Math.max(0, Number(client.sessions_total || 0) - Number(client.sessions_used || 0))}/${Number(client.sessions_total || 0)} — puedes reagendar durante la semana sin problema.</div></div>
-          <div><strong>Modalidad</strong><div class="meta">${client.training_modality === 'group' ? `Grupo (${Number(client.training_group_size || 2)})` : 'Personalizado'}</div></div>
-          <div><strong>Correo</strong><div class="meta">${escapeHtml(client.email || 'Sin correo')}</div></div>
-          <div><strong>Objetivo</strong><div class="meta">${escapeHtml(client.objective || 'Sin objetivo')}</div></div>
-          <div><strong>Contacto de emergencia</strong><div class="meta">${escapeHtml(client.emergency_contact || 'Sin contacto')}</div></div>
-          <div><strong>Teléfono de emergencia</strong><div class="meta">${escapeHtml(client.emergency_phone || 'Sin teléfono')}</div></div>
-          <div><strong>Lesiones</strong><div class="meta">${escapeHtml(client.injuries || 'Sin información')}</div></div>
-          <div><strong>Observaciones</strong><div class="meta">${escapeHtml(client.observations || 'Sin observaciones')}</div></div>
-          <div><strong>Fecha de inicio</strong><div class="meta">${escapeHtml(formatClientDate(client.start_date))}</div></div>
-        </div>
+        ${renderClientDetailFields(client)}
         <section class="client-program-detail">
           <div class="section-title compact"><h3>Programa actual</h3>${assignment ? `<span class="pill">${Number(assignment.durationWeeks || 4)} semanas</span>` : ''}</div>
           ${assignment ? `<strong>${escapeHtml(assignment.programName || 'Programa')}</strong>
@@ -7697,6 +7736,24 @@
     const clientStudentViewId = target.getAttribute('data-client-student-view');
     if (clientStudentViewId) {
       enterStudentMode(clientStudentViewId);
+      return;
+    }
+
+    const sportsOpen = target.getAttribute('data-sports-open');
+    const sportsCancel = target.getAttribute('data-sports-cancel');
+    if (sportsOpen || sportsCancel) {
+      const panel = target.closest('[data-client-panel-type="sports"]');
+      const form = panel?.querySelector(`[data-sports-form="${sportsOpen || sportsCancel}"]`);
+      if (form) {
+        if (sportsCancel) {
+          form.reset();
+        }
+        form.classList.toggle('hidden', Boolean(sportsCancel));
+        panel.querySelectorAll(`[data-sports-open="${sportsOpen || sportsCancel}"]`).forEach((button) => button.classList.toggle('hidden', Boolean(sportsOpen)));
+        if (sportsOpen) {
+          form.querySelector('input:not([type="hidden"]), select, textarea')?.focus();
+        }
+      }
       return;
     }
 

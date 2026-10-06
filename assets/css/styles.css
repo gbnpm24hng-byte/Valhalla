@@ -2046,3 +2046,32 @@ button.sync-badge {
   outline: 2px solid var(--accent-hover);
   outline-offset: 2px;
 }
+
+/* Ficha deportiva simplificada: formularios a pedido y secciones plegables. */
+.sports-subform {
+  margin: 12px 0;
+  padding: 14px;
+  border: 1px solid rgba(214, 169, 40, 0.35);
+  border-radius: 14px;
+  background: var(--surface-2);
+}
+
+.sports-collapse > summary {
+  cursor: pointer;
+  font-weight: 700;
+  list-style-position: inside;
+  padding: 4px 0;
+}
+
+.sports-collapse[open] > summary {
+  margin-bottom: 10px;
+}
+
+.sports-compact-item {
+  padding: 8px 0;
+}
+
+.client-detail-missing {
+  margin-top: 10px;
+  font-style: italic;
+}
