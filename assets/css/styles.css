@@ -1969,3 +1969,15 @@ button.sync-badge {
   border-left: 3px solid var(--accent);
   padding-left: 8px;
 }
+
+/* Biblioteca de ejercicios: el formulario se separa visualmente de los filtros. */
+.library-exercise-form {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.library-form-title {
+  margin: 0 0 4px;
+  color: var(--accent);
+}

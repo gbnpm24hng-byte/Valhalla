@@ -7,6 +7,8 @@
   const financeApi = window.VALHALLA.finance;
   const supabaseApi = window.VALHALLA.supabase;
   const cloudDataApi = window.VALHALLA.cloudData;
+  // Etiquetas en español para mostrar códigos de la biblioteca (labels.js).
+  const labelsApi = window.VALHALLA.labels;
 
   const state = dataApi.loadState();
   const currentSessionMonth = getTodayLocalDate().slice(0, 7);
@@ -278,6 +280,7 @@
     libraryMuscleFilter: document.getElementById('libraryMuscleFilter'),
     libraryTechnicalLevelFilter: document.getElementById('libraryTechnicalLevelFilter'),
     libraryExerciseIdInput: document.getElementById('libraryExerciseId'),
+    libraryExerciseFormTitle: document.getElementById('libraryExerciseFormTitle'),
     libraryExerciseNameInput: document.getElementById('libraryExerciseName'),
     libraryExercisePatternSelect: document.getElementById('libraryExercisePattern'),
     libraryExercisePrimaryMuscleSelect: document.getElementById('libraryExercisePrimaryMuscle'),
@@ -3266,30 +3269,39 @@
     const technicalOptions = getLibraryTechnicalLevelOptions();
     const loadTypeOptions = getLibraryLoadTypeOptions();
 
-    const populate = (select, values, selectedValue = '') => {
+    // Muestra etiquetas en español (labels.js) ordenadas alfabéticamente; el value sigue
+    // siendo el código guardado. Conserva lo elegido al redibujar (antes volvía a la
+    // primera opción y podía cambiar el patrón de un ejercicio en edición).
+    const populate = (select, kind, values, { withAll = false } = {}) => {
       if (!select) {
         return;
       }
-      const options = values.map((value) => `<option value="${value}" ${selectedValue === value ? 'selected' : ''}>${escapeHtml(value)}</option>`).join('');
-      select.innerHTML = options;
+      const current = select.value;
+      const options = labelsApi.sortedOptions(kind, values);
+      // Un valor guardado que no está en el catálogo se conserva y se muestra tal cual.
+      if (current && !withAll && !values.includes(current)) {
+        options.push({ value: current, label: labelsApi.label(kind, current) });
+      }
+      select.innerHTML = (withAll ? '<option value="">Todos</option>' : '')
+        + options.map((option) => `<option value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</option>`).join('');
+      if (current && [...select.options].some((option) => option.value === current)) {
+        select.value = current;
+      }
     };
 
-    populate(els.libraryExercisePatternSelect, patternOptions);
-    populate(els.libraryExercisePrimaryMuscleSelect, muscleOptions);
-    populate(els.libraryExerciseTechnicalLevelSelect, technicalOptions);
-    populate(els.libraryExerciseLoadTypeSelect, loadTypeOptions);
-
-    if (els.libraryPatternFilter) {
-      const patternValues = [''].concat(patternOptions);
-      els.libraryPatternFilter.innerHTML = patternValues.map((value) => `<option value="${escapeHtml(value)}">${value ? escapeHtml(value) : 'Todos'}</option>`).join('');
-    }
-    if (els.libraryMuscleFilter) {
-      const muscleValues = [''].concat(muscleOptions);
-      els.libraryMuscleFilter.innerHTML = muscleValues.map((value) => `<option value="${escapeHtml(value)}">${value ? escapeHtml(value) : 'Todos'}</option>`).join('');
-    }
-    if (els.libraryTechnicalLevelFilter) {
-      const technicalValues = [''].concat(technicalOptions);
-      els.libraryTechnicalLevelFilter.innerHTML = technicalValues.map((value) => `<option value="${escapeHtml(value)}">${value ? escapeHtml(value) : 'Todos'}</option>`).join('');
+    populate(els.libraryExercisePatternSelect, 'pattern', patternOptions);
+    populate(els.libraryExercisePrimaryMuscleSelect, 'muscle', muscleOptions);
+    populate(els.libraryExerciseTechnicalLevelSelect, 'level', technicalOptions);
+    populate(els.libraryExerciseLoadTypeSelect, 'loadType', loadTypeOptions);
+    populate(els.libraryPatternFilter, 'pattern', patternOptions, { withAll: true });
+    populate(els.libraryMuscleFilter, 'muscle', muscleOptions, { withAll: true });
+    populate(els.libraryTechnicalLevelFilter, 'level', technicalOptions, { withAll: true });
+    if (els.libraryRelationTypeSelect) {
+      const relationValues = Object.keys(labelsApi.LABELS.relation);
+      const current = els.libraryRelationTypeSelect.value;
+      els.libraryRelationTypeSelect.innerHTML = '<option value="">Sin relación</option>'
+        + labelsApi.sortedOptions('relation', relationValues).map((option) => `<option value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</option>`).join('');
+      els.libraryRelationTypeSelect.value = current || '';
     }
   }
 
@@ -3297,13 +3309,19 @@
     if (!els.libraryExerciseList) {
       return;
     }
-    const search = String(els.librarySearch?.value || '').trim().toLowerCase();
+    // Búsqueda sin tildes ni mayúsculas, por nombre y por las etiquetas en español.
+    const search = labelsApi.fold(els.librarySearch?.value || '');
     const pattern = String(els.libraryPatternFilter?.value || '');
     const muscle = String(els.libraryMuscleFilter?.value || '');
     const level = String(els.libraryTechnicalLevelFilter?.value || '');
+    const searchable = (exercise) => labelsApi.fold([
+      exercise.name, exercise.normalizedName,
+      labelsApi.label('pattern', exercise.pattern), labelsApi.label('muscle', exercise.primaryMuscle),
+      labelsApi.listLabel('muscle', exercise.secondaryMuscles), labelsApi.listLabel('equipment', exercise.equipments)
+    ].join(' '));
     const exercises = (Array.isArray(state.exerciseLibrary) ? state.exerciseLibrary : [])
       .filter((exercise) => exercise && exercise.active !== false)
-      .filter((exercise) => !search || (exercise.name || '').toLowerCase().includes(search) || (exercise.normalizedName || '').toLowerCase().includes(search))
+      .filter((exercise) => !search || searchable(exercise).includes(search))
       .filter((exercise) => !pattern || (exercise.pattern || '') === pattern)
       .filter((exercise) => !muscle || (exercise.primaryMuscle || '') === muscle)
       .filter((exercise) => !level || (exercise.technicalLevel || '') === level);
@@ -3317,7 +3335,9 @@
         <div class="training-set-item library-exercise-item">
           <div class="library-exercise-main">
             <strong>${escapeHtml(exercise.name || 'Ejercicio')}</strong>
-            <div class="meta">${escapeHtml(exercise.pattern || 'other')} · ${escapeHtml(exercise.primaryMuscle || 'full_body')} · ${escapeHtml(exercise.technicalLevel || 'beginner')}</div>
+            <div class="meta">${escapeHtml(labelsApi.label('pattern', exercise.pattern || 'other'))} · ${escapeHtml(labelsApi.label('muscle', exercise.primaryMuscle || 'full_body'))} · ${escapeHtml(labelsApi.label('level', exercise.technicalLevel || 'beginner'))} · ${escapeHtml(labelsApi.label('loadType', exercise.loadType || 'external_load'))}</div>
+            ${exercise.secondaryMuscles?.length ? `<div class="meta">Músculos secundarios: ${escapeHtml(labelsApi.listLabel('muscle', exercise.secondaryMuscles))}</div>` : ''}
+            ${exercise.equipments?.length ? `<div class="meta">Equipamiento: ${escapeHtml(labelsApi.listLabel('equipment', exercise.equipments))}</div>` : ''}
             <div class="meta">Demanda articular: ${escapeHtml(formatJointDemand(demand))}</div>
             <div class="meta">${escapeHtml(exercise.description || 'Sin descripción')}</div>
             ${baseName ? `<div class="meta">Base: ${escapeHtml(baseName)}</div>` : ''}
@@ -3345,7 +3365,20 @@
     els.libraryMessage.classList.toggle('muted', tone === 'neutral');
   }
 
+  // Texto libre de músculos secundarios y equipamiento: se muestra traducido. Si al guardar
+  // no se tocó, se conserva exactamente lo guardado (no se reescribe nada).
+  const libraryFreeTextOriginal = { secondaryMuscles: null, equipments: null };
+
+  function setLibraryFormTitle(text) {
+    if (els.libraryExerciseFormTitle) {
+      els.libraryExerciseFormTitle.textContent = text;
+    }
+  }
+
   function resetLibraryExerciseForm() {
+    setLibraryFormTitle('Nuevo ejercicio');
+    libraryFreeTextOriginal.secondaryMuscles = null;
+    libraryFreeTextOriginal.equipments = null;
     if (els.libraryExerciseIdInput) {
       els.libraryExerciseIdInput.value = '';
     }
@@ -3410,6 +3443,15 @@
     if (!exercise) {
       return;
     }
+    setLibraryFormTitle('Editar ejercicio');
+    libraryFreeTextOriginal.secondaryMuscles = {
+      shown: labelsApi.listLabel('muscle', exercise.secondaryMuscles),
+      values: Array.isArray(exercise.secondaryMuscles) ? exercise.secondaryMuscles.slice() : []
+    };
+    libraryFreeTextOriginal.equipments = {
+      shown: labelsApi.listLabel('equipment', exercise.equipments),
+      values: Array.isArray(exercise.equipments) ? exercise.equipments.slice() : []
+    };
     if (els.libraryExerciseIdInput) {
       els.libraryExerciseIdInput.value = exercise.id || '';
     }
@@ -3447,10 +3489,10 @@
       els.libraryExerciseDescriptionInput.value = exercise.description || '';
     }
     if (els.libraryExerciseSecondaryMusclesInput) {
-      els.libraryExerciseSecondaryMusclesInput.value = Array.isArray(exercise.secondaryMuscles) ? exercise.secondaryMuscles.join(', ') : '';
+      els.libraryExerciseSecondaryMusclesInput.value = labelsApi.listLabel('muscle', exercise.secondaryMuscles);
     }
     if (els.libraryExerciseEquipmentsInput) {
-      els.libraryExerciseEquipmentsInput.value = Array.isArray(exercise.equipments) ? exercise.equipments.join(', ') : '';
+      els.libraryExerciseEquipmentsInput.value = labelsApi.listLabel('equipment', exercise.equipments);
     }
     if (els.libraryExerciseBaseInput) {
       els.libraryExerciseBaseInput.value = findLibraryExerciseById(exercise.baseExerciseId)?.name || '';
@@ -3458,6 +3500,15 @@
     if (els.libraryExerciseAlternativeGroupInput) {
       els.libraryExerciseAlternativeGroupInput.value = exercise.alternativeGroupId || '';
     }
+  }
+
+  function readLibraryFreeText(field, kind, input) {
+    const text = String(input?.value || '');
+    const original = libraryFreeTextOriginal[field];
+    if (original && text.trim() === original.shown.trim()) {
+      return original.values.slice();
+    }
+    return labelsApi.listCodes(kind, text);
   }
 
   function saveLibraryExercise() {
@@ -3481,8 +3532,8 @@
       description: String(els.libraryExerciseDescriptionInput?.value || '').trim(),
       pattern: String(els.libraryExercisePatternSelect?.value || 'other'),
       primaryMuscle: String(els.libraryExercisePrimaryMuscleSelect?.value || 'full_body'),
-      secondaryMuscles: String(els.libraryExerciseSecondaryMusclesInput?.value || '').split(',').map((item) => item.trim()).filter(Boolean),
-      equipments: String(els.libraryExerciseEquipmentsInput?.value || '').split(',').map((item) => item.trim()).filter(Boolean),
+      secondaryMuscles: readLibraryFreeText('secondaryMuscles', 'muscle', els.libraryExerciseSecondaryMusclesInput),
+      equipments: readLibraryFreeText('equipments', 'equipment', els.libraryExerciseEquipmentsInput),
       technicalLevel: String(els.libraryExerciseTechnicalLevelSelect?.value || 'beginner'),
       loadType: String(els.libraryExerciseLoadTypeSelect?.value || 'external_load'),
       jointDemand: {
@@ -8964,6 +9015,16 @@
 
   show('home');
   render();
+  // Los filtros de la biblioteca parten siempre en "Todos" (no se restaura ningún filtro).
+  [els.libraryPatternFilter, els.libraryMuscleFilter, els.libraryTechnicalLevelFilter].forEach((select) => {
+    if (select) {
+      select.value = '';
+    }
+  });
+  if (els.librarySearch) {
+    els.librarySearch.value = '';
+  }
+  renderLibraryExerciseList();
   refreshCloudSessionState()
     .then((hasCloudSession) => {
       if (hasCloudSession) {

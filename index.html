@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <title>VALHALLA Finanzas</title>
-  <link rel="stylesheet" href="./assets/css/styles.css?v=0.9.0">
+  <link rel="stylesheet" href="./assets/css/styles.css?v=0.9.1">
 </head>
 <body>
   <main id="onboardingView" class="onboarding-view hidden"></main>
@@ -28,7 +28,7 @@
       <div class="header-actions">
         <span class="user-pill">Usuario</span>
         <span class="badge" id="cloudModeBadge">Modo Local</span>
-        <span class="badge">v0.9.0</span>
+        <span class="badge">v0.9.1</span>
       </div>
     </header>
 
@@ -922,35 +922,36 @@
           <h2>Biblioteca de Ejercicios</h2>
           <button class="secondary small" id="newLibraryExerciseBtn" type="button">Nuevo ejercicio</button>
         </div>
-        <form id="librarySearchForm" class="form-grid">
+        <form id="librarySearchForm" class="form-grid library-filters" autocomplete="off">
           <div class="row">
             <div>
               <label for="librarySearch">Buscar</label>
-              <input id="librarySearch" type="search" placeholder="Buscar ejercicio">
+              <input id="librarySearch" type="search" placeholder="Buscar ejercicio" autocomplete="off">
             </div>
             <div>
-              <label for="libraryPatternFilter">Patrón</label>
-              <select id="libraryPatternFilter">
+              <label for="libraryPatternFilter">Filtrar por patrón</label>
+              <select id="libraryPatternFilter" autocomplete="off">
                 <option value="">Todos</option>
               </select>
             </div>
           </div>
           <div class="row">
             <div>
-              <label for="libraryMuscleFilter">Músculo principal</label>
-              <select id="libraryMuscleFilter">
+              <label for="libraryMuscleFilter">Filtrar por músculo</label>
+              <select id="libraryMuscleFilter" autocomplete="off">
                 <option value="">Todos</option>
               </select>
             </div>
             <div>
-              <label for="libraryTechnicalLevelFilter">Nivel técnico</label>
-              <select id="libraryTechnicalLevelFilter">
+              <label for="libraryTechnicalLevelFilter">Filtrar por nivel</label>
+              <select id="libraryTechnicalLevelFilter" autocomplete="off">
                 <option value="">Todos</option>
               </select>
             </div>
           </div>
         </form>
-        <form id="libraryExerciseForm" class="form-grid">
+        <form id="libraryExerciseForm" class="form-grid library-exercise-form">
+          <h3 id="libraryExerciseFormTitle" class="library-form-title">Nuevo ejercicio</h3>
           <input id="libraryExerciseId" type="hidden" value="">
           <div class="row">
             <div>
@@ -1028,11 +1029,11 @@
           </div>
           <div>
             <label for="libraryExerciseSecondaryMuscles">Músculos secundarios</label>
-            <input id="libraryExerciseSecondaryMuscles" type="text" placeholder="Ej: glutes, hamstrings">
+            <input id="libraryExerciseSecondaryMuscles" type="text" placeholder="Ej: glúteos, femorales">
           </div>
           <div>
             <label for="libraryExerciseEquipments">Equipamiento</label>
-            <input id="libraryExerciseEquipments" type="text" placeholder="Ej: barbell, power_rack">
+            <input id="libraryExerciseEquipments" type="text" placeholder="Ej: barra, rack">
           </div>
           <div class="row">
             <div>
@@ -1041,7 +1042,7 @@
             </div>
             <div>
               <label for="libraryExerciseAlternativeGroup">Grupo de alternativas</label>
-              <input id="libraryExerciseAlternativeGroup" type="text" placeholder="sentadilla-principal">
+              <input id="libraryExerciseAlternativeGroup" type="text" placeholder="Ej: sentadilla-principal">
             </div>
           </div>
           <div class="row">
@@ -1054,10 +1055,10 @@
               <label for="libraryRelationType">Tipo de relación</label>
               <select id="libraryRelationType">
                 <option value="">Sin relación</option>
-                <option value="variant_of">VARIANT_OF</option>
-                <option value="alternative_to">ALTERNATIVE_TO</option>
-                <option value="regression_of">REGRESSION_OF</option>
-                <option value="progression_of">PROGRESSION_OF</option>
+                <option value="variant_of">Variante de</option>
+                <option value="alternative_to">Alternativa a</option>
+                <option value="regression_of">Regresión de</option>
+                <option value="progression_of">Progresión de</option>
               </select>
             </div>
           </div>
@@ -1235,6 +1236,7 @@
   <script src="./assets/js/publish.js"></script>
   <script src="./assets/js/student-view.js"></script>
   <script src="./assets/js/auth-gate.js"></script>
+  <script src="./assets/js/labels.js"></script>
   <script src="./assets/js/app.js"></script>
 </body>
 </html>
