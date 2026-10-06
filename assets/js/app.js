@@ -62,6 +62,8 @@
     sessionDate: getTodayLocalDate(),
     // true solo si el entrenador eligió otra fecha en esta visita a Modo Grupo.
     dateIsManual: false,
+    // Sesión del programa elegida a mano por alumno en Modo Grupo (id del día).
+    dayChoices: {},
     drafts: {},
     message: ''
   };
@@ -977,12 +979,55 @@
     return { day: index >= 0 ? days[index] : null, index };
   }
 
+  // Día de la semana (0 = domingo) con que empieza el nombre de un día del programa,
+  // por ejemplo "Lunes — Piernas/Glúteos" o "Mié - Espalda". -1 si no empieza con uno.
+  function getWeekdayFromProgramDayName(name) {
+    const folded = String(name || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+    const prefixes = [['domingo', 'dom'], ['lunes', 'lun'], ['martes', 'mar'], ['miercoles', 'mie'], ['jueves', 'jue'], ['viernes', 'vie'], ['sabado', 'sab']];
+    return prefixes.findIndex(([full, short]) => folded.startsWith(full) || new RegExp(`^${short}\\b`).test(folded));
+  }
+
+  // Día del programa para Modo Grupo, en este orden:
+  // 1) el elegido a mano en Modo Grupo; 2) el que empieza con el día de la semana de la
+  // fecha de sesión; 3) la "Sesión del programa" elegida en Hoy; 4) el primer día con
+  // ejercicios. Así un alumno con asignación activa siempre tiene un día.
+  function getGroupProgramDay(clientId, assignment) {
+    const days = Array.isArray(assignment?.days) ? assignment.days : [];
+    const withExercises = (day) => Array.isArray(day?.exercises) && day.exercises.length > 0;
+    const byId = (id) => days.findIndex((day) => day.id === id);
+    const chosen = byId(groupSessionUi.dayChoices[clientId]);
+    if (chosen >= 0) {
+      return { day: days[chosen], index: chosen, reason: 'manual' };
+    }
+    const weekday = new Date(`${groupSessionUi.sessionDate || getTodayLocalDate()}T12:00:00`).getDay();
+    const byWeekday = days.findIndex((day) => withExercises(day) && getWeekdayFromProgramDayName(day.name) === weekday);
+    if (byWeekday >= 0) {
+      return { day: days[byWeekday], index: byWeekday, reason: 'weekday' };
+    }
+    const fromToday = getSelectedTrainingProgramDay(clientId, assignment);
+    if (fromToday.day && withExercises(fromToday.day)) {
+      return { day: fromToday.day, index: fromToday.index, reason: 'hoy' };
+    }
+    const first = days.findIndex(withExercises);
+    return first >= 0 ? { day: days[first], index: first, reason: 'first' } : { day: null, index: -1, reason: 'none' };
+  }
+
+  // Repeticiones del plan para Modo Grupo; si faltan, "reps por definir" (no inventa "1-1").
+  function getGroupRepsLabel(planExercise) {
+    const min = Number(planExercise?.repMin ?? planExercise?.repRangeMin);
+    const max = Number(planExercise?.repMax ?? planExercise?.repRangeMax);
+    if (!Number.isFinite(min) || min <= 0) {
+      return 'reps por definir';
+    }
+    return Number.isFinite(max) && max > min ? `${min}-${max}` : `${min}`;
+  }
+
   function getGroupRowData(clientId) {
     const assignment = getActiveTrainingAssignment(clientId);
     if (!assignment) {
       return null;
     }
-    const { day, index: dayIndex } = getSelectedTrainingProgramDay(clientId, assignment);
+    const { day, index: dayIndex } = getGroupProgramDay(clientId, assignment);
     const exercises = Array.isArray(day?.exercises) ? day.exercises : [];
     const draft = groupSessionUi.drafts[clientId];
     const planExercise = exercises.find((exercise) => exercise.id === draft?.planExerciseId) || exercises[0] || null;
@@ -1089,9 +1134,10 @@
       return `
         <article class="group-athlete-row" data-group-row="${escapeHtml(clientId)}">
           <header class="group-athlete-heading">
-            <div><h3>${escapeHtml(client ? getClientDisplayName(client) : 'Alumno')}</h3><div class="meta">${escapeHtml(day.name || 'Rutina')} · Plan actual: ${currentWeight} kg × ${Number(planExercise.repMin || planExercise.repRangeMin || 1)}-${Number(planExercise.repMax || planExercise.repRangeMax || 1)}</div></div>
+            <div><h3>${escapeHtml(client ? getClientDisplayName(client) : 'Alumno')}</h3><div class="meta">${escapeHtml(day.name || 'Rutina')} · Plan actual: ${currentWeight} kg × ${escapeHtml(getGroupRepsLabel(planExercise))}</div></div>
             <div class="meta">${escapeHtml(assignment.programName || 'Programa')}</div>
           </header>
+          <label>Sesión del programa<select data-group-field="dayId" data-client-id="${escapeHtml(clientId)}">${(assignment.days || []).map((programDay) => `<option value="${escapeHtml(programDay.id)}" ${programDay.id === day.id ? 'selected' : ''} ${(programDay.exercises || []).length ? '' : 'disabled'}>${escapeHtml(programDay.name || 'Día')}${(programDay.exercises || []).length ? '' : ' (sin ejercicios)'}</option>`).join('')}</select></label>
           <label>Ejercicio<select data-group-field="exerciseId" data-client-id="${escapeHtml(clientId)}">${options}</select></label>
           <div class="group-set-grid">
             <label>Aproximaciones<input type="text" inputmode="text" placeholder="30/40 kg" data-group-field="warmups" data-client-id="${escapeHtml(clientId)}" value="${escapeHtml(draft.warmups)}"></label>
@@ -1102,7 +1148,7 @@
             ${decisionLabels.map(([value, label]) => `<button class="${draft.decision === value ? 'primary' : 'secondary'} small" type="button" data-group-decision="${value}" data-client-id="${escapeHtml(clientId)}" aria-pressed="${draft.decision === value}">${label}</button>`).join('')}
           </div>
           <div class="group-confirm-row">
-            <label>Próxima sesión · ${escapeHtml(selectedExercise.name)}<input type="number" min="0" step="2.5" inputmode="decimal" data-group-field="proposedWeight" data-client-id="${escapeHtml(clientId)}" value="${escapeHtml(draft.proposedWeight)}">kg × ${Number(planExercise.repMin || planExercise.repRangeMin || 1)}-${Number(planExercise.repMax || planExercise.repRangeMax || 1)}</label>
+            <label>Próxima sesión · ${escapeHtml(selectedExercise.name)}<input type="number" min="0" step="2.5" inputmode="decimal" data-group-field="proposedWeight" data-client-id="${escapeHtml(clientId)}" value="${escapeHtml(draft.proposedWeight)}">kg × ${escapeHtml(getGroupRepsLabel(planExercise))}</label>
             <button class="primary" type="button" data-group-confirm="${escapeHtml(clientId)}" ${!draft.decision || alreadyConfirmed ? 'disabled' : ''}>${alreadyConfirmed ? 'Confirmada' : 'Confirmar'}</button>
           </div>
         </article>`;
@@ -1248,6 +1294,7 @@
     if (event.target === els.groupSessionDate) {
       groupSessionUi.sessionDate = event.target.value || getTodayLocalDate();
       groupSessionUi.dateIsManual = Boolean(event.target.value) && event.target.value !== getTodayLocalDate();
+      groupSessionUi.dayChoices = {};
       groupSessionUi.message = '';
       renderTrainingGroupMode();
       return;
@@ -1273,6 +1320,13 @@
     }
     const field = event.target.getAttribute('data-group-field');
     const clientId = event.target.getAttribute('data-client-id');
+    if (field === 'dayId' && clientId) {
+      groupSessionUi.dayChoices[clientId] = event.target.value;
+      delete groupSessionUi.drafts[clientId];
+      groupSessionUi.message = '';
+      renderTrainingGroupMode();
+      return;
+    }
     if (field === 'exerciseId' && clientId) {
       const row = getGroupRowData(clientId);
       if (row) {
@@ -1301,6 +1355,7 @@
       // Cada vez que se abre Modo Grupo parte con la fecha de HOY (hora local).
       groupSessionUi.sessionDate = getTodayLocalDate();
       groupSessionUi.dateIsManual = false;
+      groupSessionUi.dayChoices = {};
     }
     const trainingsSection = document.getElementById('trainings');
     if (trainingsSection) {
