@@ -3575,10 +3575,12 @@
       }
     }
 
-    state.exerciseLibrary = library.filter((item) => item.id !== exerciseId).map((item) => ({ ...item, active: false }));
+    // Solo ESE ejercicio queda inactivo; los demás no se tocan. No se borra: los programas,
+    // el armador, el ejercicio base y las relaciones lo referencian por su id.
+    state.exerciseLibrary = library.map((item) => (item.id === exerciseId ? { ...item, active: false } : item));
     persist();
     renderLibraryExerciseList();
-    setLibraryMessage('Ejercicio eliminado de la galería.', 'ok');
+    setLibraryMessage(`"${match.name || 'Ejercicio'}" eliminado de la biblioteca.`, 'ok');
   }
 
   function renderTemplateList() {
@@ -7725,6 +7727,11 @@
 
     const libraryDeleteId = target.getAttribute('data-library-exercise-delete');
     if (libraryDeleteId) {
+      const exerciseToDelete = findLibraryExerciseById(libraryDeleteId);
+      const exerciseName = exerciseToDelete?.name || 'este ejercicio';
+      if (!window.confirm(`¿Eliminar "${exerciseName}" de la biblioteca?\n\nDejará de aparecer en la biblioteca. Los programas que ya lo usan no cambian.`)) {
+        return;
+      }
       deleteLibraryExerciseById(libraryDeleteId).catch((error) => {
         setLibraryMessage(error?.message || 'No se pudo eliminar el ejercicio.', 'bad');
       });
