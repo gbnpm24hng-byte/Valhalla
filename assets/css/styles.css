@@ -2075,3 +2075,146 @@ button.sync-badge {
   margin-top: 10px;
   font-style: italic;
 }
+
+/* Modo Grupo: acordeón por alumno y una fila compacta por ejercicio. */
+details.group-athlete-row > summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+details.group-athlete-row > summary::-webkit-details-marker {
+  display: none;
+}
+
+details.group-athlete-row > summary h3::before {
+  content: '▸ ';
+  color: var(--accent);
+}
+
+details.group-athlete-row[open] > summary h3::before {
+  content: '▾ ';
+}
+
+.group-progress {
+  white-space: nowrap;
+}
+
+.group-progress--done {
+  color: var(--ok);
+  border-color: rgba(90, 156, 104, 0.45);
+}
+
+.group-exercise-list {
+  display: grid;
+  gap: 10px;
+}
+
+.group-exercise {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+
+.group-exercise--done {
+  border-color: rgba(90, 156, 104, 0.5);
+  background: rgba(90, 156, 104, 0.08);
+}
+
+.group-ex-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 10px;
+}
+
+.group-saved {
+  margin: 0;
+  color: var(--ok);
+  font-weight: 600;
+}
+
+.group-exercise .group-set-grid {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.group-set {
+  display: grid;
+  grid-template-columns: auto 1fr 1fr;
+  align-items: end;
+  gap: 6px;
+}
+
+.group-set-label {
+  font-weight: 700;
+  color: var(--accent);
+  padding-bottom: 14px;
+}
+
+.group-exercise input,
+.group-exercise select {
+  min-height: 42px;
+  padding: 8px 10px;
+}
+
+.group-confirm-action {
+  display: grid;
+  gap: 4px;
+  justify-items: stretch;
+}
+
+.group-confirm-error {
+  margin: 0;
+  color: var(--bad);
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.group-set {
+  align-items: center;
+}
+
+.group-set label {
+  margin: 0;
+}
+
+.group-set-label {
+  padding-bottom: 0;
+}
+
+@media (max-width: 520px) {
+  .group-exercise .group-set-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .group-exercise .group-set {
+    grid-column: 1 / -1;
+  }
+  .group-exercise .group-decisions {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .group-exercise .group-decisions button {
+    padding: 8px 4px;
+    font-size: 0.78rem;
+    min-height: 40px;
+  }
+}
+
+@media (max-width: 520px) {
+  /* Aproximaciones y RIR final comparten la primera fila; las series van debajo. */
+  .group-exercise .group-set-grid > label:first-child { order: -2; }
+  .group-exercise .group-set-grid > label:last-child { order: -1; }
+}

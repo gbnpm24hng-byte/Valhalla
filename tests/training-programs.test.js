@@ -149,3 +149,17 @@ test('normalizeTrainingProgram preserves planner fields used by the routine buil
   assert.equal(exercise.approximations[0].weight, 80);
   assert.equal(exercise.effectiveSets[0].weight, 90);
 });
+
+test('una repetición sin dato se conserva como null; las guardadas no cambian', () => {
+  const session = globalThis.VALHALLA.data.importState(JSON.stringify({ trainingsV08: { sessions: [{
+    id: 's', clientId: 'c', date: '2026-10-05', groupSessionId: 'group-x',
+    exercises: [{ id: 'e', programExerciseId: 'pe', exerciseName: 'Sentadilla', sets: [
+      { setNumber: 1, setType: 'S', weight: 60, reps: null },
+      { setNumber: 2, setType: 'S', weight: 60, reps: 8 },
+      { setNumber: 3, setType: 'S', weight: 60, reps: 0 },
+      { setNumber: 4, setType: 'A', weight: 30, reps: '' }
+    ] }]
+  }] } })).trainingsV08.sessions[0];
+  assert.deepEqual(session.exercises[0].sets.map((set) => set.reps), [null, 8, 0, null]);
+  assert.equal(session.exercises[0].programExerciseId, 'pe');
+});

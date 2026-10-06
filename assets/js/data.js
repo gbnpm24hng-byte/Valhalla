@@ -350,7 +350,8 @@
     return {
       setNumber: Number(setEntry.setNumber || index + 1),
       weight: Number(setEntry.weight || 0),
-      reps: Number(setEntry.reps || 0),
+      // null = repeticiones sin dato (no se convierte en 0); los números guardados no cambian.
+      reps: setEntry.reps === null || setEntry.reps === '' ? null : Number(setEntry.reps || 0),
       completed: setEntry.completed !== false,
       setType,
       rir: Number.isFinite(rir) ? rir : null,
