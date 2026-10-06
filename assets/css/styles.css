@@ -1993,3 +1993,10 @@ button.sync-badge {
   font-size: 0.78rem;
   font-weight: 700;
 }
+
+.library-import-list {
+  max-height: 40vh;
+  overflow-y: auto;
+  margin: 0;
+  padding-left: 18px;
+}

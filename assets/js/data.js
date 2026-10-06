@@ -753,6 +753,39 @@
     };
   }
 
+  // "Agregar ejercicios desde un respaldo": decide qué ejercicios del respaldo se agregan.
+  // Solo agrega los que no existen ya (por id o por nombre sin tildes ni mayúsculas, incluidos
+  // los inactivos); nunca modifica ni reemplaza los existentes. Los agregados conservan su id,
+  // así los programas que ya apuntan a ellos los vuelven a encontrar.
+  function planLibraryAdditions(currentLibrary, backupLibrary) {
+    const fold = (value) => String(value ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+    const current = Array.isArray(currentLibrary) ? currentLibrary : [];
+    const takenIds = new Set(current.map((item) => item && item.id).filter(Boolean));
+    const takenNames = new Set(current.map((item) => fold(item && (item.name || item.normalizedName))).filter(Boolean));
+    const toAdd = [];
+    const skipped = [];
+    (Array.isArray(backupLibrary) ? backupLibrary : []).forEach((item) => {
+      if (!item || typeof item !== 'object') {
+        return;
+      }
+      const name = String(item.name || item.normalizedName || '').trim();
+      const key = fold(name);
+      if (!name) {
+        skipped.push({ name: '(sin nombre)', reason: 'sin nombre' });
+      } else if (item.id && takenIds.has(item.id)) {
+        skipped.push({ name, reason: 'ya existe (mismo id)' });
+      } else if (takenNames.has(key)) {
+        skipped.push({ name, reason: 'ya existe un ejercicio con ese nombre' });
+      } else {
+        const normalized = normalizeLibraryExercise(item);
+        toAdd.push(normalized);
+        takenIds.add(normalized.id);
+        takenNames.add(key);
+      }
+    });
+    return { toAdd, skipped };
+  }
+
   function normalizeArray(items, fallback, normalizeItem) {
     if (Array.isArray(items)) {
       return items.map((item, index) => normalizeItem(item, index)).filter(Boolean);
@@ -933,6 +966,7 @@
     STORAGE_KEY,
     LEGACY_STORAGE_KEYS,
     createInitialState,
+    planLibraryAdditions,
     loadState,
     saveState,
     exportState,

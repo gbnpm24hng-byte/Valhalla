@@ -198,11 +198,13 @@
     if (!cloudRow) {
       return 'offer-upload';
     }
+    // Primero "ya es igual a la nube": si no, un equipo que cargó una nube con solo el
+    // contenido de fábrica seguiría pareciendo "de fábrica" y se recargaría sin fin.
+    if (localStored && compare(localPayload, cloudRow.data).identical) {
+      return 'in-sync';
+    }
     if (!localStored || localIsFactory) {
       return 'load-cloud';
-    }
-    if (compare(localPayload, cloudRow.data).identical) {
-      return 'in-sync';
     }
     // La nube no cambió desde que este equipo sincronizó: la diferencia son cambios
     // hechos aquí después. Quedan "pendientes de sincronizar" (los subirá A3).

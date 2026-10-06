@@ -302,6 +302,8 @@
     libraryExerciseList: document.getElementById('libraryExerciseList'),
     libraryMessage: document.getElementById('libraryMessage'),
     newLibraryExerciseBtn: document.getElementById('newLibraryExerciseBtn'),
+    libraryImportBtn: document.getElementById('libraryImportBtn'),
+    libraryImportFile: document.getElementById('libraryImportFile'),
     saveLibraryExerciseBtn: document.getElementById('saveLibraryExerciseBtn'),
     exerciseLibraryOptions: document.getElementById('exerciseLibraryOptions'),
     programForm: document.getElementById('programForm'),
@@ -2287,6 +2289,20 @@
     return null;
   }
 
+  // Nombre del ejercicio en el armador. Si el ejercicio ya no está en la biblioteca
+  // (por ejemplo, un programa importado con una biblioteca distinta), se usa el nombre
+  // guardado en el programa: nunca se reemplaza por "Ejercicio".
+  function getRoutineExerciseName() {
+    const fromLibrary = findRoutineExercise(routineBuilder.exerciseId);
+    if (fromLibrary?.name) {
+      return fromLibrary.name;
+    }
+    const editing = routineBuilder.editingIndex !== null && routineBuilder.editingIndex !== undefined
+      ? getRoutineBuilderDay()?.exercises?.[routineBuilder.editingIndex]
+      : null;
+    return editing?.exerciseName || 'Ejercicio';
+  }
+
   function getRoutineBuilderDay() {
     const draft = getPlanningDraftProgram();
     const day = draft.days[routineBuilder.activeDayIndex] || draft.days[0];
@@ -2454,7 +2470,7 @@
 
     const selectedExercise = findRoutineExercise(routineBuilder.exerciseId)
       || { id: routineBuilder.exerciseId || dataApi.createId('library-exercise'), name: 'Ejercicio', category: routineBuilder.category || 'PIERNAS' };
-    const selectedName = selectedExercise.name || 'Ejercicio';
+    const selectedName = getRoutineExerciseName();
     const approx = Array.isArray(routineBuilder.draft.approximations) ? routineBuilder.draft.approximations : [];
 
     els.routineBuilderRoot.innerHTML = `
@@ -2552,10 +2568,7 @@
       return;
     }
 
-    const exerciseName = (() => {
-      const localExercise = findRoutineExercise(routineBuilder.exerciseId);
-      return localExercise?.name || 'Ejercicio';
-    })();
+    const exerciseName = getRoutineExerciseName();
 
     const payload = {
       id: dataApi.createId('program-exercise'),
@@ -3563,6 +3576,75 @@
     renderLibraryExerciseList();
     resetLibraryExerciseForm();
     setLibraryMessage('Ejercicio guardado en la biblioteca.', 'ok');
+  }
+
+  // "Agregar ejercicios desde un respaldo": solo agrega ejercicios que no existen (por id o
+  // por nombre). No modifica los existentes ni toca clientes, programas o asignaciones.
+  function closeLibraryImportModal() {
+    document.getElementById('libraryImportModal')?.remove();
+  }
+
+  function handleLibraryImportFile(event) {
+    const [file] = event.target.files || [];
+    event.target.value = '';
+    if (!file) {
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      let backupLibrary;
+      try {
+        const parsed = JSON.parse(reader.result);
+        backupLibrary = Array.isArray(parsed) ? parsed : parsed?.exerciseLibrary;
+        if (!Array.isArray(backupLibrary)) {
+          throw new Error('sin biblioteca');
+        }
+      } catch (error) {
+        setLibraryMessage('El archivo no es un respaldo con biblioteca de ejercicios.', 'bad');
+        return;
+      }
+      showLibraryImportPreview(file.name, backupLibrary);
+    };
+    reader.readAsText(file);
+  }
+
+  function showLibraryImportPreview(fileName, backupLibrary) {
+    const current = Array.isArray(state.exerciseLibrary) ? state.exerciseLibrary : [];
+    const plan = dataApi.planLibraryAdditions(current, backupLibrary);
+    const listItems = plan.toAdd.map((exercise) => `<li>${escapeHtml(exercise.name)} <span class="muted">· ${escapeHtml(labelsApi.label('muscle', exercise.primaryMuscle))}</span></li>`).join('');
+    closeLibraryImportModal();
+    const overlay = document.createElement('div');
+    overlay.id = 'libraryImportModal';
+    overlay.className = 'sync-modal';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.innerHTML = `
+      <div class="sync-modal-card card">
+        <h2>Agregar ejercicios desde un respaldo</h2>
+        <p class="muted">Archivo: ${escapeHtml(fileName)} · ${backupLibrary.length} ejercicios en el respaldo · ${current.length} en tu biblioteca.</p>
+        ${plan.toAdd.length
+          ? `<p>Se agregarán <strong>${plan.toAdd.length}</strong> ejercicios nuevos:</p><ul class="library-import-list">${listItems}</ul>`
+          : '<p>No hay ejercicios nuevos para agregar: todos ya están en tu biblioteca.</p>'}
+        ${plan.skipped.length ? `<p class="muted">${plan.skipped.length} se omiten porque ya existen (por id o por nombre).</p>` : ''}
+        <p class="muted">No se modifica ningún ejercicio existente y no se tocan clientes, programas ni asignaciones.</p>
+        <div class="inline-actions">
+          <button class="secondary" type="button" data-library-import-cancel>Cancelar</button>
+          ${plan.toAdd.length ? `<button class="primary" type="button" data-library-import-confirm>Agregar ${plan.toAdd.length} ejercicios</button>` : ''}
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    overlay.querySelector('[data-library-import-cancel]').focus();
+    overlay.querySelector('[data-library-import-cancel]').addEventListener('click', closeLibraryImportModal);
+    overlay.querySelector('[data-library-import-confirm]')?.addEventListener('click', () => {
+      // Se recalcula sobre la biblioteca actual por si cambió mientras la ventana estaba abierta.
+      const latest = Array.isArray(state.exerciseLibrary) ? state.exerciseLibrary : [];
+      const finalPlan = dataApi.planLibraryAdditions(latest, backupLibrary);
+      state.exerciseLibrary = latest.concat(finalPlan.toAdd);
+      persist();
+      renderLibraryExerciseList();
+      closeLibraryImportModal();
+      setLibraryMessage(`Se agregaron ${finalPlan.toAdd.length} ejercicios a la biblioteca.`, 'ok');
+    });
   }
 
   async function deleteLibraryExerciseById(exerciseId) {
@@ -8948,6 +9030,8 @@
   });
   els.exerciseCategorySelect?.addEventListener('change', renderProgramLibrary);
   els.exerciseLibrarySearch?.addEventListener('input', renderProgramLibrary);
+  els.libraryImportBtn?.addEventListener('click', () => els.libraryImportFile?.click());
+  els.libraryImportFile?.addEventListener('change', handleLibraryImportFile);
   els.newLibraryExerciseBtn?.addEventListener('click', () => {
     resetLibraryExerciseForm();
     setLibraryMessage('Nuevo ejercicio listo para guardar.', 'neutral');

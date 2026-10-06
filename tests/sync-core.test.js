@@ -216,3 +216,14 @@ test('estado de fábrica (3 ejercicios, sin clientes) cuenta como equipo sin dat
   assert.equal(sync.decideSyncAction({ cloudRow: row, localStored: true, localIsFactory: true, localPayload: savedFactory, ownerId: 'coach-1' }), 'load-cloud');
   assert.equal(sync.decideSyncAction({ cloudRow: row, localStored: true, localIsFactory: false, localPayload: withClient, ownerId: 'coach-1' }), 'choose');
 });
+
+test('una nube con solo el contenido de fábrica no provoca recargas sin fin', () => {
+  // Equipo que acaba de cargar esa nube: su contenido es de fábrica E idéntico a la nube.
+  const factoryCloud = sync.buildCloudPayload(dataApi.importState(JSON.stringify(dataApi.createInitialState())));
+  const row = { owner_id: 'coach-1', version: 1, data: factoryCloud };
+  const afterLoad = JSON.parse(JSON.stringify(factoryCloud));
+  assert.equal(sync.decideSyncAction({ cloudRow: row, localStored: true, localIsFactory: true, localPayload: afterLoad, ownerId: 'coach-1' }), 'in-sync');
+  // Otro equipo de fábrica (ids distintos) sí carga la nube, una vez.
+  const otherFactory = sync.buildCloudPayload(dataApi.importState(JSON.stringify(dataApi.createInitialState())));
+  assert.equal(sync.decideSyncAction({ cloudRow: row, localStored: true, localIsFactory: true, localPayload: otherFactory, ownerId: 'coach-1' }), 'load-cloud');
+});

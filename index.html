@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <title>VALHALLA Finanzas</title>
-  <link rel="stylesheet" href="./assets/css/styles.css?v=0.9.2">
+  <link rel="stylesheet" href="./assets/css/styles.css?v=0.9.3">
 </head>
 <body>
   <main id="onboardingView" class="onboarding-view hidden"></main>
@@ -28,7 +28,7 @@
       <div class="header-actions">
         <span class="user-pill">Usuario</span>
         <span class="badge" id="cloudModeBadge">Modo Local</span>
-        <span class="badge">v0.9.2</span>
+        <span class="badge">v0.9.3</span>
       </div>
     </header>
 
@@ -920,7 +920,11 @@
       <div class="card">
         <div class="section-title">
           <h2>Biblioteca de Ejercicios</h2>
-          <button class="secondary small" id="newLibraryExerciseBtn" type="button">Nuevo ejercicio</button>
+          <div class="inline-actions">
+            <button class="secondary small" id="newLibraryExerciseBtn" type="button">Nuevo ejercicio</button>
+            <button class="ghost small" id="libraryImportBtn" type="button">Agregar desde respaldo</button>
+            <input id="libraryImportFile" class="hidden" type="file" accept=".json,application/json">
+          </div>
         </div>
         <form id="librarySearchForm" class="form-grid library-filters" autocomplete="off">
           <div class="row">
