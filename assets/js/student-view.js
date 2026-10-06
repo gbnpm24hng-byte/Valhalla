@@ -107,35 +107,55 @@
   // Dibujo
   // ---------------------------------------------------------------------------
 
+  // Un número "con dato": la app guarda 0 cuando el campo quedó vacío.
+  function hasValue(value) {
+    return value !== null && value !== undefined && value !== '' && Number(value) > 0;
+  }
+
+  // Serie: muestra solo lo que tiene dato ("60 kg", sin "× 0 reps").
   function setLine(set) {
     const parts = [];
-    parts.push(set.weight === null || set.weight === undefined ? 'peso libre' : `${Number(set.weight)} kg`);
-    if (set.reps !== null && set.reps !== undefined) parts.push(`${Number(set.reps)} reps`);
-    if (set.rir !== null && set.rir !== undefined) parts.push(`RIR ${Number(set.rir)}`);
-    return parts.join(' × ').replace(' × RIR', ' · RIR');
+    if (hasValue(set.weight)) parts.push(`${Number(set.weight)} kg`);
+    if (hasValue(set.reps)) parts.push(`${Number(set.reps)} reps`);
+    let line = parts.join(' × ') || 'por definir';
+    if (set.rir !== null && set.rir !== undefined && set.rir !== '') line += ` · RIR ${Number(set.rir)}`;
+    return line;
+  }
+
+  function setHasData(set) {
+    return hasValue(set?.weight) || hasValue(set?.reps);
   }
 
   function repsRange(exercise) {
-    if (exercise.repMin === null || exercise.repMin === undefined) return '';
-    return exercise.repMax && exercise.repMax !== exercise.repMin ? `${exercise.repMin}–${exercise.repMax} reps` : `${exercise.repMin} reps`;
+    if (!hasValue(exercise.repMin)) return 'reps por definir';
+    return hasValue(exercise.repMax) && Number(exercise.repMax) !== Number(exercise.repMin)
+      ? `${Number(exercise.repMin)}–${Number(exercise.repMax)} reps`
+      : `${Number(exercise.repMin)} reps`;
+  }
+
+  // Nota para el alumno: sin frases internas (también en lo que se publicó antes del filtro).
+  function noteForStudent(value) {
+    return window.VALHALLA.publishCore?.studentNote ? window.VALHALLA.publishCore.studentNote(value) : String(value || '');
   }
 
   function renderExercise(exercise) {
     const summary = [
-      exercise.sets ? `${Number(exercise.sets)} series` : '',
+      hasValue(exercise.sets) ? `${Number(exercise.sets)} series` : '',
       repsRange(exercise),
-      exercise.targetWeight !== null && exercise.targetWeight !== undefined ? `${Number(exercise.targetWeight)} kg objetivo` : ''
+      hasValue(exercise.targetWeight) ? `${Number(exercise.targetWeight)} kg objetivo` : ''
     ].filter(Boolean).join(' · ');
+    // Aproximaciones sin peso ni repeticiones no se muestran.
     const rows = [
-      ...(exercise.approximations || []).map((set) => `<li><span class="sv-set-label">${escapeHtml(set.label || 'A')}</span> ${escapeHtml(setLine(set))}</li>`),
+      ...(exercise.approximations || []).filter(setHasData).map((set) => `<li><span class="sv-set-label">${escapeHtml(set.label || 'A')}</span> ${escapeHtml(setLine(set))}</li>`),
       ...(exercise.effectiveSets || []).map((set) => `<li class="sv-effective"><span class="sv-set-label">${escapeHtml(set.label || 'S')}</span> ${escapeHtml(setLine(set))}</li>`)
     ].join('');
+    const note = noteForStudent(exercise.techniqueNotes);
     return `
       <li class="sv-exercise">
         <strong>${escapeHtml(exercise.name || 'Ejercicio')}</strong>
         ${summary ? `<div class="sv-meta">${escapeHtml(summary)}</div>` : ''}
         ${rows ? `<ul class="sv-sets">${rows}</ul>` : ''}
-        ${exercise.techniqueNotes ? `<div class="sv-note">${escapeHtml(exercise.techniqueNotes)}</div>` : ''}
+        ${note ? `<div class="sv-note">${escapeHtml(note)}</div>` : ''}
       </li>`;
   }
 
@@ -170,7 +190,7 @@
               <ul class="sv-exercises">${(data.exercises || []).map((exercise) => `
                 <li class="sv-exercise">
                   <strong>${escapeHtml(exercise.name || 'Ejercicio')}</strong>
-                  <ul class="sv-sets">${(exercise.sets || []).map((set) => `<li${set.type === 'S' ? ' class="sv-effective"' : ''}><span class="sv-set-label">${escapeHtml(`${set.type || 'S'}${set.setNumber || ''}`)}</span> ${escapeHtml(setLine(set))}</li>`).join('')}</ul>
+                  <ul class="sv-sets">${(exercise.sets || []).filter(setHasData).map((set) => `<li${set.type === 'S' ? ' class="sv-effective"' : ''}><span class="sv-set-label">${escapeHtml(`${set.type || 'S'}${set.setNumber || ''}`)}</span> ${escapeHtml(setLine(set))}</li>`).join('')}</ul>
                 </li>`).join('')}</ul>
             </details>`;
         }).join('')}
@@ -246,5 +266,5 @@
     showContent(container, cache, { offline: false });
   }
 
-  window.VALHALLA.studentView = { render, clearCache };
+  window.VALHALLA.studentView = { render, clearCache, format: { setLine, setHasData, repsRange, noteForStudent, renderProgram } };
 })();

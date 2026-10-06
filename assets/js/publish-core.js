@@ -18,6 +18,42 @@
 
   const MAX_TEXT = 500;
 
+  // Notas internas que no se publican al alumno. Se revisa frase por frase: se quita
+  // solo la frase interna y se conserva el resto de la nota de técnica.
+  // Convención para el entrenador: empezar una frase con "Interno:" o "Nota interna"
+  // la deja solo para él.
+  const INTERNAL_NOTE_PATTERNS = [
+    /^\s*\(?\s*(interno|interna|nota interna|solo coach|solo entrenador)\b/i,
+    /no incluid[oa]s? en los datos/i,
+    /datos recibidos/i,
+    /\b(por|a) (completar|confirmar|revisar|definir)\b/i,
+    /\b(pendiente|falta) (de )?(dato|datos|confirmar|completar|revisar)\b/i,
+    /sin datos registrados/i,
+    /sin series registradas/i,
+    /carga individual por alumno/i,
+    /cambiado desde/i,
+    // Solo "reps/series/pesos/cargas registrad(o/a)s:" seguido de dos puntos. No cubre
+    // frases como "60 kg registrado como asistencia/lastre", que sí sirven al alumno.
+    /\b(reps|repeticiones|series|pesos?|cargas?) registrad[oa]s?\s*:/i
+  ];
+
+  function isInternalNote(sentence) {
+    return INTERNAL_NOTE_PATTERNS.some((pattern) => pattern.test(sentence));
+  }
+
+  // Devuelve la nota sin las frases internas.
+  function studentNote(value) {
+    if (value === null || value === undefined) {
+      return '';
+    }
+    return String(value)
+      .split(/\n+|(?<=[.!?;])\s+/)
+      .map((sentence) => sentence.trim())
+      .filter((sentence) => sentence && !isInternalNote(sentence))
+      .join(' ')
+      .slice(0, MAX_TEXT);
+  }
+
   function text(value, max = MAX_TEXT) {
     return value === null || value === undefined ? '' : String(value).slice(0, max);
   }
@@ -53,7 +89,7 @@
       repMin: numberOrNull(exercise?.repMin ?? exercise?.repRangeMin),
       repMax: numberOrNull(exercise?.repMax ?? exercise?.repRangeMax),
       targetWeight: numberOrNull(exercise?.targetWeight),
-      techniqueNotes: text(exercise?.notes),
+      techniqueNotes: studentNote(exercise?.notes),
       approximations: list(exercise?.approximations).map(pickPrescribedSet),
       effectiveSets: list(exercise?.effectiveSets).map(pickPrescribedSet)
     };
@@ -102,7 +138,7 @@
       return {
         name: text(exercise?.exerciseName, 120),
         targetWeight: numberOrNull(exercise?.targetWeight),
-        techniqueNotes: text(exercise?.coachNotes),
+        techniqueNotes: studentNote(exercise?.coachNotes),
         sets
       };
     }).filter((exercise) => exercise.sets.length > 0);
@@ -157,6 +193,7 @@
     buildPublishedProgram,
     buildPublishedSession,
     buildPublication,
-    findForbiddenKeys
+    findForbiddenKeys,
+    studentNote
   };
 })();
