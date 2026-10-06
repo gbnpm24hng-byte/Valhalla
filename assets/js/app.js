@@ -60,6 +60,8 @@
   const groupSessionUi = {
     selectedClientIds: [],
     sessionDate: getTodayLocalDate(),
+    // true solo si el entrenador eligió otra fecha en esta visita a Modo Grupo.
+    dateIsManual: false,
     drafts: {},
     message: ''
   };
@@ -1021,7 +1023,9 @@
     if (!els.trainingGroupView) {
       return;
     }
-    if (!groupSessionUi.sessionDate) {
+    // Si no se eligió otra fecha a mano, sigue siendo HOY (aunque la pestaña quedara abierta
+    // desde ayer: antes la fecha se calculaba una sola vez, al cargar la app).
+    if (!groupSessionUi.sessionDate || !groupSessionUi.dateIsManual) {
       groupSessionUi.sessionDate = getTodayLocalDate();
     }
     if (els.groupSessionDate && els.groupSessionDate.value !== groupSessionUi.sessionDate) {
@@ -1032,7 +1036,7 @@
     if (els.groupSessionClients) {
       els.groupSessionClients.innerHTML = activeClients.length
         ? activeClients.map((client) => `
-          <label class="group-session-client">
+          <label class="group-session-client${groupSessionUi.selectedClientIds.includes(client.id) ? ' selected' : ''}" title="${escapeHtml(getClientDisplayName(client))}">
             <input type="checkbox" data-group-client="${escapeHtml(client.id)}" ${groupSessionUi.selectedClientIds.includes(client.id) ? 'checked' : ''}>
             <span>${escapeHtml(getClientDisplayName(client))}</span>
           </label>`).join('')
@@ -1243,6 +1247,7 @@
   function handleGroupSessionChange(event) {
     if (event.target === els.groupSessionDate) {
       groupSessionUi.sessionDate = event.target.value || getTodayLocalDate();
+      groupSessionUi.dateIsManual = Boolean(event.target.value) && event.target.value !== getTodayLocalDate();
       groupSessionUi.message = '';
       renderTrainingGroupMode();
       return;
@@ -1290,7 +1295,13 @@
   }
 
   function setTrainingView(viewName) {
+    const previousView = trainingUi.activeTrainingView;
     trainingUi.activeTrainingView = viewName;
+    if (viewName === 'group' && previousView !== 'group') {
+      // Cada vez que se abre Modo Grupo parte con la fecha de HOY (hora local).
+      groupSessionUi.sessionDate = getTodayLocalDate();
+      groupSessionUi.dateIsManual = false;
+    }
     const trainingsSection = document.getElementById('trainings');
     if (trainingsSection) {
       trainingsSection.setAttribute('data-view', viewName);
@@ -9117,6 +9128,12 @@
   });
   // Indicador "Publicar al alumno" por cliente (publish.js).
   window.addEventListener('valhalla:publish-changed', () => renderClients());
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && trainingUi.activeTrainingView === 'group') {
+      renderTrainingGroupMode();
+    }
+  });
 
   show('home');
   render();
