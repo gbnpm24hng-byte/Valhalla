@@ -2029,6 +2029,109 @@ button.sync-badge {
   padding-left: 8px;
 }
 
+/* B3.2: registro de series por el alumno (pensado para celular). */
+.sv-log-date {
+  display: grid;
+  gap: 6px;
+  font-weight: 700;
+}
+
+.sv-log-date select {
+  min-height: 48px;
+  font-size: 1rem;
+}
+
+.sv-log {
+  margin-top: 10px;
+  display: grid;
+  gap: 10px;
+}
+
+.sv-log-ref {
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.sv-log-row {
+  display: grid;
+  grid-template-columns: 40px repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  align-items: end;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+
+.sv-log-row .sv-set-label {
+  align-self: center;
+}
+
+.sv-log-field {
+  display: grid;
+  gap: 4px;
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin: 0;
+}
+
+.sv-log-field input {
+  min-height: 48px;
+  font-size: 1.1rem;
+  width: 100%;
+  min-width: 0;
+}
+
+.sv-log-field input:disabled {
+  opacity: 0.75;
+}
+
+.sv-log-status {
+  grid-column: 1 / -1;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.sv-log-status:empty {
+  display: none;
+}
+
+.sv-log-status[data-status="saved"],
+.sv-log-status[data-status="coach"] { color: var(--ok); }
+.sv-log-status[data-status="pending"] { color: var(--warn); }
+.sv-log-status[data-status="rejected"] { color: var(--bad); }
+
+.sv-log-row-error {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--bad);
+}
+
+.sv-log-save {
+  min-height: 52px;
+  font-size: 1.05rem;
+}
+
+.sv-log-msg--bad {
+  color: var(--bad);
+}
+
+.sv-logout-confirm {
+  border-color: var(--warn);
+}
+
+.sv-logout-confirm .inline-actions button {
+  min-height: 48px;
+}
+
+.sv-log-undefined {
+  margin-top: 8px;
+  font-size: 0.9rem;
+  color: var(--muted);
+  font-style: italic;
+}
+
 /* Biblioteca de ejercicios: el formulario se separa visualmente de los filtros. */
 .library-exercise-form {
   margin-top: 18px;
