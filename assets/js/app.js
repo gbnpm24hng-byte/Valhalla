@@ -4381,6 +4381,41 @@
     return 'S';
   }
 
+  // Regla única de conteo: un ejercicio se compara contra sus series planificadas contando
+  // solo las efectivas (S). Las aproximaciones (A) y las "T" nunca completan ni bloquean.
+  // Por defecto cuenta las hechas; { onlyCompleted: false } cuenta todas las registradas.
+  function countExerciseSets(exercise, { type = 'S', onlyCompleted = true } = {}) {
+    return getExerciseSets(exercise)
+      .filter((setEntry) => getSetType(setEntry) === type && (!onlyCompleted || setEntry.completed !== false))
+      .length;
+  }
+
+  // Etiqueta de una serie guardada: las efectivas "Serie N de M" (N y M cuentan solo
+  // efectivas) y las aproximaciones "Aproximación N". Las "T" conservan su número.
+  function getSetDisplayLabel(exercise, setEntry) {
+    const type = getSetType(setEntry);
+    const plannedSets = Math.max(1, Number(exercise?.plannedSets || 1));
+    if (type === 'T') {
+      return `Serie ${Number(setEntry?.setNumber || 0)}`;
+    }
+    const position = getExerciseSets(exercise)
+      .filter((item) => getSetType(item) === type && Number(item.setNumber || 0) <= Number(setEntry?.setNumber || 0))
+      .length;
+    return type === 'A' ? `Aproximación ${position}` : `Serie ${position} de ${plannedSets}`;
+  }
+
+  // Etiqueta de la serie que toca registrar (o de la que se está corrigiendo).
+  function getNextSetLabel(exercise, editingSetNumber) {
+    const editingSet = editingSetNumber
+      ? getExerciseSets(exercise).find((setEntry) => Number(setEntry.setNumber || 0) === Number(editingSetNumber))
+      : null;
+    if (editingSet) {
+      return getSetDisplayLabel(exercise, editingSet);
+    }
+    const plannedSets = Math.max(1, Number(exercise?.plannedSets || 1));
+    return `Serie ${Math.min(countExerciseSets(exercise, { onlyCompleted: false }) + 1, plannedSets)} de ${plannedSets}`;
+  }
+
   function isEffectiveSet(setEntry) {
     const reps = Number(setEntry?.reps || 0);
     return setEntry?.completed !== false && getSetType(setEntry) === 'S' && Number.isFinite(reps) && reps > 0;
@@ -4592,7 +4627,7 @@
     const lastSet = getExerciseSets(last.exercise)[getExerciseSets(last.exercise).length - 1] || null;
     const firstSet = getExerciseSets(first.exercise)[0] || null;
     const bestWeight = getBestWeightForExercise(clientId, exerciseName);
-    const completedSets = getExerciseSets(last.exercise).filter((setEntry) => setEntry.completed !== false).length;
+    const completedSets = countExerciseSets(last.exercise);
     const plannedSets = Number(last.exercise.plannedSets || 0);
 
     return `
@@ -4718,8 +4753,7 @@
 
   function isExerciseCompleted(exercise) {
     const plannedSets = Number(exercise?.plannedSets || 0);
-    const doneSets = getExerciseSets(exercise).filter((setEntry) => setEntry.completed !== false).length;
-    return plannedSets > 0 && doneSets >= plannedSets;
+    return plannedSets > 0 && countExerciseSets(exercise) >= plannedSets;
   }
 
   function getPreviousExerciseMetrics(clientId, exerciseName, currentSessionId) {
@@ -4832,7 +4866,8 @@
     const sets = getExerciseSets(exercise);
     const requestedSetNumber = Number(els.studentEditingSetNumber?.value || studentUi.editingSetNumber || 0);
     const plannedSets = Math.max(1, Number(exercise.plannedSets || 1));
-    if (!requestedSetNumber && sets.length >= plannedSets) {
+    // El cupo lo usan solo las series efectivas registradas; las aproximaciones no lo ocupan.
+    if (!requestedSetNumber && countExerciseSets(exercise, { onlyCompleted: false }) >= plannedSets) {
       if (els.studentSetNotice) {
         els.studentSetNotice.textContent = 'Ejercicio completado. Usa Siguiente ejercicio o corrige una serie.';
       }
@@ -4877,7 +4912,7 @@
       els.studentSetNotice.textContent = isPotentialRecord ? '🏆 Posible nuevo récord' : 'Serie guardada. Inicia descanso.';
     }
 
-    const doneSets = sets.filter((setEntry) => setEntry.completed !== false).length;
+    const doneSets = countExerciseSets(exercise);
     const exerciseCompleted = plannedSets > 0 && doneSets >= plannedSets;
     const completionFeedback = exerciseCompleted ? getExerciseCompletionFeedback(session.clientId, exercise, session.id) : null;
     if (exerciseCompleted && completionFeedback?.suggestion && els.studentSetNotice) {
@@ -4985,7 +5020,7 @@
 
     const metrics = getPreviousExerciseMetrics(client.id, exercise.exerciseName, session.id);
     const sets = getExerciseSets(exercise);
-    const doneSets = sets.filter((setEntry) => setEntry.completed !== false).length;
+    const doneSets = countExerciseSets(exercise);
     const plannedSets = Number(exercise.plannedSets || 0);
     const progressText = `Ejercicio ${studentUi.exerciseIndex + 1} de ${Math.max(1, exercises.length)}`;
     const sessionStats = getStudentSessionStats(session);
@@ -5042,7 +5077,6 @@
       els.studentTechniqueNote.textContent = exercise.coachNotes || 'Sin instrucción';
     }
 
-    const nextSetNumber = studentUi.editingSetNumber || Math.min(sets.length + 1, Math.max(1, plannedSets));
     if (els.studentWeightInput && !els.studentWeightInput.value) {
       const fallbackWeight = Number(exercise.targetWeight || 0);
       if (fallbackWeight > 0) {
@@ -5054,7 +5088,7 @@
         ? sets.map((setEntry) => `
           <div class="student-set-item">
             <div>
-              <strong>Serie ${Number(setEntry.setNumber || 0)}</strong>
+              <strong>${escapeHtml(getSetDisplayLabel(exercise, setEntry))}</strong>
               <div class="meta">${Number(setEntry.weight || 0)} kg${setEntry.reps === null || setEntry.reps === undefined ? '' : ` × ${Number(setEntry.reps)}`}</div>
               <div class="meta">${setEntry.personalRecord ? '🏆 Posible nuevo récord' : ''}</div>
             </div>
@@ -5073,7 +5107,7 @@
           : '';
         els.studentExerciseCompletedNotice.textContent = `${completionFeedback.suggestion.badge}${comparisonText}`;
       } else {
-        els.studentExerciseCompletedNotice.textContent = completed ? 'Ejercicio completado' : `Serie ${nextSetNumber} de ${Math.max(1, plannedSets)}`;
+        els.studentExerciseCompletedNotice.textContent = completed ? 'Ejercicio completado' : getNextSetLabel(exercise, studentUi.editingSetNumber);
       }
     }
 
@@ -6538,14 +6572,12 @@
       }
     }
     const currentSets = getExerciseSets(currentExercise);
-    const plannedSets = Number(currentExercise?.plannedSets || 1);
-    const nextSetNumber = trainingUi.editingSetNumber || Math.min(currentSets.length + 1, Math.max(plannedSets, 1));
 
     if (els.currentExerciseTitle) {
       els.currentExerciseTitle.textContent = currentExercise?.exerciseName || 'Serie activa';
     }
     if (els.setProgressLabel) {
-      els.setProgressLabel.textContent = `Serie ${nextSetNumber} de ${Math.max(plannedSets, 1)}`;
+      els.setProgressLabel.textContent = getNextSetLabel(currentExercise, trainingUi.editingSetNumber);
     }
     if (els.trainingLastRecord) {
       const summary = buildLastSessionSummary(selectedClientId, currentExercise?.exerciseName || trainingUi.selectedExercise, {
@@ -6559,7 +6591,7 @@
         ? currentSets.map((setEntry) => `
             <div class="training-set-item">
               <div>
-                <strong>Serie ${Number(setEntry.setNumber || 0)}</strong>
+                <strong>${escapeHtml(getSetDisplayLabel(currentExercise, setEntry))}</strong>
                 <div class="meta">${Number(setEntry.weight || 0)} kg${setEntry.reps === null || setEntry.reps === undefined ? '' : ` × ${Number(setEntry.reps)}`} · ${setEntry.rir == null ? 'RIR pendiente' : `RIR ${Number(setEntry.rir)}`} · ${setEntry.completed !== false ? 'Completada' : 'No completada'}</div>
                 <div class="meta">${setEntry.personalRecord ? 'Posible nuevo récord' : ''}</div>
               </div>
@@ -6575,7 +6607,7 @@
         <div class="routine-list">
           ${list.length ? list.map((session) => {
       // Series efectivas (S) hechas contra las planificadas; aproximaciones (A) aparte. Las "T" no cuentan.
-      const countDoneSets = (type) => getSessionExercises(session).reduce((sum, exercise) => sum + getExerciseSets(exercise).filter((setEntry) => setEntry.completed !== false && getSetType(setEntry) === type).length, 0);
+      const countDoneSets = (type) => getSessionExercises(session).reduce((sum, exercise) => sum + countExerciseSets(exercise, { type }), 0);
       const doneSets = countDoneSets('S');
       const doneApproximations = countDoneSets('A');
       const plannedSetsForSession = getSessionExercises(session).reduce((sum, exercise) => sum + Number(exercise.plannedSets || 0), 0);
@@ -7424,7 +7456,7 @@
       els.setRecordNotice.textContent = isPotentialPr ? '🏆 Posible nuevo récord' : 'Serie guardada.';
     }
     const plannedSets = Math.max(1, Number(exercise.plannedSets || 1));
-    const doneSets = sets.filter((setEntry) => setEntry.completed !== false).length;
+    const doneSets = countExerciseSets(exercise);
     const exerciseCompleted = plannedSets > 0 && doneSets >= plannedSets;
     const completionFeedback = exerciseCompleted ? getExerciseCompletionFeedback(session.clientId, exercise, session.id) : null;
     if (exerciseCompleted && completionFeedback?.suggestion && els.setRecordNotice) {
@@ -8792,8 +8824,12 @@
         if (els.setCompletedInput) {
           els.setCompletedInput.checked = setEntry.completed !== false;
         }
+        const editingLabel = getSetDisplayLabel(exercise, setEntry);
+        if (els.setProgressLabel) {
+          els.setProgressLabel.textContent = editingLabel;
+        }
         if (els.setRecordNotice) {
-          els.setRecordNotice.textContent = `Editando serie ${setEditNumber}`;
+          els.setRecordNotice.textContent = `Editando ${editingLabel.charAt(0).toLowerCase()}${editingLabel.slice(1)}`;
         }
       }
       return;
@@ -8826,7 +8862,8 @@
           els.studentSetCompleted.checked = setEntry.completed !== false;
         }
         if (els.studentSetNotice) {
-          els.studentSetNotice.textContent = `Editando serie ${studentSetEditNumber}`;
+          const editingLabel = getSetDisplayLabel(exercise, setEntry);
+          els.studentSetNotice.textContent = `Editando ${editingLabel.charAt(0).toLowerCase()}${editingLabel.slice(1)}`;
         }
       }
       return;
