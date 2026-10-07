@@ -6574,14 +6574,17 @@
         <strong>${title}</strong>
         <div class="routine-list">
           ${list.length ? list.map((session) => {
-      const doneSets = getSessionExercises(session).reduce((sum, exercise) => sum + getExerciseSets(exercise).filter((setEntry) => setEntry.completed !== false).length, 0);
+      // Series efectivas (S) hechas contra las planificadas; aproximaciones (A) aparte. Las "T" no cuentan.
+      const countDoneSets = (type) => getSessionExercises(session).reduce((sum, exercise) => sum + getExerciseSets(exercise).filter((setEntry) => setEntry.completed !== false && getSetType(setEntry) === type).length, 0);
+      const doneSets = countDoneSets('S');
+      const doneApproximations = countDoneSets('A');
       const plannedSetsForSession = getSessionExercises(session).reduce((sum, exercise) => sum + Number(exercise.plannedSets || 0), 0);
       return `<div class="routine-pill">
                 <div class="section-title">
                   <strong>${escapeHtml(session.title || 'Sesión')}</strong>
                   <span class="tag ${getSessionStatusTone(session.status)}">${escapeHtml(getSessionStatusLabel(session.status))}</span>
                 </div>
-                <div class="meta">${escapeHtml(formatClientDate(session.date || getTodayLocalDate()))} · ${getSessionExercises(session).length} ejercicios · ${doneSets}/${plannedSetsForSession || 0} series</div>
+                <div class="meta">${escapeHtml(formatClientDate(session.date || getTodayLocalDate()))} · ${getSessionExercises(session).length} ejercicios · ${doneSets}/${plannedSetsForSession || 0} series${doneApproximations ? ` · ${doneApproximations} aprox.` : ''}</div>
                 <div class="inline-actions">
                   <button class="secondary small" type="button" data-training-open-session="${session.id}">Abrir</button>
                   <button class="ghost small" type="button" data-training-status="${session.id}" data-next-status="in_progress" ${session.status === 'in_progress' ? 'disabled' : ''}>En progreso</button>
