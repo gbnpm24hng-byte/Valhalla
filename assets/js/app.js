@@ -3864,6 +3864,11 @@
         ? templates.map((template) => `<option value="${template.id}">${escapeHtml(template.name)} · ${template.exercises.length} ejercicios</option>`).join('')
         : '<option value="">No hay plantillas</option>';
       els.sessionTemplateId.disabled = !templates.length;
+      // "Crear desde / Plantilla" solo aparece cuando hay plantillas.
+      document.getElementById('sessionTemplateRow')?.classList.toggle('hidden', !templates.length);
+      if (!templates.length && els.sessionCreateMode) {
+        els.sessionCreateMode.value = 'scratch';
+      }
     }
 
     els.templateList.innerHTML = templates.length
@@ -6253,6 +6258,7 @@
               </form>` : ''}
           </div>`).join('')}
         </div>
+        ${showAttendanceAction ? `<button class="primary training-agenda-weights" type="button" data-agenda-group="${escapeHtml(slot.sessionKey)}">Registrar pesos</button>` : ''}
       </article>`;
   }
 
@@ -6314,6 +6320,20 @@
     }
     dataApi.saveState(state);
     render();
+  }
+
+  function openAgendaSlotInGroupMode(sessionKey) {
+    const today = new Date(`${getTodayLocalDate()}T00:00:00`);
+    const slot = getAgendaSlotsForDate(today).find((item) => item.sessionKey === sessionKey);
+    if (!slot) {
+      return;
+    }
+    const clientIds = slot.students.map((student) => student.id);
+    groupSessionUi.selectedClientIds = clientIds.slice(0, 4);
+    groupSessionUi.openClients = {};
+    groupSessionUi.message = clientIds.length > 4 ? 'Modo Grupo admite hasta 4 alumnos: se marcaron los primeros 4.' : '';
+    setTrainingView('group');
+    els.trainingViewTabs?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   function markAgendaAttendance(sessionKey, clientId) {
@@ -6403,7 +6423,7 @@
     if (els.trainingSessionId) {
       const sessionOptions = sessions.map((session) => {
         const dateLabel = session.date ? formatClientDate(session.date) : 'Sin fecha';
-        return `<option value="${session.id}" ${session.id === selectedSession?.id ? 'selected' : ''}>${escapeHtml(dateLabel)} · ${escapeHtml(session.title || 'Sesión')} · ${escapeHtml(getSessionStatusLabel(session.status))}</option>`;
+        return `<option value="${session.id}" ${session.id === selectedSession?.id ? 'selected' : ''}>${escapeHtml(dateLabel)} · ${escapeHtml(getSessionStatusLabel(session.status))} · ${getSessionExercises(session).length} ejercicios</option>`;
       }).join('');
       els.trainingSessionId.innerHTML = sessionOptions || '<option value="">No hay sesiones. Crea una nueva.</option>';
       els.trainingSessionId.disabled = !sessions.length;
@@ -6544,6 +6564,7 @@
     if (els.restPreset && els.restInput && els.restPreset.value !== 'custom') {
       els.restInput.value = els.restPreset.value;
     }
+    syncRestCustomField();
 
     if (els.setWeightInput && !els.setWeightInput.value && currentExercise) {
       const fallbackWeight = Number(currentExercise.targetWeight || 0);
@@ -7477,6 +7498,10 @@
     persist();
   }
 
+  function syncRestCustomField() {
+    document.getElementById('restCustomField')?.classList.toggle('hidden', els.restPreset?.value !== 'custom');
+  }
+
   function editExerciseFromActiveSession(exerciseId) {
     const session = getCurrentTrainingSession();
     if (!session) {
@@ -7516,6 +7541,11 @@
       const allowed = ['60', '90', '95', '120'];
       const restString = String(Number(exercise.restSeconds || 90));
       els.restPreset.value = allowed.includes(restString) ? restString : 'custom';
+    }
+    syncRestCustomField();
+    const manualEditor = document.getElementById('manualExerciseEditor');
+    if (manualEditor) {
+      manualEditor.open = true;
     }
     if (els.routineMessage) {
       els.routineMessage.textContent = `Editando ejercicio: ${exercise.exerciseName}`;
@@ -7968,6 +7998,12 @@
         agendaAttendanceButton.getAttribute('data-agenda-attend'),
         agendaAttendanceButton.getAttribute('data-client-id')
       );
+      return;
+    }
+
+    const agendaGroupButton = target.closest('[data-agenda-group]');
+    if (agendaGroupButton) {
+      openAgendaSlotInGroupMode(agendaGroupButton.getAttribute('data-agenda-group'));
       return;
     }
 
@@ -9181,6 +9217,7 @@
   });
   els.restPreset?.addEventListener('change', (event) => {
     const preset = event.target.value;
+    syncRestCustomField();
     if (!els.restInput) {
       return;
     }

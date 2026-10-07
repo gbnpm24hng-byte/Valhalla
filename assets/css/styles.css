@@ -762,6 +762,11 @@ button.small {
   display: none !important;
 }
 
+/* "Sesiones del cliente" se ve solo en Progreso. */
+#trainings:not([data-view="progress"]) #trainingsStudentsPanel {
+  display: none !important;
+}
+
 .planning-category-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1394,6 +1399,48 @@ button.small {
   gap: 6px;
 }
 
+.training-agenda-weights {
+  width: 100%;
+  min-height: 48px;
+  font-size: 1rem;
+}
+
+.training-advanced-editor,
+.training-manual-exercise {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 14px;
+  background: var(--surface-2);
+}
+
+.training-advanced-editor > summary,
+.training-manual-exercise > summary {
+  cursor: pointer;
+  font-weight: 700;
+  list-style-position: inside;
+  padding: 4px 0;
+}
+
+.training-advanced-editor[open] > summary,
+.training-manual-exercise[open] > summary {
+  margin-bottom: 12px;
+}
+
+.training-manual-exercise {
+  display: grid;
+  gap: 12px;
+  background: var(--surface);
+}
+
+.training-agenda-upcoming {
+  margin-top: 14px;
+}
+
+.training-advanced-editor .card {
+  box-shadow: none;
+  margin: 14px 0 0;
+}
+
 .whatsapp-import-panel {
   display: grid;
   gap: 10px;
@@ -1620,6 +1667,7 @@ button.small {
   .group-confirm-row button { width: 100%; }
   .training-agenda-student { grid-template-columns: 1fr; }
   .training-agenda-student-actions { justify-content: flex-start; }
+  .training-session-balance { flex: 1 1 100%; min-width: 0; }
   .agenda-reschedule-form { grid-template-columns: 1fr; }
 }
 

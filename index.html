@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <title>VALHALLA Finanzas</title>
-  <link rel="stylesheet" href="./assets/css/styles.css?v=0.9.7">
+  <link rel="stylesheet" href="./assets/css/styles.css?v=0.9.8">
 </head>
 <body>
   <main id="onboardingView" class="onboarding-view hidden"></main>
@@ -28,7 +28,7 @@
       <div class="header-actions">
         <span class="user-pill">Usuario</span>
         <span class="badge" id="cloudModeBadge">Modo Local</span>
-        <span class="badge">v0.9.7</span>
+        <span class="badge">v0.9.8</span>
       </div>
     </header>
 
@@ -384,123 +384,236 @@
       </div>
 
       <div id="trainingTodayView" class="card">
-        <div class="section-title">
-          <h2>HOY</h2>
-        </div>
         <section class="training-agenda-panel" aria-labelledby="trainingAgendaTitle">
-          <div class="section-title"><h3 id="trainingAgendaTitle">Agenda de hoy</h3><span id="trainingAgendaDate" class="pill"></span></div>
+          <div class="section-title"><h2 id="trainingAgendaTitle">Sesiones de hoy</h2><span id="trainingAgendaDate" class="pill"></span></div>
           <div id="trainingAgendaToday" class="training-agenda-list"></div>
-          <h3 class="agenda-upcoming-title">Próximos entrenamientos</h3>
-          <div id="trainingAgendaUpcoming" class="training-agenda-list"></div>
+          <details id="trainingAgendaUpcomingPanel" class="training-advanced-editor training-agenda-upcoming">
+            <summary>Próximos entrenamientos</summary>
+            <div id="trainingAgendaUpcoming" class="training-agenda-list"></div>
+          </details>
         </section>
-        <form id="routineForm" class="form-grid">
-        <div class="row">
-          <div>
-            <label for="studentId">Alumno</label>
-            <select id="studentId" name="clientId"></select>
-            <div id="trainingClientNotice" class="notice"></div>
-          </div>
-          <div>
-            <label for="sessionCreateMode">Nueva sesión</label>
-            <select id="sessionCreateMode" name="sessionCreateMode">
-              <option value="scratch" selected>Desde cero</option>
-              <option value="template">Desde plantilla</option>
-            </select>
-          </div>
-        </div>
-        <div class="row">
-          <div>
-            <label for="programDaySelect">Sesión del programa para hoy</label>
-            <select id="programDaySelect" disabled><option value="">Selecciona un alumno con programa activo</option></select>
-            <div id="programDayMessage" class="meta" role="status"></div>
-          </div>
-        </div>
-        <div class="row">
-          <div>
-            <label for="sessionTemplateId">Plantilla para nueva sesión</label>
-            <select id="sessionTemplateId" name="sessionTemplateId"></select>
-          </div>
-          <div>
-            <label for="trainingSessionId">Sesión activa</label>
-            <select id="trainingSessionId" name="sessionId"></select>
-          </div>
-        </div>
-        <div class="inline-actions">
-          <button class="secondary" id="createSessionBtn" type="button">Nueva sesión</button>
-          <button class="ghost" id="duplicateSessionBtn" type="button">Duplicar sesión</button>
-          <button class="ghost" id="saveAsTemplateBtn" type="button">Guardar como plantilla</button>
-        </div>
-        <div class="row">
-          <div>
-            <label for="routineName">Título de sesión</label>
-            <input id="routineName" name="title" placeholder="Sesión Fuerza Tren Inferior" required>
-          </div>
-          <div>
-            <label for="routineDate">Fecha</label>
-            <input id="routineDate" name="date" type="date" required>
-          </div>
-        </div>
-        <div class="row">
-          <div>
-            <label for="sessionStatus">Estado de sesión</label>
-            <select id="sessionStatus" name="status">
-              <option value="planned">Planificada</option>
-              <option value="in_progress" selected>En progreso</option>
-              <option value="completed">Completada</option>
-            </select>
-          </div>
-        </div>
-        <div>
-          <label for="sessionNotes">Notas de sesión</label>
-          <textarea id="sessionNotes" name="sessionNotes" placeholder="Objetivo general, foco técnico, observaciones del día"></textarea>
-        </div>
-        <div class="row">
-          <div>
-            <label for="exercise">Ejercicio</label>
-            <input id="exercise" name="exerciseName" placeholder="Sentadilla Smith" list="exerciseLibraryOptions" required>
-            <input id="exerciseId" name="exerciseId" type="hidden" value="">
-          </div>
-          <div>
-            <label for="techniqueNotes">Notas del entrenador para este ejercicio</label>
-            <input id="techniqueNotes" name="coachNotes" placeholder="Controlar profundidad y ritmo">
-          </div>
-        </div>
-        <div class="row">
-          <div>
-            <label for="sets">Series planificadas</label>
-            <input id="sets" name="plannedSets" type="number" min="1" required>
-          </div>
-          <div>
-            <label for="plannedRepMin">Rango de repeticiones</label>
-            <div class="row training-rep-range">
-              <input id="plannedRepMin" name="plannedRepMin" type="number" min="1" placeholder="Mín" required>
-              <input id="plannedRepMax" name="plannedRepMax" type="number" min="1" placeholder="Máx" required>
+
+        <details id="trainingAdvancedEditor" class="training-advanced-editor">
+          <summary>Edición avanzada de sesiones</summary>
+          <form id="routineForm" class="form-grid">
+            <div class="row">
+              <div>
+                <label for="studentId">Alumno</label>
+                <select id="studentId" name="clientId"></select>
+                <div id="trainingClientNotice" class="notice"></div>
+              </div>
+              <div>
+                <label for="programDaySelect">Día del programa</label>
+                <select id="programDaySelect" disabled><option value="">Selecciona un alumno con programa activo</option></select>
+                <div id="programDayMessage" class="meta" role="status"></div>
+              </div>
             </div>
+            <div class="row">
+              <div>
+                <label for="trainingSessionId">Sesión guardada</label>
+                <select id="trainingSessionId" name="sessionId"></select>
+              </div>
+              <div>
+                <label for="routineDate">Fecha</label>
+                <input id="routineDate" name="date" type="date" required>
+              </div>
+            </div>
+            <div class="row">
+              <div>
+                <label for="routineName">Nombre de sesión</label>
+                <input id="routineName" name="title" placeholder="Sesión Fuerza Tren Inferior" required>
+              </div>
+              <div>
+                <label for="sessionStatus">Estado</label>
+                <select id="sessionStatus" name="status">
+                  <option value="planned">Planificada</option>
+                  <option value="in_progress" selected>En progreso</option>
+                  <option value="completed">Completada</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label for="sessionNotes">Notas de sesión</label>
+              <textarea id="sessionNotes" name="sessionNotes" placeholder="Objetivo general, foco técnico, observaciones del día"></textarea>
+            </div>
+            <div id="sessionTemplateRow" class="row hidden">
+              <div>
+                <label for="sessionCreateMode">Crear desde</label>
+                <select id="sessionCreateMode" name="sessionCreateMode">
+                  <option value="scratch" selected>Desde cero</option>
+                  <option value="template">Desde plantilla</option>
+                </select>
+              </div>
+              <div>
+                <label for="sessionTemplateId">Plantilla</label>
+                <select id="sessionTemplateId" name="sessionTemplateId"></select>
+              </div>
+            </div>
+            <div class="inline-actions">
+              <button class="secondary" id="createSessionBtn" type="button">Nueva sesión</button>
+              <button class="ghost" id="duplicateSessionBtn" type="button">Duplicar sesión</button>
+              <button class="ghost" id="saveAsTemplateBtn" type="button">Guardar como plantilla</button>
+            </div>
+            <details id="manualExerciseEditor" class="training-manual-exercise">
+              <summary>Agregar o editar un ejercicio a mano</summary>
+              <div class="row">
+                <div>
+                  <label for="exercise">Ejercicio</label>
+                  <input id="exercise" name="exerciseName" placeholder="Sentadilla Smith" list="exerciseLibraryOptions" required>
+                  <input id="exerciseId" name="exerciseId" type="hidden" value="">
+                </div>
+                <div>
+                  <label for="techniqueNotes">Notas del entrenador para este ejercicio</label>
+                  <input id="techniqueNotes" name="coachNotes" placeholder="Controlar profundidad y ritmo">
+                </div>
+              </div>
+              <div class="row">
+                <div>
+                  <label for="sets">Series planificadas</label>
+                  <input id="sets" name="plannedSets" type="number" min="1" required>
+                </div>
+                <div>
+                  <label for="plannedRepMin">Rango de repeticiones</label>
+                  <div class="row training-rep-range">
+                    <input id="plannedRepMin" name="plannedRepMin" type="number" min="1" placeholder="Mín" required>
+                    <input id="plannedRepMax" name="plannedRepMax" type="number" min="1" placeholder="Máx" required>
+                  </div>
+                </div>
+              </div>
+              <div class="row">
+                <div>
+                  <label for="weight">Peso objetivo</label>
+                  <input id="weight" name="targetWeight" type="number" min="0" step="0.1" placeholder="Opcional">
+                </div>
+                <div>
+                  <label for="restPreset">Descanso</label>
+                  <select id="restPreset" name="restPreset">
+                    <option value="60">60 segundos</option>
+                    <option value="90" selected>90 segundos</option>
+                    <option value="95">95 segundos</option>
+                    <option value="120">120 segundos</option>
+                    <option value="custom">Personalizado</option>
+                  </select>
+                  <div id="restCustomField" class="hidden">
+                    <label for="rest">Segundos de descanso</label>
+                    <input id="rest" name="restSeconds" placeholder="90" required>
+                  </div>
+                </div>
+              </div>
+              <button class="primary" type="submit">Guardar ejercicio en sesión</button>
+            </details>
+            <div id="routineMessage" class="notice"></div>
+          </form>
+
+          <div class="card training-execution-panel">
+            <h2>Ejercicios de la sesión activa</h2>
+            <div id="coachExerciseList" class="training-set-list"></div>
           </div>
-        </div>
-        <div class="row">
-          <div>
-            <label for="weight">Peso objetivo</label>
-            <input id="weight" name="targetWeight" type="number" min="0" step="0.1" placeholder="Opcional">
+
+          <div class="card training-live-card training-execution-panel">
+            <div class="section-title">
+              <h2 id="currentExerciseTitle">Serie activa</h2>
+              <span class="pill" id="setProgressLabel">Serie 1 de 1</span>
+            </div>
+            <div id="trainingLastRecord" class="notice">Sin registro anterior</div>
+            <div class="row training-live-row">
+              <div>
+                <label for="setWeightInput">Peso (kg)</label>
+                <input id="setWeightInput" type="number" min="0" step="0.1" inputmode="decimal">
+                <div class="chips training-weight-chips">
+                  <button class="chip" type="button" data-weight-delta="-5">-5</button>
+                  <button class="chip" type="button" data-weight-delta="-2.5">-2,5</button>
+                  <button class="chip" type="button" data-weight-delta="2.5">+2,5</button>
+                  <button class="chip" type="button" data-weight-delta="5">+5</button>
+                </div>
+              </div>
+              <div>
+                <label for="setRepsInput">Repeticiones</label>
+                <input id="setRepsInput" type="number" min="0" step="1" inputmode="numeric">
+                <label for="setRirInput">RIR (repeticiones en reserva)</label>
+                <input id="setRirInput" type="number" min="0" max="10" step="1" inputmode="numeric">
+                <label class="muted"><input id="setCompletedInput" type="checkbox" checked> Serie completada</label>
+                <input id="editingSetNumber" type="hidden" value="">
+              </div>
+            </div>
+            <button class="primary" id="saveSetBtn" type="button">Guardar serie</button>
+            <div id="setRecordNotice" class="notice"></div>
+            <div id="setEntryList" class="training-set-list"></div>
           </div>
-          <div>
-            <label for="restPreset">Descanso rápido</label>
-            <select id="restPreset" name="restPreset">
-              <option value="60">60 segundos</option>
-              <option value="90" selected>90 segundos</option>
-              <option value="95">95 segundos</option>
-              <option value="120">120 segundos</option>
-              <option value="custom">Personalizado</option>
-            </select>
+
+          <div class="card training-execution-panel">
+            <div class="section-title">
+              <h2>Plantillas</h2>
+              <button class="secondary small" id="newTemplateBtn" type="button">Nueva plantilla</button>
+            </div>
+            <form id="templateForm" class="form-grid">
+              <input id="templateId" type="hidden" value="">
+              <div class="row">
+                <div>
+                  <label for="templateName">Nombre</label>
+                  <input id="templateName" type="text" placeholder="Piernas A — Fuerza" required>
+                </div>
+                <div>
+                  <label for="templateAssignDate">Fecha para asignar</label>
+                  <input id="templateAssignDate" type="date">
+                </div>
+              </div>
+              <div>
+                <label for="templateNotes">Notas</label>
+                <textarea id="templateNotes" placeholder="Notas generales de la plantilla"></textarea>
+              </div>
+              <div class="inline-actions">
+                <button class="primary" id="saveTemplateBtn" type="button">Guardar plantilla</button>
+                <button class="secondary" id="assignTemplateBtn" type="button">Asignar plantilla</button>
+              </div>
+              <div id="templateMessage" class="notice"></div>
+            </form>
+            <div class="card training-live-card">
+              <h3>Ejercicios de plantilla</h3>
+              <form id="templateExerciseForm" class="form-grid">
+                <input id="templateExerciseId" type="hidden" value="">
+                <div class="row">
+                  <div>
+                    <label for="templateExerciseName">Ejercicio</label>
+                    <input id="templateExerciseName" type="text" placeholder="Sentadilla Smith" list="exerciseLibraryOptions" required>
+                  </div>
+                  <div>
+                    <label for="templateExerciseNotes">Nota técnica</label>
+                    <input id="templateExerciseNotes" type="text" placeholder="Controlar profundidad">
+                  </div>
+                </div>
+                <div class="row">
+                  <div>
+                    <label for="templateExerciseSets">Series</label>
+                    <input id="templateExerciseSets" type="number" min="1" required>
+                  </div>
+                  <div>
+                    <label for="templateExerciseRepMin">Reps mín</label>
+                    <input id="templateExerciseRepMin" type="number" min="1" required>
+                  </div>
+                  <div>
+                    <label for="templateExerciseRepMax">Reps máx</label>
+                    <input id="templateExerciseRepMax" type="number" min="1" required>
+                  </div>
+                </div>
+                <div class="row">
+                  <div>
+                    <label for="templateExerciseWeight">Peso objetivo</label>
+                    <input id="templateExerciseWeight" type="number" min="0" step="0.1" placeholder="Opcional">
+                  </div>
+                  <div>
+                    <label for="templateExerciseRest">Descanso (s)</label>
+                    <input id="templateExerciseRest" type="number" min="1" required>
+                  </div>
+                </div>
+                <button class="primary" id="saveTemplateExerciseBtn" type="button">Guardar ejercicio en plantilla</button>
+              </form>
+              <div id="templateExerciseList" class="training-set-list"></div>
+            </div>
+            <div id="templateList" class="training-set-list"></div>
           </div>
-        </div>
-        <div>
-          <label for="rest">Descanso (segundos)</label>
-          <input id="rest" name="restSeconds" placeholder="90" required>
-        </div>
-        <button class="primary" type="submit">Guardar ejercicio en sesión</button>
-        <div id="routineMessage" class="notice"></div>
-        </form>
+
+        </details>
       </div>
 
       <div id="trainingPlanningView" class="card hidden">
@@ -804,117 +917,9 @@
         <div id="groupSessionRows" class="group-session-rows"></div>
       </div>
 
-      <div class="card training-execution-panel">
-        <h2>Ejercicios de la sesión activa</h2>
-        <div id="coachExerciseList" class="training-set-list"></div>
-      </div>
-
-      <div class="card training-live-card training-execution-panel">
-        <div class="section-title">
-          <h2 id="currentExerciseTitle">Serie activa</h2>
-          <span class="pill" id="setProgressLabel">Serie 1 de 1</span>
-        </div>
-        <div id="trainingLastRecord" class="notice">Sin registro anterior</div>
-        <div class="row training-live-row">
-          <div>
-            <label for="setWeightInput">Peso (kg)</label>
-            <input id="setWeightInput" type="number" min="0" step="0.1" inputmode="decimal">
-            <div class="chips training-weight-chips">
-              <button class="chip" type="button" data-weight-delta="-5">-5</button>
-              <button class="chip" type="button" data-weight-delta="-2.5">-2,5</button>
-              <button class="chip" type="button" data-weight-delta="2.5">+2,5</button>
-              <button class="chip" type="button" data-weight-delta="5">+5</button>
-            </div>
-          </div>
-          <div>
-            <label for="setRepsInput">Repeticiones</label>
-            <input id="setRepsInput" type="number" min="0" step="1" inputmode="numeric">
-            <label for="setRirInput">RIR (repeticiones en reserva)</label>
-            <input id="setRirInput" type="number" min="0" max="10" step="1" inputmode="numeric">
-            <label class="muted"><input id="setCompletedInput" type="checkbox" checked> Serie completada</label>
-            <input id="editingSetNumber" type="hidden" value="">
-          </div>
-        </div>
-        <button class="primary" id="saveSetBtn" type="button">Guardar serie</button>
-        <div id="setRecordNotice" class="notice"></div>
-        <div id="setEntryList" class="training-set-list"></div>
-      </div>
-
-      <div class="card training-execution-panel">
+      <div id="trainingsStudentsPanel" class="card training-execution-panel">
         <h2>Sesiones del cliente</h2>
         <div id="trainingsStudents"></div>
-      </div>
-
-      <div class="card training-execution-panel">
-        <div class="section-title">
-          <h2>Plantillas</h2>
-          <button class="secondary small" id="newTemplateBtn" type="button">Nueva plantilla</button>
-        </div>
-        <form id="templateForm" class="form-grid">
-          <input id="templateId" type="hidden" value="">
-          <div class="row">
-            <div>
-              <label for="templateName">Nombre</label>
-              <input id="templateName" type="text" placeholder="Piernas A — Fuerza" required>
-            </div>
-            <div>
-              <label for="templateAssignDate">Fecha para asignar</label>
-              <input id="templateAssignDate" type="date">
-            </div>
-          </div>
-          <div>
-            <label for="templateNotes">Notas</label>
-            <textarea id="templateNotes" placeholder="Notas generales de la plantilla"></textarea>
-          </div>
-          <div class="inline-actions">
-            <button class="primary" id="saveTemplateBtn" type="button">Guardar plantilla</button>
-            <button class="secondary" id="assignTemplateBtn" type="button">Asignar plantilla</button>
-          </div>
-          <div id="templateMessage" class="notice"></div>
-        </form>
-        <div class="card training-live-card">
-          <h3>Ejercicios de plantilla</h3>
-          <form id="templateExerciseForm" class="form-grid">
-            <input id="templateExerciseId" type="hidden" value="">
-            <div class="row">
-              <div>
-                <label for="templateExerciseName">Ejercicio</label>
-                <input id="templateExerciseName" type="text" placeholder="Sentadilla Smith" list="exerciseLibraryOptions" required>
-              </div>
-              <div>
-                <label for="templateExerciseNotes">Nota técnica</label>
-                <input id="templateExerciseNotes" type="text" placeholder="Controlar profundidad">
-              </div>
-            </div>
-            <div class="row">
-              <div>
-                <label for="templateExerciseSets">Series</label>
-                <input id="templateExerciseSets" type="number" min="1" required>
-              </div>
-              <div>
-                <label for="templateExerciseRepMin">Reps mín</label>
-                <input id="templateExerciseRepMin" type="number" min="1" required>
-              </div>
-              <div>
-                <label for="templateExerciseRepMax">Reps máx</label>
-                <input id="templateExerciseRepMax" type="number" min="1" required>
-              </div>
-            </div>
-            <div class="row">
-              <div>
-                <label for="templateExerciseWeight">Peso objetivo</label>
-                <input id="templateExerciseWeight" type="number" min="0" step="0.1" placeholder="Opcional">
-              </div>
-              <div>
-                <label for="templateExerciseRest">Descanso (s)</label>
-                <input id="templateExerciseRest" type="number" min="1" required>
-              </div>
-            </div>
-            <button class="primary" id="saveTemplateExerciseBtn" type="button">Guardar ejercicio en plantilla</button>
-          </form>
-          <div id="templateExerciseList" class="training-set-list"></div>
-        </div>
-        <div id="templateList" class="training-set-list"></div>
       </div>
 
       <div class="card">
