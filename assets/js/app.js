@@ -8693,8 +8693,19 @@
 
     const openSessionId = target.getAttribute('data-training-open-session');
     if (openSessionId) {
+      // "Abrir" (en Progreso) lleva a Hoy con "Edición avanzada de sesiones" abierta y la sesión cargada.
+      const openedSession = findSessionById(openSessionId);
+      if (openedSession?.clientId) {
+        trainingUi.selectedClientId = openedSession.clientId;
+      }
       setActiveSessionForClient(trainingUi.selectedClientId, openSessionId);
+      setTrainingView('today');
+      const advancedEditor = document.getElementById('trainingAdvancedEditor');
+      if (advancedEditor) {
+        advancedEditor.open = true;
+      }
       renderTrainings();
+      advancedEditor?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       return;
     }
 
