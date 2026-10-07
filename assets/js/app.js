@@ -1067,15 +1067,21 @@
     return { assignment, day, dayIndex, exercises };
   }
 
+  // Series de la rutina para Modo Grupo (1 a 10); si la rutina no dice, 3.
+  const GROUP_MAX_SETS = 10;
+  function getGroupPlannedSets(planExercise) {
+    const sets = Math.round(Number(planExercise?.sets ?? planExercise?.plannedSets));
+    return Number.isFinite(sets) && sets >= 1 ? Math.min(sets, GROUP_MAX_SETS) : 3;
+  }
+
   function getGroupDraft(clientId, planExercise) {
     const key = `${clientId}::${planExercise.id}`;
     if (!groupSessionUi.drafts[key]) {
+      // setCount vale solo para esta sesión: "+ serie" y "− serie" no tocan la rutina.
       groupSessionUi.drafts[key] = {
         exerciseId: planExercise.libraryExerciseId || planExercise.id,
         warmups: '',
-        s1Weight: '', s1Reps: '',
-        s2Weight: '', s2Reps: '',
-        s3Weight: '', s3Reps: '',
+        setCount: getGroupPlannedSets(planExercise),
         rir: '',
         decision: '',
         proposedWeight: String(Number(planExercise.targetWeight || 0)),
@@ -1155,19 +1161,24 @@
     const draft = getGroupDraft(clientId, planExercise);
     const nextExercise = draft.decision === 'change' ? getGroupExerciseOption(draft.exerciseId, planExercise) : { name: planExercise.exerciseName || 'Ejercicio' };
     const decisionLabels = [['up', '↑ Subir'], ['keep', '→ Mantener'], ['down', '↓ Bajar'], ['change', '↔ Cambiar ejercicio']];
-    const field = (name, label, type, extra = '') => `<label>${label}<input type="${type}" ${extra} data-group-field="${name}" ${attrs} value="${escapeHtml(draft[name])}"></label>`;
+    const field = (name, label, type, extra = '') => `<label>${label}<input type="${type}" ${extra} data-group-field="${name}" ${attrs} value="${escapeHtml(draft[name] ?? '')}"></label>`;
+    const setNumbers = Array.from({ length: draft.setCount }, (_, index) => index + 1);
     return `
       <div class="group-exercise" data-group-exercise="${pid}">
         ${heading}
         <div class="group-set-grid">
           ${field('warmups', 'Aproximaciones', 'text', 'inputmode="text" placeholder="30/40 kg"')}
-          ${[1, 2, 3].map((n) => `
+          ${setNumbers.map((n) => `
             <div class="group-set">
               <span class="group-set-label">S${n}</span>
               ${field(`s${n}Weight`, `<span class="sr-only">S${n} peso en kg</span>`, 'number', 'min="0" step="0.5" inputmode="decimal" placeholder="kg"')}
               ${field(`s${n}Reps`, `<span class="sr-only">S${n} repeticiones</span>`, 'number', 'min="0" step="1" inputmode="numeric" placeholder="reps"')}
             </div>`).join('')}
           ${field('rir', 'RIR final', 'number', 'min="0" max="10" step="1" inputmode="numeric"')}
+        </div>
+        <div class="group-set-count" role="group" aria-label="Series de esta sesión">
+          <button class="secondary small" type="button" data-group-set-remove ${attrs} ${draft.setCount <= 1 ? 'disabled' : ''}>− serie</button>
+          <button class="secondary small" type="button" data-group-set-add ${attrs} ${draft.setCount >= GROUP_MAX_SETS ? 'disabled' : ''}>+ serie</button>
         </div>
         <div class="group-decisions" role="group" aria-label="Decisión">
           ${decisionLabels.map(([value, label]) => `<button class="${draft.decision === value ? 'primary' : 'secondary'} small" type="button" data-group-decision="${value}" ${attrs} aria-pressed="${draft.decision === value}">${label}</button>`).join('')}
@@ -1274,6 +1285,31 @@
     renderTrainingGroupMode();
   }
 
+  // "+ serie" / "− serie" en Modo Grupo: solo cambia esta sesión. "− serie" quita la
+  // última serie únicamente si está vacía; nunca borra una serie con datos. Mínimo 1.
+  function adjustGroupSetCount(clientId, planExerciseId, delta) {
+    const row = findGroupPlanExercise(clientId, planExerciseId);
+    if (!row) {
+      return;
+    }
+    const draft = getGroupDraft(clientId, row.planExercise);
+    draft.error = '';
+    if (delta > 0) {
+      draft.setCount = Math.min(GROUP_MAX_SETS, draft.setCount + 1);
+    } else if (draft.setCount > 1) {
+      const last = draft.setCount;
+      const hasData = [draft[`s${last}Weight`], draft[`s${last}Reps`]].some((value) => String(value ?? '').trim() !== '');
+      if (hasData) {
+        draft.error = `La serie ${last} tiene datos: bórralos antes de quitarla`;
+      } else {
+        delete draft[`s${last}Weight`];
+        delete draft[`s${last}Reps`];
+        draft.setCount = last - 1;
+      }
+    }
+    renderTrainingGroupMode();
+  }
+
   function confirmGroupExercise(clientId, planExerciseId) {
     const row = findGroupPlanExercise(clientId, planExerciseId);
     if (!row) {
@@ -1289,7 +1325,7 @@
       renderTrainingGroupMode();
       return;
     }
-    const effective = [1, 2, 3]
+    const effective = Array.from({ length: draft.setCount }, (_, index) => index + 1)
       .map((n) => ({ weight: String(draft[`s${n}Weight`] ?? '').trim(), reps: String(draft[`s${n}Reps`] ?? '').trim() }))
       .filter((entry) => entry.weight !== '' && Number.isFinite(Number(entry.weight)));
     if (!effective.length) {
@@ -1317,7 +1353,7 @@
     const originalLibraryExerciseId = planExercise.libraryExerciseId || '';
     const originalExerciseName = String(planExercise.exerciseName || '').trim().toLowerCase();
     const plannedReps = { min: planExercise.repMin ?? planExercise.repRangeMin ?? null, max: planExercise.repMax ?? planExercise.repRangeMax ?? null };
-    const plannedSets = Number(planExercise.sets || 3);
+    const plannedSets = draft.setCount;
     const restSeconds = Number(planExercise.restSeconds || 90);
     const coachNotes = planExercise.notes || '';
     assignment.days.forEach((programDay) => {
@@ -2666,9 +2702,9 @@
         <div class="planning-field-inline">
           <label>SERIES</label>
           <div class="planning-stepper-counter">
-            <button class="ghost small" type="button" data-routine-action="decrease-sets">-</button>
+            <button class="ghost small" type="button" data-routine-action="decrease-sets" ${Number(routineBuilder.draft.sets || 3) <= 1 ? 'disabled' : ''}>-</button>
             <span>${Number(routineBuilder.draft.sets || 3)}</span>
-            <button class="ghost small" type="button" data-routine-action="increase-sets">+</button>
+            <button class="ghost small" type="button" data-routine-action="increase-sets" ${Number(routineBuilder.draft.sets || 3) >= 10 ? 'disabled' : ''}>+</button>
           </div>
         </div>
 
@@ -8041,6 +8077,16 @@
       return;
     }
 
+    const groupSetButton = target.closest('[data-group-set-add], [data-group-set-remove]');
+    if (groupSetButton) {
+      adjustGroupSetCount(
+        groupSetButton.getAttribute('data-client-id'),
+        groupSetButton.getAttribute('data-plan-exercise-id'),
+        groupSetButton.hasAttribute('data-group-set-add') ? 1 : -1
+      );
+      return;
+    }
+
     const groupConfirmButton = target.closest('[data-group-confirm]');
     if (groupConfirmButton) {
       confirmGroupExercise(groupConfirmButton.getAttribute('data-group-confirm'), groupConfirmButton.getAttribute('data-plan-exercise-id'));
@@ -9029,7 +9075,7 @@
     }
 
     if (action === 'increase-sets') {
-      routineBuilder.draft.sets = Math.max(1, Number(routineBuilder.draft.sets || 3) + 1);
+      routineBuilder.draft.sets = Math.min(10, Math.max(1, Number(routineBuilder.draft.sets || 3) + 1));
       renderRoutineBuilder();
       return;
     }

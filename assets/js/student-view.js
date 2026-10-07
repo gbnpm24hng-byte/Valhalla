@@ -140,7 +140,7 @@
 
   function renderExercise(exercise) {
     const summary = [
-      hasValue(exercise.sets) ? `${Number(exercise.sets)} series` : '',
+      hasValue(exercise.sets) ? `${Number(exercise.sets)} ${Number(exercise.sets) === 1 ? 'serie' : 'series'}` : '',
       repsRange(exercise),
       hasValue(exercise.targetWeight) ? `${Number(exercise.targetWeight)} kg objetivo` : ''
     ].filter(Boolean).join(' · ');
