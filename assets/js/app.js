@@ -13,6 +13,8 @@
   const studentImportApi = window.VALHALLA.studentImportCore;
   // Cambios de ejercicio de un alumno, aparte de su programa (client-overrides-core.js).
   const overridesApi = window.VALHALLA.clientOverrides;
+  // Borrador de Modo Grupo guardado solo en este teléfono (group-draft-core.js).
+  const groupDraftApi = window.VALHALLA.groupDraftCore;
 
   const state = dataApi.loadState();
   const currentSessionMonth = getTodayLocalDate().slice(0, 7);
@@ -79,8 +81,17 @@
     // Aviso por alumno después de cambiar o agregar un ejercicio.
     clientNotices: {},
     // Comentario que se está escribiendo: { clientId, planExerciseId, text, visible } o null.
-    commentEditor: null
+    commentEditor: null,
+    // Borrador recuperado: aviso a mostrar, o borrador de otro día que espera la elección
+    // (mientras espera, Modo Grupo queda bloqueado: no se puede escribir ni elegir alumnos).
+    draftNotice: '',
+    pendingDraft: null,
+    // "Descartar lo no confirmado" esperando confirmación.
+    cancelAsk: false
   };
+  // Cuenta dueña del borrador (el borrador queda ligado a ella) y si ya se revisó al abrir.
+  let groupDraftOwner = '';
+  let groupDraftChecked = false;
   // B3.3: traer lo que registran los alumnos (student_sets) a las sesiones del entrenador.
   const studentImportUi = {
     running: false,
@@ -1696,10 +1707,186 @@
       </div>`;
   }
 
+  // ---- Borrador de Modo Grupo (solo en este teléfono) ----
+  // Se guarda a cada cambio en su propia clave por cuenta; nunca sube a la nube ni cuenta
+  // como sesión. Al abrir: si es de hoy se retoma solo; si es de otro día se pregunta.
+
+  function groupDraftOwnerReady() {
+    // Con nube, el borrador espera a saber qué cuenta abrió sesión (también sin conexión).
+    if (!window.VALHALLA.supabase?.isCloudEnabled?.()) {
+      return true;
+    }
+    if (!groupDraftOwner) {
+      // Por si el aviso de inicio de sesión llegó antes de que app.js lo escuchara.
+      groupDraftOwner = window.VALHALLA.authGate?.getUser?.()?.id || '';
+    }
+    return Boolean(groupDraftOwner);
+  }
+
+  function persistGroupDraft() {
+    if (!groupDraftApi || !groupDraftChecked || groupSessionUi.pendingDraft || !groupDraftOwnerReady()) {
+      return;
+    }
+    try {
+      const key = groupDraftApi.storageKey(groupDraftOwner);
+      const snapshot = groupDraftApi.buildSnapshot({ ownerId: groupDraftOwner, ui: groupSessionUi, today: getTodayLocalDate() });
+      if (groupDraftApi.isWorthSaving(snapshot)) {
+        localStorage.setItem(key, JSON.stringify(snapshot));
+      } else {
+        localStorage.removeItem(key);
+      }
+    } catch (error) {
+      console.warn('No se pudo guardar el borrador de Modo Grupo', error);
+    }
+  }
+
+  function discardStoredGroupDraft() {
+    try {
+      localStorage.removeItem(groupDraftApi.storageKey(groupDraftOwner));
+    } catch (error) {
+      console.warn('No se pudo borrar el borrador de Modo Grupo', error);
+    }
+  }
+
+  function applyGroupDraft(snapshot) {
+    groupSessionUi.sessionDate = snapshot.sessionDate;
+    groupSessionUi.dateIsManual = snapshot.sessionDate !== getTodayLocalDate();
+    groupSessionUi.selectedClientIds = [...snapshot.selectedClientIds];
+    groupSessionUi.dayChoices = { ...snapshot.dayChoices };
+    groupSessionUi.drafts = JSON.parse(JSON.stringify(snapshot.drafts));
+    groupSessionUi.picker = snapshot.picker ? { ...snapshot.picker } : null;
+    groupSessionUi.commentEditor = snapshot.commentEditor ? { ...snapshot.commentEditor } : null;
+    groupSessionUi.history = {};
+    groupSessionUi.clientNotices = {};
+    groupSessionUi.cancelAsk = false;
+  }
+
+  function checkGroupDraft() {
+    if (groupDraftChecked || !groupDraftApi || !groupDraftOwnerReady()) {
+      return;
+    }
+    groupDraftChecked = true;
+    let snapshot = null;
+    try {
+      snapshot = groupDraftApi.readSnapshot(localStorage.getItem(groupDraftApi.storageKey(groupDraftOwner)), groupDraftOwner);
+    } catch (error) {
+      snapshot = null;
+    }
+    const kind = groupDraftApi.classify(snapshot, getTodayLocalDate());
+    if (kind === 'same-day') {
+      applyGroupDraft(snapshot);
+      groupSessionUi.draftNotice = groupDraftApi.hasUnconfirmedData(snapshot) ? 'Recuperamos lo que tenías sin confirmar' : '';
+    } else if (kind === 'other-day') {
+      // No se mezcla con hoy: se pregunta (y mientras tanto no se pisa).
+      groupSessionUi.pendingDraft = snapshot;
+    }
+  }
+
+  // Al cambiar de cuenta (o cerrar sesión) no queda nada de la anterior en pantalla.
+  function resetGroupSessionForAccount(ownerId) {
+    groupDraftChecked = false;
+    groupDraftOwner = ownerId;
+    Object.assign(groupSessionUi, {
+      selectedClientIds: [], sessionDate: getTodayLocalDate(), dateIsManual: false, dayChoices: {}, openClients: {}, drafts: {},
+      message: '', picker: null, history: {}, clientNotices: {}, commentEditor: null, draftNotice: '', pendingDraft: null, cancelAsk: false
+    });
+  }
+
+  function groupClientNames(ids) {
+    return ids.map((id) => getClientFirstName(getClientById(id))).join(', ');
+  }
+
+  function renderGroupDraftBanner() {
+    const pending = groupSessionUi.pendingDraft;
+    if (pending) {
+      const names = groupClientNames(groupDraftApi.clientsWithData(pending).length ? groupDraftApi.clientsWithData(pending) : pending.selectedClientIds);
+      return `
+        <div class="notice warn group-draft-banner" data-group-draft-pending role="status">
+          <p>Tienes un borrador sin confirmar del ${escapeHtml(formatGroupShortDate(pending.savedDay))}${names ? ` (${escapeHtml(names)})` : ''}. No se mezcla con la sesión de hoy: ¿lo retomas o lo descartas?</p>
+          <p class="group-draft-lock">Para seguir usando Modo Grupo, elige una opción.</p>
+          <div class="group-draft-actions">
+            <button class="primary small" type="button" data-group-draft-resume>Retomarlo</button>
+            <button class="secondary small" type="button" data-group-draft-discard>Descartarlo</button>
+          </div>
+        </div>`;
+    }
+    if (groupSessionUi.draftNotice) {
+      return `
+        <div class="notice ok group-draft-banner" data-group-draft-notice role="status">
+          <span>${escapeHtml(groupSessionUi.draftNotice)}</span>
+          <button class="ghost small" type="button" data-group-draft-dismiss>Cerrar</button>
+        </div>`;
+    }
+    return '';
+  }
+
+  function groupHasUnconfirmed() {
+    return Boolean(groupDraftApi) && groupDraftApi.hasUnconfirmedData({ drafts: groupSessionUi.drafts, picker: groupSessionUi.picker, commentEditor: groupSessionUi.commentEditor });
+  }
+
+  function renderGroupSessionActions() {
+    if (!groupSessionUi.cancelAsk) {
+      return '<div class="group-session-actions"><button class="ghost small" type="button" data-group-cancel>Descartar lo no confirmado</button></div>';
+    }
+    const names = groupClientNames(groupDraftApi.clientsWithData({ drafts: groupSessionUi.drafts, picker: groupSessionUi.picker, commentEditor: groupSessionUi.commentEditor }));
+    return `
+      <div class="notice warn group-session-actions" data-group-cancel-ask role="alert">
+        <p>¿Descartar lo no confirmado${names ? ` de ${escapeHtml(names)}` : ''}? Se borra lo escrito sin confirmar (series, pesos, reps, RIR, aproximaciones, decisiones, comentarios y la galería abierta) y se limpia la selección de alumnos. Lo ya confirmado no se toca.</p>
+        <div class="group-draft-actions">
+          <button class="danger small" type="button" data-group-cancel-yes>Sí, descartar</button>
+          <button class="secondary small" type="button" data-group-cancel-no>No, seguir</button>
+        </div>
+      </div>`;
+  }
+
+  function cancelGroupSession() {
+    Object.assign(groupSessionUi, {
+      selectedClientIds: [], dateIsManual: false, dayChoices: {}, openClients: {}, drafts: {}, picker: null, history: {},
+      clientNotices: {}, commentEditor: null, draftNotice: '', cancelAsk: false,
+      message: 'Se descartó lo no confirmado. Lo ya confirmado sigue guardado.'
+    });
+    discardStoredGroupDraft();
+  }
+
+  function handleGroupDraftClick(target) {
+    const button = (selector) => target.closest(selector);
+    if (button('[data-group-draft-resume]') && groupSessionUi.pendingDraft) {
+      const pending = groupSessionUi.pendingDraft;
+      groupSessionUi.pendingDraft = null;
+      applyGroupDraft(pending);
+      groupSessionUi.draftNotice = `Recuperamos lo que tenías sin confirmar (del ${formatGroupShortDate(pending.savedDay)})`;
+    } else if (button('[data-group-draft-discard]')) {
+      groupSessionUi.pendingDraft = null;
+      discardStoredGroupDraft();
+    } else if (button('[data-group-draft-dismiss]')) {
+      groupSessionUi.draftNotice = '';
+    } else if (button('[data-group-cancel]')) {
+      if (groupHasUnconfirmed()) {
+        groupSessionUi.cancelAsk = true;
+      } else {
+        cancelGroupSession();
+      }
+    } else if (button('[data-group-cancel-yes]')) {
+      cancelGroupSession();
+    } else if (button('[data-group-cancel-no]')) {
+      groupSessionUi.cancelAsk = false;
+    } else {
+      return false;
+    }
+    renderTrainingGroupMode();
+    return true;
+  }
+
   function renderTrainingGroupMode() {
     if (!els.trainingGroupView) {
       return;
     }
+    checkGroupDraft();
+    renderTrainingGroupModeView();
+    persistGroupDraft();
+  }
+
+  function renderTrainingGroupModeView() {
     // Si no se eligió otra fecha a mano, sigue siendo HOY (aunque la pestaña quedara abierta
     // desde ayer: antes la fecha se calculaba una sola vez, al cargar la app).
     if (!groupSessionUi.sessionDate || !groupSessionUi.dateIsManual) {
@@ -1707,6 +1894,11 @@
     }
     if (els.groupSessionDate && els.groupSessionDate.value !== groupSessionUi.sessionDate) {
       els.groupSessionDate.value = groupSessionUi.sessionDate;
+    }
+    // Con un borrador de otro día sin elegir, todo queda bloqueado hasta "Retomarlo" o "Descartarlo".
+    const locked = Boolean(groupSessionUi.pendingDraft);
+    if (els.groupSessionDate) {
+      els.groupSessionDate.disabled = locked;
     }
     const activeClients = getActiveTrainingClients();
     groupSessionUi.selectedClientIds = groupSessionUi.selectedClientIds.filter((id) => activeClients.some((client) => client.id === id));
@@ -1717,7 +1909,7 @@
       els.groupSessionClients.innerHTML = activeClients.length
         ? activeClients.map((client) => `
           <label class="group-session-client${groupSessionUi.selectedClientIds.includes(client.id) ? ' selected' : ''}" title="${escapeHtml(getClientDisplayName(client))}">
-            <input type="checkbox" data-group-client="${escapeHtml(client.id)}" ${groupSessionUi.selectedClientIds.includes(client.id) ? 'checked' : ''}>
+            <input type="checkbox" data-group-client="${escapeHtml(client.id)}" ${groupSessionUi.selectedClientIds.includes(client.id) ? 'checked' : ''} ${locked ? 'disabled' : ''}>
             <span>${escapeHtml(getClientDisplayName(client))}</span>
           </label>`).join('')
         : '<div class="muted">No hay alumnos activos.</div>';
@@ -1729,14 +1921,18 @@
     if (!els.groupSessionRows) {
       return;
     }
+    if (locked) {
+      els.groupSessionRows.innerHTML = renderGroupDraftBanner();
+      return;
+    }
     if (!groupSessionUi.selectedClientIds.length) {
-      els.groupSessionRows.innerHTML = '<div class="muted">Selecciona de 1 a 4 alumnos.</div>';
+      els.groupSessionRows.innerHTML = `${renderGroupDraftBanner()}<div class="muted">Selecciona de 1 a 4 alumnos.</div>`;
       return;
     }
     els.groupSessionRows.querySelectorAll('details[data-group-row]').forEach((details) => {
       groupSessionUi.openClients[details.getAttribute('data-group-row')] = details.open;
     });
-    els.groupSessionRows.innerHTML = groupSessionUi.selectedClientIds.map((clientId, position) => {
+    els.groupSessionRows.innerHTML = renderGroupDraftBanner() + renderGroupSessionActions() + groupSessionUi.selectedClientIds.map((clientId, position) => {
       const client = getClientById(clientId);
       const name = escapeHtml(client ? getClientDisplayName(client) : 'Alumno');
       const isOpen = groupSessionUi.openClients[clientId] ?? position === 0;
@@ -1993,6 +2189,14 @@
   }
 
   function handleGroupSessionInput(event) {
+    if (groupSessionUi.pendingDraft) {
+      return;
+    }
+    handleGroupSessionInputValue(event);
+    persistGroupDraft();
+  }
+
+  function handleGroupSessionInputValue(event) {
     const commentField = event.target.getAttribute('data-group-comment-field');
     if (commentField && groupSessionUi.commentEditor) {
       const editor = groupSessionUi.commentEditor;
@@ -2049,7 +2253,12 @@
   }
 
   function handleGroupClick(target) {
-    if (handleGroupPickerClick(target) || handleGroupCommentClick(target)) {
+    // Borrador de otro día sin elegir: en Modo Grupo solo responden "Retomarlo" y "Descartarlo".
+    if (groupSessionUi.pendingDraft && els.trainingGroupView?.contains(target)) {
+      handleGroupDraftClick(target);
+      return true;
+    }
+    if (handleGroupPickerClick(target) || handleGroupCommentClick(target) || handleGroupDraftClick(target)) {
       return true;
     }
     const changeButton = target.closest('[data-group-change]');
@@ -2096,6 +2305,10 @@
   }
 
   function handleGroupSessionChange(event) {
+    if (groupSessionUi.pendingDraft) {
+      renderTrainingGroupMode();
+      return;
+    }
     if (event.target === els.groupSessionDate) {
       groupSessionUi.sessionDate = event.target.value || getTodayLocalDate();
       groupSessionUi.dateIsManual = Boolean(event.target.value) && event.target.value !== getTodayLocalDate();
@@ -2226,8 +2439,9 @@
   function setTrainingView(viewName) {
     const previousView = trainingUi.activeTrainingView;
     trainingUi.activeTrainingView = viewName;
-    if (viewName === 'group' && previousView !== 'group') {
-      // Cada vez que se abre Modo Grupo parte con la fecha de HOY (hora local).
+    // Cada vez que se abre Modo Grupo parte con la fecha de HOY (hora local), salvo que haya
+    // algo escrito sin confirmar (p. ej. un borrador retomado de otro día): eso no se mezcla.
+    if (viewName === 'group' && previousView !== 'group' && !groupHasUnconfirmed()) {
       groupSessionUi.sessionDate = getTodayLocalDate();
       groupSessionUi.dateIsManual = false;
       groupSessionUi.dayChoices = {};
@@ -10200,6 +10414,14 @@
   };
 
   window.addEventListener('valhalla:auth-changed', renderAuthPanel);
+  window.addEventListener('valhalla:auth-changed', (event) => {
+    const ownerId = event.detail?.user?.id || '';
+    if (ownerId && ownerId !== groupDraftOwner) {
+      resetGroupSessionForAccount(ownerId);
+      renderTrainingGroupMode();
+    }
+  });
+  window.addEventListener('valhalla:auth-locked', () => resetGroupSessionForAccount(''));
   window.addEventListener('valhalla:sync-status', (event) => {
     const statusEl = document.getElementById('authPanelSyncStatus');
     if (statusEl) {

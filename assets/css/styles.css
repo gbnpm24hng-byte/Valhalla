@@ -2617,3 +2617,47 @@ details.group-athlete-row[open] > summary h3::before {
 .group-history-comment {
   color: var(--text);
 }
+
+/* Modo Grupo: borrador recuperado y "Descartar lo no confirmado". */
+.group-draft-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+  overflow-wrap: anywhere;
+}
+
+.group-draft-banner p,
+.group-session-actions p {
+  margin: 0;
+  flex-basis: 100%;
+}
+
+.group-draft-banner .group-draft-lock {
+  font-weight: 600;
+}
+
+.group-session-client:has(input:disabled) {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.group-draft-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.group-draft-actions button {
+  min-height: 40px;
+}
+
+.group-session-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-bottom: 10px;
+}

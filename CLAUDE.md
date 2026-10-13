@@ -15,6 +15,8 @@ Guarda primero en localStorage y sincroniza con Supabase (coach_state + tablas d
 - labels.js — tabla única de etiquetas en español y categorías del armador.
 - client-overrides-core.js — cambios de ejercicio de UN alumno (Modo Grupo: "Solo hoy" / "De aquí en adelante"),
   guardados en trainingsV08.clientOverrides y aplicados encima de su asignación (nunca tocan el programa común).
+- group-draft-core.js — borrador de Modo Grupo (lo escrito sin confirmar), solo en el teléfono:
+  clave propia valhalla_group_draft:<cuenta>, fuera del estado; no sube a la nube ni sale en respaldos.
 - onboarding.js — formulario público de ingreso (?onboarding=1), sin login.
 - cloud-data.js — capa de tablas antiguas, desactivada. supabase/ — migración A0 y prueba de RLS (SQL).
 
