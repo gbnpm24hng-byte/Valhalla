@@ -49,7 +49,9 @@
     dirty: false,
     retryIndex: 0,
     conflictRow: null,
-    guardPromptedHash: ''
+    guardPromptedHash: '',
+    locked: false,       // candado: la nube la guardó una versión más nueva de la app
+    lockedVersion: ''
   };
 
   // ---------------------------------------------------------------------------
@@ -98,7 +100,9 @@
       cloudHash: syncCore.fingerprint(row.data),
       cloudClients: syncCore.summarize(row.data).clientes,
       syncedAt: keepSyncedAt && previous?.syncedAt ? previous.syncedAt : new Date().toISOString(),
-      approvedHash: previous?.ownerId === ownerId ? previous.approvedHash || '' : ''
+      approvedHash: previous?.ownerId === ownerId ? previous.approvedHash || '' : '',
+      // Versión de la app que guardó la nube (sirve para el candado aun sin conexión).
+      cloudAppVersion: row.appVersion || (previous?.ownerId === ownerId ? previous.cloudAppVersion || '' : '')
     });
   }
 
@@ -169,7 +173,12 @@
       if (result.error) {
         return { row: null, error: result.error, unavailable: result.timedOut || authApi.isUnavailableError(result.error, result.status) };
       }
-      return { row: result.data || null };
+      if (!result.data) {
+        return { row: null };
+      }
+      // La versión de la app que guardó va aparte: row.data queda solo con los datos.
+      const { data, appVersion } = syncCore.splitCloudData(result.data.data);
+      return { row: { ...result.data, data, appVersion } };
     } catch (error) {
       return { row: null, error, unavailable: true };
     }
@@ -177,10 +186,13 @@
 
   // Guarda con control de versión: solo si la nube sigue en `expectedVersion`.
   async function updateCloudRow(ownerId, expectedVersion, payload) {
+    if (ctx.locked) {
+      return { rows: null, error: { message: 'locked', locked: true }, status: 0, unavailable: false };
+    }
     try {
       const result = await withTimeout(
         client().from('coach_state')
-          .update({ data: payload, version: expectedVersion + 1 })
+          .update({ data: syncCore.stampPayload(payload), version: expectedVersion + 1 })
           .eq('owner_id', ownerId)
           .eq('version', expectedVersion)
           .select('version, updated_at'),
@@ -226,6 +238,7 @@
     offline: ['Nube: sin conexión', 'warn'],
     unavailable: ['Nube: no disponible', 'warn'],
     loading: ['Nube: cargando…', 'neutral'],
+    locked: ['Nube: hay una versión nueva', 'bad'],
     error: ['Nube: error', 'bad']
   };
 
@@ -258,7 +271,9 @@
   }
 
   function onBadgeClick() {
-    if (ctx.status === 'conflict' && ctx.conflictRow) {
+    if (ctx.locked) {
+      showVersionLock();
+    } else if (ctx.status === 'conflict' && ctx.conflictRow) {
       showConflict(ctx.ownerId, ctx.conflictRow);
     } else if (ctx.status === 'blocked') {
       ctx.guardPromptedHash = '';
@@ -332,6 +347,8 @@
     ctx.ownerId = '';
     ctx.conflictRow = null;
     ctx.status = '';
+    ctx.locked = false;
+    ctx.lockedVersion = '';
     closeModal();
     hidePanel();
     document.getElementById('syncStatusBadge')?.remove();
@@ -393,6 +410,47 @@
         message.classList.add('auth-message--bad');
       }
     });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Candado de versión (ver sync-core.js): si la nube la guardó una app más nueva,
+  // este equipo no guarda nada en la nube. Lo de este equipo se sigue guardando aquí.
+  // ---------------------------------------------------------------------------
+
+  const LOCK_MESSAGE = 'Hay una versión nueva de la app. Ciérrala y vuelve a abrirla antes de seguir.';
+
+  function showVersionLock() {
+    const modal = openModal(`
+      <h2>${LOCK_MESSAGE}</h2>
+      <p class="muted">Esta app es la v${escapeHtml(syncCore.APP_VERSION)} y la nube la guardó la v${escapeHtml(ctx.lockedVersion)}. Para no borrar nada, este equipo no guardará en la nube hasta que se abra la versión nueva.</p>
+      <div class="sync-choice-actions">
+        <button class="primary" type="button" data-sync-reload>Volver a abrir ahora</button>
+        <button class="secondary" type="button" data-sync-close>Entendido</button>
+      </div>`);
+    modal.querySelector('[data-sync-reload]').addEventListener('click', () => window.location.reload());
+    modal.querySelector('[data-sync-close]').addEventListener('click', closeModal);
+    modal.querySelector('[data-sync-reload]').focus();
+  }
+
+  // Revisa la versión que guardó la nube (o, sin conexión, la última que vio este
+  // equipo). Si es más nueva que esta app, cierra el guardado y avisa. true = bloqueado.
+  function applyVersionLock(ownerId, cloudAppVersion) {
+    if (!syncCore.isLockedBy(cloudAppVersion)) {
+      ctx.locked = false;
+      ctx.lockedVersion = '';
+      return false;
+    }
+    stopAutosave();
+    ctx.locked = true;
+    ctx.lockedVersion = cloudAppVersion;
+    const meta = readMeta();
+    if (!meta || meta.ownerId !== ownerId || meta.cloudAppVersion !== cloudAppVersion) {
+      saveMeta({ ...(meta?.ownerId === ownerId ? meta : { ownerId }), cloudAppVersion });
+    }
+    setStatus('locked');
+    hidePanel();
+    showVersionLock();
+    return true;
   }
 
   // ---------------------------------------------------------------------------
@@ -469,11 +527,14 @@
   // Inserta con versión 1, vuelve a leer y compara. Si no coincide, deshace la fila
   // que se acaba de crear y no marca el equipo como sincronizado.
   async function uploadInitial(ownerId, payload) {
+    if (ctx.locked) {
+      return { ok: false, message: LOCK_MESSAGE };
+    }
     let insertError = null;
     let insertOk = false;
     try {
       const result = await withTimeout(
-        client().from('coach_state').insert({ owner_id: ownerId, data: payload, version: 1 }),
+        client().from('coach_state').insert({ owner_id: ownerId, data: syncCore.stampPayload(payload), version: 1 }),
         WRITE_TIMEOUT_MS,
         { error: { message: 'timeout', timedOut: true }, status: 0 }
       );
@@ -634,12 +695,15 @@
 
   // Sube este equipo sobre la versión de la nube que se acaba de ver.
   async function keepLocal(ownerId, row) {
+    if (ctx.locked) {
+      return { ok: false, message: LOCK_MESSAGE };
+    }
     window.VALHALLA.appState?.saveNow?.();
     const payload = syncCore.buildCloudPayload(currentLocalState());
     const result = await updateCloudRow(ownerId, row.version, payload);
     const outcome = syncCore.classifySaveResult(result);
     if (outcome === 'saved') {
-      writeMeta(ownerId, { version: result.rows[0].version, data: payload });
+      writeMeta(ownerId, { version: result.rows[0].version, data: payload, appVersion: syncCore.APP_VERSION });
       closeModal();
       ctx.conflictRow = null;
       startAutosave(ownerId);
@@ -649,6 +713,9 @@
     }
     if (outcome === 'conflict') {
       const fetched = await fetchCloudRow(ownerId);
+      if (fetched.row && applyVersionLock(ownerId, fetched.row.appVersion)) {
+        return { ok: true };
+      }
       if (fetched.row) {
         showConflict(ownerId, fetched.row);
         return { ok: true };
@@ -695,7 +762,7 @@
   async function saveToCloud() {
     clearTimeout(ctx.timer);
     ctx.timer = null;
-    if (!ctx.ready) {
+    if (!ctx.ready || ctx.locked) {
       return;
     }
     if (ctx.saving) {
@@ -744,7 +811,7 @@
     const outcome = syncCore.classifySaveResult(result);
 
     if (outcome === 'saved') {
-      writeMeta(ownerId, { version: result.rows[0].version, data: payload });
+      writeMeta(ownerId, { version: result.rows[0].version, data: payload, appVersion: syncCore.APP_VERSION });
       ctx.retryIndex = 0;
       if (ctx.dirty || syncCore.fingerprint(syncCore.buildCloudPayload(currentLocalState())) !== payloadHash) {
         ctx.dirty = false;
@@ -771,6 +838,10 @@
       }
       if (!fetched.row) {
         offerUpload(ownerId);
+        return;
+      }
+      // Otra copia con una versión más nueva de la app guardó antes: no se sigue.
+      if (applyVersionLock(ownerId, fetched.row.appVersion)) {
         return;
       }
       // Si la nube ya tiene exactamente esto (respuesta perdida de un guardado propio),
@@ -890,6 +961,7 @@
     const sequence = ++runSequence;
     stopAutosave();
     ctx.ownerId = ownerId;
+    ctx.locked = false;
     closeModal();
     hidePanel();
     setStatus('checking');
@@ -912,6 +984,9 @@
 
     ctx.runRetryIndex = 0;
     const row = fetched.row;
+    if (row && applyVersionLock(ownerId, row.appVersion)) {
+      return;
+    }
     const stored = Boolean(localStoredRaw());
     let localPayload;
     try {
@@ -955,6 +1030,11 @@
       clearUi();
       ctx.ownerId = detail.user.id;
       setStatus('offline');
+      // Sin conexión vale lo último que vio este equipo de la nube.
+      const meta = readMeta();
+      if (meta?.ownerId === detail.user.id) {
+        applyVersionLock(detail.user.id, meta.cloudAppVersion);
+      }
       return;
     }
     run(detail.user.id);
@@ -976,6 +1056,7 @@
     run,
     lastAction: '',
     isActive: () => ctx.ready,
+    isLocked: () => ctx.locked,
     statusText: () => {
       const badge = document.getElementById('syncStatusBadge');
       return badge ? badge.textContent.replace(/^Nube: /, '') : '';

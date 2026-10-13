@@ -28,7 +28,11 @@ Guarda primero en localStorage y sincroniza con Supabase (coach_state + tablas d
 - Lo publicado al alumno nunca incluye datos de pago (monthly_value, payment_status, amount, renewal_*)
   ni personales (teléfono, correo, lesiones, observaciones).
 - Si cambia cualquier archivo que sirve la app (JS, CSS o HTML), subir la versión de la caché en
-  service-worker.js y el número visible del encabezado (index.html).
+  service-worker.js, el número visible del encabezado (index.html) y APP_VERSION en sync-core.js
+  (candado de versión: una app más vieja que la última que guardó en coach_state no guarda en la nube).
+  tests/version-lock.test.js revisa que las tres coincidan.
+- data.js conserva los campos que no conoce (keepUnknown): no quitarlo, es lo que evita que
+  guardar desde una versión borre datos de otra.
 - Reporte final corto: hash, un renglón por resultado de pruebas y solo lo que requiera decisión del usuario.
 
 ## Tests

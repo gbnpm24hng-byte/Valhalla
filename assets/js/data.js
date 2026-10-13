@@ -343,6 +343,22 @@
       .replace(/^-+|-+$/g, '') || 'base';
   }
 
+  // Conserva lo que esta versión no conoce (p. ej. campos de una versión más nueva): así
+  // guardar desde aquí no borra datos. Lo conocido lo decide el normalizador, y los alias
+  // antiguos que ya traduce (`aliases`) no se repiten.
+  function keepUnknown(raw, normalized, aliases = []) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+      return normalized;
+    }
+    const extra = {};
+    Object.keys(raw).forEach((key) => {
+      if (!(key in normalized) && !aliases.includes(key) && raw[key] !== undefined) {
+        extra[key] = raw[key];
+      }
+    });
+    return Object.keys(extra).length ? { ...extra, ...normalized } : normalized;
+  }
+
   function normalizeTrainingSet(setEntry, index) {
     const rawType = String(setEntry.setType || setEntry.set_type || 'S').trim().toUpperCase();
     const setType = rawType === 'A' || rawType === 'T' || rawType === 'S' ? rawType : 'S';
@@ -356,7 +372,7 @@
     if (setEntry.studentSetId) {
       origin.studentSetId = String(setEntry.studentSetId);
     }
-    return {
+    return keepUnknown(setEntry, {
       ...origin,
       setNumber: Number(setEntry.setNumber || index + 1),
       weight: Number(setEntry.weight || 0),
@@ -369,7 +385,7 @@
       techniqueStatus: setEntry.techniqueStatus || 'pending',
       coachValidated: Boolean(setEntry.coachValidated),
       personalRecord: Boolean(setEntry.personalRecord)
-    };
+    }, ['set_type']);
   }
 
   function normalizeTrainingExercise(exercise, index) {
@@ -378,7 +394,7 @@
     const rawRepMax = exercise.plannedRepMax === null ? null : (exercise.plannedRepMax || exercise.reps || rawRepMin);
     const plannedRepMin = rawRepMin === null ? null : Number(rawRepMin);
     const plannedRepMax = rawRepMax === null ? null : Number(rawRepMax);
-    return {
+    return keepUnknown(exercise, {
       id: exercise.id || createId('tx-exercise'),
       programExerciseId: exercise.programExerciseId || '',
       exerciseName: exercise.exerciseName || exercise.exercise || 'Ejercicio',
@@ -392,12 +408,12 @@
       sets: Array.isArray(exercise.sets)
         ? exercise.sets.map((setEntry, setIndex) => normalizeTrainingSet(setEntry, setIndex))
         : []
-    };
+    }, ['reps', 'weight', 'exercise', 'techniqueNotes']);
   }
 
   function normalizeTrainingSession(session, index) {
     const status = session.status || (session.sessionCompleted ? 'completed' : 'in_progress');
-    return {
+    return keepUnknown(session, {
       id: session.id || createId('tx-session'),
       clientId: session.clientId || session.studentId || '',
       programAssignmentId: session.programAssignmentId || '',
@@ -413,7 +429,7 @@
       exercises: Array.isArray(session.exercises)
         ? session.exercises.map((exercise, exerciseIndex) => normalizeTrainingExercise(exercise, exerciseIndex))
         : []
-    };
+    }, ['studentId', 'sessionCompleted', 'name']);
   }
 
   function normalizeTrainingProgramExercise(exercise, index) {
@@ -444,7 +460,7 @@
       }))
       : [];
 
-    return {
+    return keepUnknown(exercise, {
       id: exercise.id || createId('program-exercise'),
       libraryExerciseId: exercise.libraryExerciseId || exercise.library_exercise_id || '',
       exerciseName: exercise.exerciseName || exercise.name || `Ejercicio ${index + 1}`,
@@ -461,22 +477,22 @@
       weightConvention: exercise.weightConvention || 'external',
       approximations,
       effectiveSets
-    };
+    }, ['library_exercise_id', 'name', 'weight', 'plannedSets', 'planned_sets', 'plannedRepMin', 'plannedRepMax', 'rep_min', 'rep_max']);
   }
 
   function normalizeTrainingProgramDay(day, index) {
-    return {
+    return keepUnknown(day, {
       id: day.id || createId('program-day'),
       name: day.name || `Día ${index + 1}`,
       order: Number(day.order || index + 1),
       exercises: Array.isArray(day.exercises)
         ? day.exercises.map((exercise, exerciseIndex) => normalizeTrainingProgramExercise(exercise, exerciseIndex))
         : []
-    };
+    });
   }
 
   function normalizeTrainingProgram(program) {
-    return {
+    return keepUnknown(program, {
       id: program.id || createId('program'),
       name: program.name || 'Programa de entrenamiento',
       objective: program.objective || '',
@@ -489,7 +505,7 @@
         : [],
       createdAt: program.createdAt || new Date().toISOString(),
       updatedAt: program.updatedAt || new Date().toISOString()
-    };
+    });
   }
 
   // Cambio de ejercicio de un alumno (Modo Grupo; ver client-overrides-core.js).
@@ -502,7 +518,7 @@
       || (kind === 'replace' && !override.targetExerciseId)) {
       return null;
     }
-    return {
+    return keepUnknown(override, {
       id: override.id || createId('client-override'),
       clientId: String(override.clientId),
       programId: String(override.programId || ''),
@@ -518,7 +534,7 @@
       exercise: normalizeTrainingProgramExercise({ ...exercise, id: exercise.id || createId('client-exercise') }, 0),
       createdAt: override.createdAt || new Date().toISOString(),
       updatedAt: override.updatedAt || override.createdAt || new Date().toISOString()
-    };
+    });
   }
 
   function normalizeTrainingProgramAssignment(assignment, state) {
@@ -540,7 +556,7 @@
       ? Number(assignment.weeklyFrequency)
       : (weeklyDays.length ? weeklyDays.length : (Number(baseProgramNormalized?.weeklyFrequency) || 3));
 
-    return {
+    return keepUnknown(assignment, {
       id: assignment.id || createId('program-assignment'),
       programId,
       clientId: assignment.clientId || '',
@@ -555,7 +571,7 @@
       days: days.map((day, index) => ({ ...day, order: index + 1 })),
       createdAt: assignment.createdAt || new Date().toISOString(),
       updatedAt: assignment.updatedAt || new Date().toISOString()
-    };
+    }, ['program', 'daysOfWeek']);
   }
 
   function mergeTrainingSessionsById(existingItems, incomingItems) {
@@ -924,6 +940,8 @@
       },
       trainingModelVersion: parsed.trainingModelVersion || '0.8.0',
       trainingsV08: {
+        // Claves de entrenamientos de una versión más nueva: se conservan tal cual.
+        ...keepUnknown(parsed.trainingsV08, {}, ['plans', 'sessions', 'programs', 'assignments', 'clientOverrides']),
         plans: normalizeArray(parsed.trainingsV08?.plans, base.trainingsV08.plans, (plan) => ({
           id: plan.id || createId('tx-plan'),
           clientId: plan.clientId || '',

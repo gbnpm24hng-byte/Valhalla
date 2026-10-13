@@ -301,8 +301,58 @@
     return 'conflict';
   }
 
+  // ---------------------------------------------------------------------------
+  // Candado de versión: cada guardado en coach_state anota la versión de la app que lo
+  // hizo (data.appVersion). Una app más vieja que la que guardó por última vez no
+  // guarda nada en la nube. Debe coincidir con el encabezado (index.html) y la caché
+  // (service-worker.js); lo revisa tests/version-lock.test.js.
+  // ---------------------------------------------------------------------------
+  const APP_VERSION = '0.9.16';
+  const APP_VERSION_KEY = 'appVersion';
+
+  // -1, 0 o 1 comparando "0.9.16" con "0.9.9" por partes numéricas. Lo que no es una
+  // versión cuenta como 0.0.0.
+  function compareVersions(first, second) {
+    const parts = (value) => (/^\d+(\.\d+)*$/.test(String(value || '')) ? String(value).split('.').map(Number) : [0]);
+    const a = parts(first);
+    const b = parts(second);
+    for (let index = 0; index < Math.max(a.length, b.length); index += 1) {
+      const diff = (a[index] || 0) - (b[index] || 0);
+      if (diff) {
+        return diff > 0 ? 1 : -1;
+      }
+    }
+    return 0;
+  }
+
+  // ¿La nube la guardó una app más nueva que esta?
+  function isLockedBy(cloudAppVersion, appVersion = APP_VERSION) {
+    return Boolean(cloudAppVersion) && compareVersions(cloudAppVersion, appVersion) > 0;
+  }
+
+  // Lo que se escribe en coach_state: los datos más la versión de la app.
+  function stampPayload(payload, appVersion = APP_VERSION) {
+    return { ...payload, [APP_VERSION_KEY]: appVersion };
+  }
+
+  // Separa la versión de los datos al leer, para que las comparaciones y huellas sigan
+  // siendo solo de los datos.
+  function splitCloudData(data) {
+    if (!data || typeof data !== 'object' || !(APP_VERSION_KEY in data)) {
+      return { data, appVersion: '' };
+    }
+    const { [APP_VERSION_KEY]: appVersion, ...rest } = data;
+    return { data: rest, appVersion: String(appVersion || '') };
+  }
+
   window.VALHALLA = window.VALHALLA || {};
   window.VALHALLA.syncCore = {
+    APP_VERSION,
+    APP_VERSION_KEY,
+    compareVersions,
+    isLockedBy,
+    stampPayload,
+    splitCloudData,
     evaluateUploadGuard,
     isFactoryDefault,
     clientDifferences,
