@@ -394,6 +394,7 @@
     const rawRepMax = exercise.plannedRepMax === null ? null : (exercise.plannedRepMax || exercise.reps || rawRepMin);
     const plannedRepMin = rawRepMin === null ? null : Number(rawRepMin);
     const plannedRepMax = rawRepMax === null ? null : Number(rawRepMax);
+    const comment = normalizeExerciseComment(exercise.comment);
     return keepUnknown(exercise, {
       id: exercise.id || createId('tx-exercise'),
       programExerciseId: exercise.programExerciseId || '',
@@ -405,10 +406,30 @@
       targetWeight: exercise.targetWeight === null ? null : Number(exercise.targetWeight || exercise.weight || 0),
       restSeconds: Number(exercise.restSeconds || 90),
       coachNotes: exercise.coachNotes || exercise.techniqueNotes || '',
+      ...(comment ? { comment } : {}),
       sets: Array.isArray(exercise.sets)
         ? exercise.sets.map((setEntry, setIndex) => normalizeTrainingSet(setEntry, setIndex))
         : []
-    }, ['reps', 'weight', 'exercise', 'techniqueNotes']);
+    }, ['reps', 'weight', 'exercise', 'techniqueNotes', 'comment']);
+  }
+
+  // Comentario del entrenador en un ejercicio de una sesión (Modo Grupo). Privado salvo
+  // visibleToStudent; máximo EXERCISE_COMMENT_MAX caracteres. Vacío = sin comentario.
+  const EXERCISE_COMMENT_MAX = 300;
+  function normalizeExerciseComment(raw) {
+    const source = typeof raw === 'string' ? { text: raw } : raw;
+    if (!source || typeof source !== 'object') {
+      return null;
+    }
+    const text = String(source.text ?? '').trim().slice(0, EXERCISE_COMMENT_MAX);
+    if (!text) {
+      return null;
+    }
+    return {
+      text,
+      visibleToStudent: source.visibleToStudent === true,
+      ...(source.updatedAt ? { updatedAt: String(source.updatedAt) } : {})
+    };
   }
 
   function normalizeTrainingSession(session, index) {
@@ -1042,6 +1063,8 @@
     normalizeMovementStatus,
     normalizeTrainingProgram,
     normalizeTrainingProgramAssignment,
-    normalizeClientOverride
+    normalizeClientOverride,
+    normalizeExerciseComment,
+    EXERCISE_COMMENT_MAX
   };
 })();

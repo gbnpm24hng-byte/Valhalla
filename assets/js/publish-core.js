@@ -54,6 +54,17 @@
       .slice(0, MAX_TEXT);
   }
 
+  // Comentario de un ejercicio de la sesión: privado por defecto. Se publica solo con
+  // visibleToStudent === true y, como las notas de técnica, sin las frases internas
+  // ("Interno: …") frase por frase.
+  const MAX_COMMENT = 300;
+  function publishableComment(comment) {
+    if (!comment || typeof comment !== 'object' || comment.visibleToStudent !== true) {
+      return '';
+    }
+    return studentNote(comment.text).slice(0, MAX_COMMENT);
+  }
+
   function text(value, max = MAX_TEXT) {
     return value === null || value === undefined ? '' : String(value).slice(0, max);
   }
@@ -135,12 +146,19 @@
           completed: entry?.completed !== false
         });
       });
-      return {
+      const record = {
         name: text(exercise?.exerciseName, 120),
         targetWeight: numberOrNull(exercise?.targetWeight),
         techniqueNotes: studentNote(exercise?.coachNotes),
         sets
       };
+      // Solo si el entrenador lo marcó visible (y no es "Interno:"). Sin comentario, el
+      // registro queda igual que antes.
+      const comment = publishableComment(exercise?.comment);
+      if (comment) {
+        record.comment = comment;
+      }
+      return record;
     }).filter((exercise) => exercise.sets.length > 0);
     return {
       record: {
@@ -194,6 +212,7 @@
     buildPublishedSession,
     buildPublication,
     findForbiddenKeys,
-    studentNote
+    studentNote,
+    publishableComment
   };
 })();

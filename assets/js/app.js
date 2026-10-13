@@ -77,7 +77,9 @@
     // Sesión anterior en solo lectura: clientId -> posición (0 = la más reciente).
     history: {},
     // Aviso por alumno después de cambiar o agregar un ejercicio.
-    clientNotices: {}
+    clientNotices: {},
+    // Comentario que se está escribiendo: { clientId, planExerciseId, text, visible } o null.
+    commentEditor: null
   };
   // B3.3: traer lo que registran los alumnos (student_sets) a las sesiones del entrenador.
   const studentImportUi = {
@@ -1221,7 +1223,11 @@
   }
 
   function formatLastGroupPerformance(found) {
-    return found ? `Última vez (${formatGroupShortDate(found.session.date)}): ${formatGroupSetsSummary(found.exercise)}` : '';
+    if (!found) {
+      return '';
+    }
+    const comment = found.exercise.comment?.text ? ` · 💬 ${found.exercise.comment.text}` : '';
+    return `Última vez (${formatGroupShortDate(found.session.date)}): ${formatGroupSetsSummary(found.exercise)}${comment}`;
   }
 
   // Sesiones anteriores del mismo día del programa (por id del día o, si cambió, por
@@ -1249,6 +1255,7 @@
         <li class="group-history-ex">
           <strong>${escapeHtml(exercise.exerciseName || 'Ejercicio')}</strong>
           <span class="meta">${effective ? escapeHtml(formatGroupSetsSummary(exercise)) : 'Sin series efectivas'}${approximations ? ` · ${approximations} aprox.` : ''}</span>
+          ${exercise.comment?.text ? `<span class="meta group-history-comment" data-group-history-comment>💬 ${escapeHtml(exercise.comment.text)}</span>` : ''}
         </li>`;
     }).join('');
     return `
@@ -1320,7 +1327,7 @@
     if (!draft) {
       return false;
     }
-    return String(draft.warmups || '').trim() !== '' || Array.from({ length: draft.setCount }, (_, index) => index + 1)
+    return Boolean(draft.comment) || String(draft.warmups || '').trim() !== '' || Array.from({ length: draft.setCount }, (_, index) => index + 1)
       .some((n) => String(draft[`s${n}Weight`] ?? '').trim() !== '' || String(draft[`s${n}Reps`] ?? '').trim() !== '');
   }
 
@@ -1501,6 +1508,115 @@
     renderTrainingGroupMode();
   }
 
+  // ---- Comentario por ejercicio (solo cuando hace falta) ----
+  // Se guarda en el ejercicio de la sesión del alumno: { text, visibleToStudent, updatedAt }.
+  // Si el ejercicio aún no está confirmado, queda con lo escrito y se guarda al confirmar.
+  // No cambia series, pesos, decisiones, asistencia ni saldo.
+  const GROUP_COMMENT_MAX = 300;
+
+  function getGroupComment(clientId, planExercise, confirmed = findConfirmedGroupExercise(clientId, planExercise.id)) {
+    return confirmed ? confirmed.exercise.comment || null : groupSessionUi.drafts[`${clientId}::${planExercise.id}`]?.comment || null;
+  }
+
+  // { button, block }: sin comentario ni editor abierto, solo el botón "+ Comentario".
+  function renderGroupComment(clientId, planExercise, confirmed, attrs) {
+    const comment = getGroupComment(clientId, planExercise, confirmed);
+    const editor = groupSessionUi.commentEditor;
+    const editing = editor && editor.clientId === clientId && editor.planExerciseId === planExercise.id;
+    if (editing) {
+      return {
+        button: '',
+        block: `
+          <div class="group-comment-editor" data-group-comment-editor>
+            <label>Comentario<textarea rows="2" maxlength="${GROUP_COMMENT_MAX}" data-group-comment-field="text" ${attrs} placeholder="Ej.: bajó la técnica en la 3ª">${escapeHtml(editor.text)}</textarea></label>
+            <div class="group-comment-options">
+              <label class="group-comment-visible"><input type="checkbox" data-group-comment-field="visible" ${editor.visible ? 'checked' : ''}> Visible para el alumno</label>
+              <span class="meta" data-group-comment-count>${editor.text.length}/${GROUP_COMMENT_MAX}</span>
+            </div>
+            <p class="meta">Privado salvo que marques la casilla. Lo que empiece con "Interno:" nunca se publica.</p>
+            <div class="group-comment-actions">
+              <button class="primary small" type="button" data-group-comment-save ${attrs}>Guardar comentario</button>
+              <button class="secondary small" type="button" data-group-comment-cancel>Cancelar</button>
+              ${comment ? `<button class="danger small" type="button" data-group-comment-delete ${attrs}>Borrar</button>` : ''}
+            </div>
+          </div>`
+      };
+    }
+    if (!comment) {
+      return { button: `<button class="ghost small group-comment-btn" type="button" data-group-comment-open ${attrs}>+ Comentario</button>`, block: '' };
+    }
+    return {
+      button: '',
+      block: `
+        <div class="group-comment" data-group-comment>
+          <span>💬 ${escapeHtml(comment.text)}</span>
+          <span class="meta">${comment.visibleToStudent ? 'Visible para el alumno' : 'Privado'}${confirmed ? '' : ' · se guarda al confirmar'}</span>
+          <button class="ghost small" type="button" data-group-comment-open ${attrs}>Editar</button>
+        </div>`
+    };
+  }
+
+  function saveGroupComment(clientId, planExerciseId, value) {
+    const row = findGroupPlanExercise(clientId, planExerciseId);
+    if (!row) {
+      return;
+    }
+    const text = String(value?.text ?? '').trim().slice(0, GROUP_COMMENT_MAX);
+    const comment = text ? { text, visibleToStudent: Boolean(value.visible), updatedAt: new Date().toISOString() } : null;
+    const confirmed = findConfirmedGroupExercise(clientId, planExerciseId);
+    if (confirmed) {
+      if (comment) {
+        confirmed.exercise.comment = comment;
+      } else {
+        delete confirmed.exercise.comment;
+      }
+      dataApi.saveState(state);
+      if (isCloudSessionActive()) {
+        syncSessionToCloud(confirmed.session).catch((error) => console.error(error));
+      }
+    } else {
+      const draft = getGroupDraft(clientId, row.planExercise);
+      if (comment) {
+        draft.comment = comment;
+      } else {
+        delete draft.comment;
+      }
+    }
+    groupSessionUi.commentEditor = null;
+    renderTrainingGroupMode();
+  }
+
+  function handleGroupCommentClick(target) {
+    const button = (selector) => target.closest(selector);
+    const open = button('[data-group-comment-open]');
+    if (open) {
+      const clientId = open.getAttribute('data-client-id');
+      const planExerciseId = open.getAttribute('data-plan-exercise-id');
+      const row = findGroupPlanExercise(clientId, planExerciseId);
+      const current = row ? getGroupComment(clientId, row.planExercise) : null;
+      groupSessionUi.commentEditor = { clientId, planExerciseId, text: current?.text || '', visible: Boolean(current?.visibleToStudent) };
+      renderTrainingGroupMode();
+      els.groupSessionRows?.querySelector('[data-group-comment-editor] textarea')?.focus();
+      return true;
+    }
+    if (button('[data-group-comment-cancel]')) {
+      groupSessionUi.commentEditor = null;
+      renderTrainingGroupMode();
+      return true;
+    }
+    const save = button('[data-group-comment-save]');
+    if (save && groupSessionUi.commentEditor) {
+      saveGroupComment(save.getAttribute('data-client-id'), save.getAttribute('data-plan-exercise-id'), groupSessionUi.commentEditor);
+      return true;
+    }
+    const remove = button('[data-group-comment-delete]');
+    if (remove) {
+      saveGroupComment(remove.getAttribute('data-client-id'), remove.getAttribute('data-plan-exercise-id'), { text: '' });
+      return true;
+    }
+    return false;
+  }
+
   function renderGroupExerciseRow(clientId, client, context, planExercise, index) {
     const confirmed = findConfirmedGroupExercise(clientId, planExercise.id);
     const pid = escapeHtml(planExercise.id);
@@ -1519,8 +1635,11 @@
         <span class="meta">Objetivo: ${Number(planExercise.targetWeight || 0)} kg × ${escapeHtml(getGroupRepsLabel(planExercise))}</span>
         ${lastTime ? `<span class="meta group-last-time" data-group-last-time>${escapeHtml(lastTime)}</span>` : ''}
       </div>`;
+    const comment = pickerHere ? null : renderGroupComment(clientId, planExercise, confirmed, attrs);
     const changeButton = pickerHere ? '' : `
+      ${comment.block}
       <div class="group-change-actions">
+        ${comment.button}
         <button class="ghost small group-change-btn" type="button" data-group-change ${attrs}>Cambiar ejercicio</button>
         ${planExercise.overrideId ? `<button class="ghost small group-revert-btn" type="button" data-group-revert="${escapeHtml(planExercise.overrideId)}" ${attrs}>Quitar cambio</button>` : ''}
       </div>`;
@@ -1786,11 +1905,14 @@
       return null;
     }
     const sets = buildGroupDraftSets(draft, getGroupDraftEffectiveEntries(draft));
-    if (!sets.length) {
+    if (!sets.length && !draft.comment) {
       return null;
     }
     const { session, performed } = appendGroupPerformedExercise(clientId, context, planExercise, sets, { decision: 'changed', exercise: planExercise.exerciseName || '' });
     performed.plannedSets = draft.setCount;
+    if (draft.comment) {
+      performed.comment = draft.comment;
+    }
     return session;
   }
 
@@ -1835,6 +1957,9 @@
       ? { decision: 'today', proposedExercise: planExercise.exerciseName }
       : { decision: draft.decision, proposedWeight, proposedExercise: planExercise.exerciseName });
     performed.plannedSets = draft.setCount;
+    if (draft.comment) {
+      performed.comment = draft.comment;
+    }
 
     // Nuevo peso objetivo en el programa de ESTE alumno: su asignación y sus cambios
     // "de aquí en adelante" del mismo ejercicio. Un ejercicio de "solo hoy" no cambia nada.
@@ -1868,6 +1993,20 @@
   }
 
   function handleGroupSessionInput(event) {
+    const commentField = event.target.getAttribute('data-group-comment-field');
+    if (commentField && groupSessionUi.commentEditor) {
+      const editor = groupSessionUi.commentEditor;
+      if (commentField === 'visible') {
+        editor.visible = event.target.checked;
+      } else {
+        editor.text = event.target.value.slice(0, GROUP_COMMENT_MAX);
+        const counter = event.target.closest('[data-group-comment-editor]')?.querySelector('[data-group-comment-count]');
+        if (counter) {
+          counter.textContent = `${editor.text.length}/${GROUP_COMMENT_MAX}`;
+        }
+      }
+      return;
+    }
     const pickerField = event.target.getAttribute('data-group-picker-field');
     if (pickerField && groupSessionUi.picker) {
       groupSessionUi.picker[pickerField] = event.target.value;
@@ -1897,6 +2036,9 @@
     if (!clientId || groupSessionUi.picker?.clientId === clientId) {
       groupSessionUi.picker = null;
     }
+    if (!clientId || groupSessionUi.commentEditor?.clientId === clientId) {
+      groupSessionUi.commentEditor = null;
+    }
     if (clientId) {
       delete groupSessionUi.history[clientId];
       delete groupSessionUi.clientNotices[clientId];
@@ -1907,7 +2049,7 @@
   }
 
   function handleGroupClick(target) {
-    if (handleGroupPickerClick(target)) {
+    if (handleGroupPickerClick(target) || handleGroupCommentClick(target)) {
       return true;
     }
     const changeButton = target.closest('[data-group-change]');
@@ -5210,6 +5352,7 @@
     const bestWeight = getBestWeightForExercise(clientId, exerciseName);
     const completedSets = countExerciseSets(last.exercise);
     const plannedSets = Number(last.exercise.plannedSets || 0);
+    const commented = matches.slice().reverse().find((match) => match.exercise.comment?.text);
 
     return `
       <div class="training-progress-grid">
@@ -5218,6 +5361,7 @@
         <div><strong>Primer registro</strong><div class="meta">${firstSet ? `${Number(firstSet.weight || 0)} kg${firstSet.reps === null || firstSet.reps === undefined ? '' : ` × ${Number(firstSet.reps)}`}` : 'Sin registro'}</div></div>
         <div><strong>Fecha última sesión</strong><div class="meta">${last.session.date ? escapeHtml(formatClientDate(last.session.date)) : 'Sin fecha'}</div></div>
         <div><strong>Series completadas</strong><div class="meta">${completedSets}${plannedSets ? ` de ${plannedSets}` : ''}</div></div>
+        ${commented ? `<div data-progress-comment><strong>Último comentario</strong><div class="meta">💬 ${escapeHtml(commented.exercise.comment.text)} · ${escapeHtml(formatClientDate(commented.session.date))}</div></div>` : ''}
       </div>`;
   }
 

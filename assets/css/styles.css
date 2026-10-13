@@ -2552,3 +2552,68 @@ details.group-athlete-row[open] > summary h3::before {
   flex-wrap: wrap;
   gap: 8px;
 }
+
+/* Modo Grupo: comentario por ejercicio (solo aparece si se usa). */
+.group-comment {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  padding: 6px 10px;
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+  background: var(--surface);
+  overflow-wrap: anywhere;
+}
+
+.group-comment > span:first-child {
+  flex-basis: 100%;
+}
+
+.group-comment-editor {
+  display: grid;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--accent-soft);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.group-comment-editor textarea {
+  width: 100%;
+  min-height: 64px;
+  resize: vertical;
+}
+
+.group-comment-editor p {
+  margin: 0;
+}
+
+.group-comment-options,
+.group-comment-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.group-comment-actions {
+  justify-content: flex-start;
+}
+
+.group-comment-visible {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+}
+
+.group-comment-visible input {
+  width: 20px;
+  height: 20px;
+}
+
+.group-history-comment {
+  color: var(--text);
+}

@@ -307,7 +307,7 @@
   // guarda nada en la nube. Debe coincidir con el encabezado (index.html) y la caché
   // (service-worker.js); lo revisa tests/version-lock.test.js.
   // ---------------------------------------------------------------------------
-  const APP_VERSION = '0.9.16';
+  const APP_VERSION = '0.9.17';
   const APP_VERSION_KEY = 'appVersion';
 
   // -1, 0 o 1 comparando "0.9.16" con "0.9.9" por partes numéricas. Lo que no es una

@@ -330,6 +330,7 @@
                 <li class="sv-exercise">
                   <strong>${escapeHtml(exercise.name || 'Ejercicio')}</strong>
                   <ul class="sv-sets">${(exercise.sets || []).filter(setHasData).map((set) => `<li${set.type === 'S' ? ' class="sv-effective"' : ''}><span class="sv-set-label">${escapeHtml(`${set.type || 'S'}${set.setNumber || ''}`)}</span> ${escapeHtml(setLine(set))}</li>`).join('')}</ul>
+                  ${exercise.comment ? `<div class="sv-note" data-sv-comment>💬 ${escapeHtml(exercise.comment)}</div>` : ''}
                 </li>`).join('')}</ul>
             </details>`;
         }).join('')}
