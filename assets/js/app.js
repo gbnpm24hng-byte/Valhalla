@@ -11,6 +11,8 @@
   const labelsApi = window.VALHALLA.labels;
   // Series registradas por los alumnos (student-import-core.js).
   const studentImportApi = window.VALHALLA.studentImportCore;
+  // Cambios de ejercicio de un alumno, aparte de su programa (client-overrides-core.js).
+  const overridesApi = window.VALHALLA.clientOverrides;
 
   const state = dataApi.loadState();
   const currentSessionMonth = getTodayLocalDate().slice(0, 7);
@@ -69,7 +71,13 @@
     // Acordeón de alumnos: clientId -> abierto/cerrado.
     openClients: {},
     drafts: {},
-    message: ''
+    message: '',
+    // Galería abierta para cambiar o agregar un ejercicio a UN alumno (o null).
+    picker: null,
+    // Sesión anterior en solo lectura: clientId -> posición (0 = la más reciente).
+    history: {},
+    // Aviso por alumno después de cambiar o agregar un ejercicio.
+    clientNotices: {}
   };
   // B3.3: traer lo que registran los alumnos (student_sets) a las sesiones del entrenador.
   const studentImportUi = {
@@ -1062,14 +1070,41 @@
   // Modo Grupo: rutina completa del día por alumno, una fila por ejercicio, cada
   // una con su propio "Confirmar". Las sesiones guardadas usan el mismo modelo:
   // una sesión por alumno y fecha con un ejercicio por cada fila confirmada.
+  // Los cambios de ejercicio de UN alumno ("Cambiar ejercicio" y "Agregar ejercicio")
+  // se guardan aparte en trainingsV08.clientOverrides (client-overrides-core.js) y se
+  // aplican encima de su programa: el programa común y los demás alumnos no cambian.
   // ---------------------------------------------------------------------------
+
+  // La lista se crea recién con el primer cambio: sin cambios, lo guardado no varía.
+  function getClientOverrides({ create = false } = {}) {
+    ensureTrainingsV08State();
+    if (create && !Array.isArray(state.trainingsV08.clientOverrides)) {
+      state.trainingsV08.clientOverrides = [];
+    }
+    return Array.isArray(state.trainingsV08.clientOverrides) ? state.trainingsV08.clientOverrides : [];
+  }
+
+  // Día del programa del alumno con sus cambios para una fecha ("solo hoy" de esa fecha y
+  // "de aquí en adelante" desde esa fecha o antes). Nunca modifica la asignación.
+  function getEffectiveProgramDay(clientId, assignment, day, date) {
+    if (!overridesApi || !assignment || !day) {
+      return day;
+    }
+    return overridesApi.applyToDay(day, getClientOverrides(), {
+      clientId,
+      programId: assignment.programId || '',
+      assignmentId: assignment.id,
+      date
+    });
+  }
 
   function getGroupDayContext(clientId) {
     const assignment = getActiveTrainingAssignment(clientId);
     if (!assignment) {
       return null;
     }
-    const { day, index: dayIndex } = getGroupProgramDay(clientId, assignment);
+    const { day: programDay, index: dayIndex } = getGroupProgramDay(clientId, assignment);
+    const day = getEffectiveProgramDay(clientId, assignment, programDay, groupSessionUi.sessionDate);
     const exercises = Array.isArray(day?.exercises) ? day.exercises : [];
     if (!day || !exercises.length) {
       return null;
@@ -1089,7 +1124,6 @@
     if (!groupSessionUi.drafts[key]) {
       // setCount vale solo para esta sesión: "+ serie" y "− serie" no tocan la rutina.
       groupSessionUi.drafts[key] = {
-        exerciseId: planExercise.libraryExerciseId || planExercise.id,
         warmups: '',
         setCount: getGroupPlannedSets(planExercise),
         rir: '',
@@ -1104,14 +1138,6 @@
   function getGroupSessionId() {
     const selectedIds = [...groupSessionUi.selectedClientIds].sort();
     return `group-${groupSessionUi.sessionDate}-${selectedIds.join('-')}`;
-  }
-
-  function getGroupExerciseOption(exerciseId, planExercise) {
-    const libraryExercise = (state.exerciseLibrary || []).find((exercise) => exercise.id === exerciseId);
-    return libraryExercise || {
-      id: planExercise.libraryExerciseId || planExercise.id,
-      name: planExercise.exerciseName || 'Ejercicio'
-    };
   }
 
   // Sesión de Modo Grupo del alumno en la fecha (la de este grupo o, si no, cualquiera).
@@ -1134,45 +1160,394 @@
     return null;
   }
 
-  // Opciones para "Cambiar ejercicio": los del día y los de la biblioteca (selector, no texto libre).
-  function getGroupChangeOptions(day, selectedId) {
-    const options = new Map();
-    (day.exercises || []).forEach((exercise) => options.set(exercise.libraryExerciseId || exercise.id, exercise.exerciseName || 'Ejercicio'));
-    (state.exerciseLibrary || []).filter((exercise) => exercise.active !== false)
-      .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'es', { sensitivity: 'base' }))
-      .forEach((exercise) => {
-        if (!options.has(exercise.id)) {
-          options.set(exercise.id, exercise.name || 'Ejercicio');
-        }
-      });
-    return Array.from(options, ([id, name]) => `<option value="${escapeHtml(id)}" ${id === selectedId ? 'selected' : ''}>${escapeHtml(name)}</option>`).join('');
-  }
-
   function getClientFirstName(client) {
     return String(client ? getClientDisplayName(client) : 'Alumno').trim().split(/\s+/)[0] || 'Alumno';
+  }
+
+  // "lun 5 oct" (fecha corta para Modo Grupo).
+  function formatGroupShortDate(value) {
+    const date = new Date(`${value}T12:00:00`);
+    if (!value || Number.isNaN(date.getTime())) {
+      return 'sin fecha';
+    }
+    const weekdays = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+    const months = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+    return `${weekdays[date.getDay()]} ${date.getDate()} ${months[date.getMonth()]}`;
+  }
+
+  // Sesiones del alumno antes de la fecha, de la más reciente a la más antigua.
+  function getGroupSessionsBefore(clientId, beforeDate) {
+    return sortSessionsByDateAsc(getTrainingSessionsByClient(clientId).filter((session) => session.date && session.date < beforeDate)).reverse();
+  }
+
+  // Series efectivas hechas (la misma regla que countExerciseSets).
+  function getGroupEffectiveSets(exercise) {
+    return getExerciseSets(exercise).filter((setEntry) => getSetType(setEntry) === 'S' && setEntry.completed !== false);
+  }
+
+  // Última vez que el alumno hizo el ejercicio antes de la fecha de la sesión, con al
+  // menos una serie efectiva. Coincide por ejercicio de la biblioteca o por nombre.
+  function findLastGroupPerformance(clientId, planExercise, beforeDate) {
+    const libraryId = planExercise?.libraryExerciseId || '';
+    const name = labelsApi.fold(planExercise?.exerciseName);
+    for (const session of getGroupSessionsBefore(clientId, beforeDate)) {
+      const matches = getSessionExercises(session).filter((exercise) =>
+        ((libraryId && exercise.libraryExerciseId === libraryId) || (name && labelsApi.fold(exercise.exerciseName) === name))
+        && countExerciseSets(exercise) > 0);
+      if (matches.length) {
+        return { session, exercise: matches[matches.length - 1] };
+      }
+    }
+    return null;
+  }
+
+  // "70 kg × 8, 8, 7 · RIR 2". Series seguidas con el mismo peso van juntas; si el peso
+  // cambia: "60 kg × 8 / 65 kg × 6". Repeticiones sin dato: "—".
+  function formatGroupSetsSummary(exercise) {
+    const sets = getGroupEffectiveSets(exercise);
+    const groups = [];
+    sets.forEach((setEntry) => {
+      const weight = Number(setEntry.weight || 0);
+      const reps = setEntry.reps === null || setEntry.reps === undefined || setEntry.reps === '' ? '—' : String(Number(setEntry.reps));
+      const last = groups[groups.length - 1];
+      if (last && last.weight === weight) {
+        last.reps.push(reps);
+      } else {
+        groups.push({ weight, reps: [reps] });
+      }
+    });
+    const withRir = sets.slice().reverse().find((setEntry) => setEntry.rir !== null && setEntry.rir !== undefined && setEntry.rir !== '' && Number.isFinite(Number(setEntry.rir)));
+    return `${groups.map((group) => `${group.weight} kg × ${group.reps.join(', ')}`).join(' / ')}${withRir ? ` · RIR ${Number(withRir.rir)}` : ''}`;
+  }
+
+  function formatLastGroupPerformance(found) {
+    return found ? `Última vez (${formatGroupShortDate(found.session.date)}): ${formatGroupSetsSummary(found.exercise)}` : '';
+  }
+
+  // Sesiones anteriores del mismo día del programa (por id del día o, si cambió, por
+  // nombre), con al menos una serie efectiva. De la más reciente a la más antigua.
+  function getPreviousGroupDaySessions(clientId, day) {
+    const dayName = labelsApi.fold(day?.name);
+    return getGroupSessionsBefore(clientId, groupSessionUi.sessionDate).filter((session) =>
+      (session.programDayId === day?.id || (dayName && labelsApi.fold(session.programDayName) === dayName))
+      && getSessionExercises(session).some((exercise) => countExerciseSets(exercise) > 0));
+  }
+
+  // Sesión anterior en solo lectura: sin campos ni botones que guarden.
+  function renderGroupHistory(clientId, context) {
+    const sessions = getPreviousGroupDaySessions(clientId, context.day);
+    const index = Math.min(groupSessionUi.history[clientId] ?? 0, Math.max(sessions.length - 1, 0));
+    const session = sessions[index];
+    const attrs = `data-client-id="${escapeHtml(clientId)}"`;
+    if (!session) {
+      return `<div class="group-history" data-group-history="${escapeHtml(clientId)}"><p class="muted">No hay sesiones anteriores de este día.</p><button class="secondary small" type="button" data-group-history-today ${attrs}>Volver a hoy</button></div>`;
+    }
+    const exercises = getSessionExercises(session).map((exercise) => {
+      const effective = countExerciseSets(exercise);
+      const approximations = countExerciseSets(exercise, { type: 'A' });
+      return `
+        <li class="group-history-ex">
+          <strong>${escapeHtml(exercise.exerciseName || 'Ejercicio')}</strong>
+          <span class="meta">${effective ? escapeHtml(formatGroupSetsSummary(exercise)) : 'Sin series efectivas'}${approximations ? ` · ${approximations} aprox.` : ''}</span>
+        </li>`;
+    }).join('');
+    return `
+      <div class="group-history" data-group-history="${escapeHtml(clientId)}" aria-label="Sesión anterior, solo lectura">
+        <div class="group-history-nav">
+          <button class="secondary small" type="button" data-group-history-step="older" ${attrs} ${index >= sessions.length - 1 ? 'disabled' : ''} aria-label="Sesión más antigua">◀</button>
+          <div class="group-history-title">
+            <strong>${escapeHtml(formatGroupShortDate(session.date))}</strong>
+            <span class="meta">${escapeHtml(session.programDayName || context.day.name || 'Sesión')} · ${index + 1} de ${sessions.length}</span>
+          </div>
+          <button class="secondary small" type="button" data-group-history-step="newer" ${attrs} ${index <= 0 ? 'disabled' : ''} aria-label="Sesión más reciente">▶</button>
+        </div>
+        <p class="meta group-history-readonly">Solo lectura</p>
+        <ul class="group-history-list">${exercises}</ul>
+        <button class="primary small" type="button" data-group-history-today ${attrs}>Volver a hoy</button>
+      </div>`;
+  }
+
+  // ---- Galería para cambiar o agregar un ejercicio a UN alumno ----
+
+  function openGroupPicker(clientId, mode, targetExerciseId = '') {
+    const context = getGroupDayContext(clientId);
+    const target = mode === 'replace' ? context?.exercises.find((exercise) => exercise.id === targetExerciseId) : null;
+    if (!context || (mode === 'replace' && !target)) {
+      return;
+    }
+    groupSessionUi.picker = {
+      clientId,
+      mode,
+      targetExerciseId: target ? target.id : '',
+      screen: 'browse',
+      category: '',
+      search: '',
+      exerciseId: '',
+      sets: String(target ? getGroupPlannedSets(target) : 3),
+      reps: target && getGroupRepsLabel(target) !== 'reps por definir' ? getGroupRepsLabel(target) : '',
+      weight: '',
+      error: ''
+    };
+    delete groupSessionUi.clientNotices[clientId];
+    renderTrainingGroupMode();
+  }
+
+  function renderGroupPickerResults() {
+    const picker = groupSessionUi.picker;
+    const catalog = getRoutineExerciseCatalog();
+    const search = labelsApi.fold(picker.search);
+    const pickButton = (exercise, showCategory) => `<button class="planning-exercise-pick-btn" type="button" data-group-picker-pick="${escapeHtml(exercise.id || '')}">${escapeHtml(exercise.name || 'Ejercicio')}${showCategory ? ` <span class="planning-category-count">${escapeHtml(exercise.category || '')}</span>` : ''}</button>`;
+    if (search) {
+      const found = Object.keys(catalog).flatMap((key) => catalog[key] || [])
+        .filter((exercise) => String(exercise.searchText || labelsApi.fold(exercise.name)).includes(search))
+        .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'es', { sensitivity: 'base' }));
+      return `<div class="planning-category-grid">${found.length ? found.map((exercise) => pickButton(exercise, true)).join('') : '<div class="muted">No hay ejercicios con ese nombre en la biblioteca.</div>'}</div>`;
+    }
+    if (picker.category) {
+      const items = catalog[picker.category] || [];
+      return `
+        <div class="section-title compact">
+          <button class="ghost small" type="button" data-group-picker-categories>← Categorías</button>
+          <strong>${escapeHtml(picker.category)} (${items.length})</strong>
+        </div>
+        <div class="planning-category-grid">${items.length ? items.map((exercise) => pickButton(exercise, false)).join('') : '<div class="muted">No hay ejercicios en esta categoría.</div>'}</div>`;
+    }
+    return `<div class="planning-category-grid">${Object.keys(catalog).map((category) => `<button class="planning-category-btn" type="button" data-group-picker-category="${escapeHtml(category)}">${escapeHtml(category)} <span class="planning-category-count">${(catalog[category] || []).length}</span></button>`).join('')}</div>`;
+  }
+
+  // Lo escrito y sin confirmar de un ejercicio, para no perderlo al cambiarlo.
+  function groupDraftHasData(draft) {
+    if (!draft) {
+      return false;
+    }
+    return String(draft.warmups || '').trim() !== '' || Array.from({ length: draft.setCount }, (_, index) => index + 1)
+      .some((n) => String(draft[`s${n}Weight`] ?? '').trim() !== '' || String(draft[`s${n}Reps`] ?? '').trim() !== '');
+  }
+
+  function renderGroupPicker(clientId, context) {
+    const picker = groupSessionUi.picker;
+    const client = getClientById(clientId);
+    const first = escapeHtml(getClientFirstName(client));
+    const target = picker.mode === 'replace' ? context.exercises.find((exercise) => exercise.id === picker.targetExerciseId) : null;
+    const title = target ? `Cambiar ${escapeHtml(target.exerciseName || 'ejercicio')}` : 'Agregar ejercicio';
+    const chosen = picker.exerciseId ? findRoutineExercise(picker.exerciseId) : null;
+    let body = '';
+    if (picker.screen === 'browse') {
+      body = `
+        <div class="planning-search-wrap">
+          <input type="search" data-group-picker-field="search" value="${escapeHtml(picker.search)}" placeholder="Buscar en toda la biblioteca..." aria-label="Buscar ejercicio">
+        </div>
+        <div data-group-picker-results>${renderGroupPickerResults()}</div>`;
+    } else if (picker.screen === 'form') {
+      const pickerField = (name, label, type, extra) => `<label>${label}<input type="${type}" ${extra} data-group-picker-field="${name}" value="${escapeHtml(picker[name] ?? '')}"></label>`;
+      body = `
+        <div class="group-picker-chosen"><strong>${escapeHtml(chosen?.name || 'Ejercicio')}</strong><button class="ghost small" type="button" data-group-picker-browse>Elegir otro</button></div>
+        <div class="group-picker-form">
+          ${pickerField('sets', 'Series', 'number', 'min="1" max="10" step="1" inputmode="numeric"')}
+          ${pickerField('reps', 'Repeticiones', 'text', 'inputmode="numeric" placeholder="8-10"')}
+          ${pickerField('weight', 'Peso (kg)', 'number', 'min="0" step="0.5" inputmode="decimal" placeholder="kg"')}
+        </div>
+        <p class="group-confirm-error${picker.error ? '' : ' hidden'}" role="alert">${escapeHtml(picker.error)}</p>
+        <button class="primary" type="button" data-group-picker-confirm>Confirmar</button>`;
+    } else if (picker.screen === 'scope') {
+      const keepsSeries = target && !findConfirmedGroupExercise(clientId, target.id) && groupDraftHasData(groupSessionUi.drafts[`${clientId}::${target.id}`]);
+      body = `
+        <p><strong>${escapeHtml(chosen?.name || 'Ejercicio')}</strong> · ${escapeHtml(picker.sets)} × ${escapeHtml(picker.reps)} · ${escapeHtml(picker.weight)} kg</p>
+        <p class="group-picker-question">¿Para cuándo?</p>
+        <div class="group-picker-scope" role="group" aria-label="Para cuándo">
+          <button class="primary" type="button" data-group-picker-scope="today">Solo hoy</button>
+          <button class="secondary" type="button" data-group-picker-scope="forward">De aquí en adelante</button>
+        </div>
+        <p class="meta">Solo hoy: cambia esta sesión; el programa de ${first} no se toca. De aquí en adelante: cambia también sus próximas sesiones de "${escapeHtml(context.day.name || 'este día')}". Los demás alumnos no cambian.</p>
+        ${keepsSeries ? `<p class="meta">Las series ya escritas de ${escapeHtml(target.exerciseName || 'este ejercicio')} se guardan en su historial.</p>` : ''}
+        <button class="ghost small" type="button" data-group-picker-edit>← Volver</button>`;
+    }
+    return `
+      <div class="group-picker" data-group-picker="${escapeHtml(clientId)}">
+        <div class="section-title compact">
+          <strong>${title} · ${first}</strong>
+          <button class="ghost small" type="button" data-group-picker-cancel>Cancelar</button>
+        </div>
+        ${body}
+      </div>`;
+  }
+
+  function handleGroupPickerClick(target) {
+    const picker = groupSessionUi.picker;
+    if (!picker) {
+      return false;
+    }
+    const button = (selector) => target.closest(selector);
+    if (button('[data-group-picker-cancel]')) {
+      groupSessionUi.picker = null;
+    } else if (button('[data-group-picker-category]')) {
+      picker.category = button('[data-group-picker-category]').getAttribute('data-group-picker-category');
+    } else if (button('[data-group-picker-categories]')) {
+      picker.category = '';
+    } else if (button('[data-group-picker-pick]')) {
+      picker.exerciseId = button('[data-group-picker-pick]').getAttribute('data-group-picker-pick');
+      picker.screen = 'form';
+      picker.error = '';
+    } else if (button('[data-group-picker-browse]')) {
+      picker.screen = 'browse';
+    } else if (button('[data-group-picker-confirm]')) {
+      const checked = overridesApi.validateInput(picker);
+      picker.error = checked.error || '';
+      if (!checked.error) {
+        picker.screen = 'scope';
+      }
+    } else if (button('[data-group-picker-edit]')) {
+      picker.screen = 'form';
+    } else if (button('[data-group-picker-scope]')) {
+      applyGroupExerciseChange(button('[data-group-picker-scope]').getAttribute('data-group-picker-scope'));
+      return true;
+    } else {
+      return false;
+    }
+    renderTrainingGroupMode();
+    return true;
+  }
+
+  // Aviso del punto 6: un cambio "de aquí en adelante" se ve en la app del alumno solo
+  // después de volver a publicar.
+  function getGroupPublishReminder(clientId) {
+    const publishApi = window.VALHALLA.publish;
+    if (!publishApi?.isPublished) {
+      return '';
+    }
+    const published = publishApi.isPublished(clientId);
+    if (published === true) {
+      return ' Tiene programa publicado: vuelve a publicarlo para que lo vea.';
+    }
+    return published === null ? ' Si tiene programa publicado, vuelve a publicarlo para que lo vea.' : '';
+  }
+
+  function applyGroupExerciseChange(scope) {
+    const picker = groupSessionUi.picker;
+    const context = picker ? getGroupDayContext(picker.clientId) : null;
+    const checked = picker ? overridesApi.validateInput(picker) : { error: 'sin datos' };
+    const libraryExercise = picker?.exerciseId ? findRoutineExercise(picker.exerciseId) : null;
+    const replaced = picker?.mode === 'replace' ? context?.exercises.find((exercise) => exercise.id === picker.targetExerciseId) : null;
+    if (!context || checked.error || !libraryExercise || (picker.mode === 'replace' && !replaced)) {
+      if (picker) {
+        picker.screen = 'form';
+        picker.error = checked.error || 'Elige un ejercicio de la galería';
+      }
+      renderTrainingGroupMode();
+      return;
+    }
+    const { clientId } = picker;
+    const client = getClientById(clientId);
+    // 5) Lo escrito y sin confirmar del ejercicio que se cambia queda en su historial.
+    const keptSession = replaced ? saveGroupDraftToHistory(clientId, context, replaced) : null;
+    const override = overridesApi.createOverride({
+      createId: dataApi.createId,
+      client: { id: clientId },
+      assignment: context.assignment,
+      day: context.day,
+      kind: picker.mode,
+      scope,
+      date: groupSessionUi.sessionDate,
+      libraryExercise,
+      values: checked.values,
+      replaced
+    });
+    getClientOverrides({ create: true }).push(override);
+    dataApi.saveState(state);
+    if (keptSession && isCloudSessionActive()) {
+      syncSessionToCloud(keptSession).catch((error) => console.error(error));
+    }
+    const first = getClientFirstName(client);
+    const what = replaced ? `${replaced.exerciseName || 'Ejercicio'} → ${override.exercise.exerciseName}` : `se agregó ${override.exercise.exerciseName}`;
+    groupSessionUi.clientNotices[clientId] = scope === 'today'
+      ? `✓ ${first}: ${what}, solo hoy. Su programa no cambió.`
+      : `✓ ${first}: ${what}, de aquí en adelante en "${context.day.name || 'este día'}". Solo cambia su programa; los demás alumnos no.${getGroupPublishReminder(clientId)}`;
+    if (keptSession) {
+      groupSessionUi.clientNotices[clientId] += ` Las series escritas de ${replaced.exerciseName || 'el ejercicio anterior'} quedaron en su historial.`;
+    }
+    groupSessionUi.picker = null;
+    renderTrainingGroupMode();
+  }
+
+  // "Quitar cambio": vuelve al ejercicio que había antes (o quita el agregado). Lo escrito
+  // y sin confirmar se guarda primero en su historial; lo ya confirmado no se toca.
+  function revertGroupExerciseChange(clientId, planExerciseId) {
+    const context = getGroupDayContext(clientId);
+    const changed = context?.exercises.find((exercise) => exercise.id === planExerciseId && exercise.overrideId);
+    if (!changed) {
+      return;
+    }
+    const keptSession = saveGroupDraftToHistory(clientId, context, changed);
+    const result = overridesApi.revertOverride(getClientOverrides(), changed.overrideId, groupSessionUi.sessionDate);
+    if (!result) {
+      return;
+    }
+    dataApi.saveState(state);
+    if (keptSession && isCloudSessionActive()) {
+      syncSessionToCloud(keptSession).catch((error) => console.error(error));
+    }
+    const { override } = result;
+    const first = getClientFirstName(getClientById(clientId));
+    const what = override.kind === 'add'
+      ? `se quitó ${override.exercise.exerciseName}`
+      : `vuelve ${override.replacedExerciseName || 'el ejercicio anterior'} (en lugar de ${override.exercise.exerciseName})`;
+    groupSessionUi.clientNotices[clientId] = `✓ ${first}: ${what}.${override.scope === 'forward' ? getGroupPublishReminder(clientId) : ''}`;
+    if (keptSession) {
+      groupSessionUi.clientNotices[clientId] += ` Las series escritas de ${changed.exerciseName || 'ese ejercicio'} quedaron en su historial.`;
+    }
+    if (groupSessionUi.picker?.clientId === clientId) {
+      groupSessionUi.picker = null;
+    }
+    renderTrainingGroupMode();
   }
 
   function renderGroupExerciseRow(clientId, client, context, planExercise, index) {
     const confirmed = findConfirmedGroupExercise(clientId, planExercise.id);
     const pid = escapeHtml(planExercise.id);
     const attrs = `data-client-id="${escapeHtml(clientId)}" data-plan-exercise-id="${pid}"`;
+    const picker = groupSessionUi.picker;
+    const pickerHere = picker && picker.clientId === clientId && picker.mode === 'replace' && picker.targetExerciseId === planExercise.id;
+    const onlyToday = planExercise.overrideScope === 'today';
+    const tag = planExercise.overrideId
+      ? `<span class="tag ${onlyToday ? 'warn' : 'ok'} group-override-tag">${onlyToday ? 'Solo hoy' : `Solo para ${escapeHtml(getClientFirstName(client))}`}</span>`
+      : '';
+    const lastTime = formatLastGroupPerformance(findLastGroupPerformance(clientId, planExercise, groupSessionUi.sessionDate));
     const heading = `
       <div class="group-ex-head">
         <strong>${confirmed ? '✓ ' : ''}${index + 1}. ${escapeHtml(planExercise.exerciseName || 'Ejercicio')}</strong>
+        ${tag}
         <span class="meta">Objetivo: ${Number(planExercise.targetWeight || 0)} kg × ${escapeHtml(getGroupRepsLabel(planExercise))}</span>
+        ${lastTime ? `<span class="meta group-last-time" data-group-last-time>${escapeHtml(lastTime)}</span>` : ''}
       </div>`;
+    const changeButton = pickerHere ? '' : `
+      <div class="group-change-actions">
+        <button class="ghost small group-change-btn" type="button" data-group-change ${attrs}>Cambiar ejercicio</button>
+        ${planExercise.overrideId ? `<button class="ghost small group-revert-btn" type="button" data-group-revert="${escapeHtml(planExercise.overrideId)}" ${attrs}>Quitar cambio</button>` : ''}
+      </div>`;
+    if (pickerHere) {
+      return `
+        <div class="group-exercise" data-group-exercise="${pid}">
+          ${heading}
+          ${renderGroupPicker(clientId, context)}
+        </div>`;
+    }
     if (confirmed) {
       return `
         <div class="group-exercise group-exercise--done" data-group-exercise="${pid}">
           ${heading}
-          <p class="group-saved">Guardado: ${escapeHtml(getClientFirstName(client))}, ${escapeHtml(confirmed.exercise.exerciseName || planExercise.exerciseName || 'Ejercicio')}. Próxima sesión: ${Number(planExercise.targetWeight || 0)} kg</p>
+          <p class="group-saved">Guardado: ${escapeHtml(getClientFirstName(client))}, ${escapeHtml(confirmed.exercise.exerciseName || planExercise.exerciseName || 'Ejercicio')}.${onlyToday ? '' : ` Próxima sesión: ${Number(planExercise.targetWeight || 0)} kg`}</p>
+          ${changeButton}
         </div>`;
     }
     const draft = getGroupDraft(clientId, planExercise);
-    const nextExercise = draft.decision === 'change' ? getGroupExerciseOption(draft.exerciseId, planExercise) : { name: planExercise.exerciseName || 'Ejercicio' };
-    const decisionLabels = [['up', '↑ Subir'], ['keep', '→ Mantener'], ['down', '↓ Bajar'], ['change', '↔ Cambiar ejercicio']];
+    const decisionLabels = [['up', '↑ Subir'], ['keep', '→ Mantener'], ['down', '↓ Bajar']];
     const field = (name, label, type, extra = '') => `<label>${label}<input type="${type}" ${extra} data-group-field="${name}" ${attrs} value="${escapeHtml(draft[name] ?? '')}"></label>`;
     const setNumbers = Array.from({ length: draft.setCount }, (_, index) => index + 1);
+    // Un ejercicio de "solo hoy" no está en el programa: no hay próxima sesión que decidir.
+    const nextSession = onlyToday ? '' : `
+        <div class="group-decisions" role="group" aria-label="Decisión">
+          ${decisionLabels.map(([value, label]) => `<button class="${draft.decision === value ? 'primary' : 'secondary'} small" type="button" data-group-decision="${value}" ${attrs} aria-pressed="${draft.decision === value}">${label}</button>`).join('')}
+        </div>`;
     return `
       <div class="group-exercise" data-group-exercise="${pid}">
         ${heading}
@@ -1190,17 +1565,15 @@
           <button class="secondary small" type="button" data-group-set-remove ${attrs} ${draft.setCount <= 1 ? 'disabled' : ''}>− serie</button>
           <button class="secondary small" type="button" data-group-set-add ${attrs} ${draft.setCount >= GROUP_MAX_SETS ? 'disabled' : ''}>+ serie</button>
         </div>
-        <div class="group-decisions" role="group" aria-label="Decisión">
-          ${decisionLabels.map(([value, label]) => `<button class="${draft.decision === value ? 'primary' : 'secondary'} small" type="button" data-group-decision="${value}" ${attrs} aria-pressed="${draft.decision === value}">${label}</button>`).join('')}
-        </div>
-        ${draft.decision === 'change' ? `<label>Cambiar por<select data-group-field="exerciseId" ${attrs}>${getGroupChangeOptions(context.day, draft.exerciseId)}</select></label>` : ''}
+        ${nextSession}
         <div class="group-confirm-row">
-          <label>Próxima sesión · ${escapeHtml(nextExercise.name)}<input type="number" min="0" step="2.5" inputmode="decimal" data-group-field="proposedWeight" ${attrs} value="${escapeHtml(draft.proposedWeight)}">kg</label>
+          ${onlyToday ? '' : `<label>Próxima sesión · ${escapeHtml(planExercise.exerciseName || 'Ejercicio')}<input type="number" min="0" step="2.5" inputmode="decimal" data-group-field="proposedWeight" ${attrs} value="${escapeHtml(draft.proposedWeight)}">kg</label>`}
           <div class="group-confirm-action">
             <button class="primary" type="button" data-group-confirm="${escapeHtml(clientId)}" data-plan-exercise-id="${pid}">Confirmar</button>
             <p class="group-confirm-error${draft.error ? '' : ' hidden'}" role="alert">${escapeHtml(draft.error)}</p>
           </div>
         </div>
+        ${changeButton}
       </div>`;
   }
 
@@ -1218,6 +1591,9 @@
     }
     const activeClients = getActiveTrainingClients();
     groupSessionUi.selectedClientIds = groupSessionUi.selectedClientIds.filter((id) => activeClients.some((client) => client.id === id));
+    if (groupSessionUi.picker && !groupSessionUi.selectedClientIds.includes(groupSessionUi.picker.clientId)) {
+      groupSessionUi.picker = null;
+    }
     if (els.groupSessionClients) {
       els.groupSessionClients.innerHTML = activeClients.length
         ? activeClients.map((client) => `
@@ -1238,7 +1614,6 @@
       els.groupSessionRows.innerHTML = '<div class="muted">Selecciona de 1 a 4 alumnos.</div>';
       return;
     }
-    // Acordeón: se conserva lo abierto/cerrado; por defecto, abierto el primer alumno marcado.
     els.groupSessionRows.querySelectorAll('details[data-group-row]').forEach((details) => {
       groupSessionUi.openClients[details.getAttribute('data-group-row')] = details.open;
     });
@@ -1252,16 +1627,28 @@
       }
       const { assignment, day, exercises } = context;
       const done = exercises.filter((exercise) => findConfirmedGroupExercise(clientId, exercise.id)).length;
+      const inHistory = groupSessionUi.history[clientId] !== undefined;
+      const previousCount = inHistory ? 0 : getPreviousGroupDaySessions(clientId, day).length;
+      const picker = groupSessionUi.picker;
+      const addingHere = picker && picker.clientId === clientId && picker.mode === 'add';
+      const notice = groupSessionUi.clientNotices[clientId];
+      const body = inHistory
+        ? renderGroupHistory(clientId, context)
+        : `
+          <div class="group-exercise-list">
+            ${exercises.map((exercise, index) => renderGroupExerciseRow(clientId, client, context, exercise, index)).join('')}
+          </div>
+          ${addingHere ? renderGroupPicker(clientId, context) : `<button class="secondary group-add-btn" type="button" data-group-add data-client-id="${escapeHtml(clientId)}">+ Agregar ejercicio</button>`}`;
       return `
         <details class="group-athlete-row" data-group-row="${escapeHtml(clientId)}" ${isOpen ? 'open' : ''}>
           <summary class="group-athlete-heading">
             <div><h3>${name}</h3><div class="meta">${escapeHtml(assignment.programName || 'Programa')}</div></div>
             <span class="pill group-progress${done === exercises.length ? ' group-progress--done' : ''}">${done} de ${exercises.length} ejercicios confirmados</span>
           </summary>
-          <label>Sesión del programa<select data-group-field="dayId" data-client-id="${escapeHtml(clientId)}">${(assignment.days || []).map((programDay) => `<option value="${escapeHtml(programDay.id)}" ${programDay.id === day.id ? 'selected' : ''} ${(programDay.exercises || []).length ? '' : 'disabled'}>${escapeHtml(programDay.name || 'Día')}${(programDay.exercises || []).length ? '' : ' (sin ejercicios)'}</option>`).join('')}</select></label>
-          <div class="group-exercise-list">
-            ${exercises.map((exercise, index) => renderGroupExerciseRow(clientId, client, context, exercise, index)).join('')}
-          </div>
+          <label>Sesión del programa<select data-group-field="dayId" data-client-id="${escapeHtml(clientId)}" ${inHistory ? 'disabled' : ''}>${(assignment.days || []).map((programDay) => `<option value="${escapeHtml(programDay.id)}" ${programDay.id === day.id ? 'selected' : ''} ${(programDay.exercises || []).length ? '' : 'disabled'}>${escapeHtml(programDay.name || 'Día')}${(programDay.exercises || []).length ? '' : ' (sin ejercicios)'}</option>`).join('')}</select></label>
+          ${inHistory ? '' : `<button class="secondary small group-history-open" type="button" data-group-history-open data-client-id="${escapeHtml(clientId)}" ${previousCount ? '' : 'disabled'} title="${previousCount ? 'Ver su sesión anterior de este día' : 'No hay sesiones anteriores de este día'}">◀ Sesión anterior</button>`}
+          ${notice ? `<p class="notice ok group-client-notice" role="status">${escapeHtml(notice)}</p>` : ''}
+          ${body}
         </details>`;
     }).join('');
   }
@@ -1280,14 +1667,11 @@
     const draft = getGroupDraft(clientId, row.planExercise);
     const currentWeight = Number(row.planExercise.targetWeight || 0);
     const roundToPlate = (weight) => Math.round(weight / 2.5) * 2.5;
-    const chosen = row.day.exercises.find((exercise) => (exercise.libraryExerciseId || exercise.id) === draft.exerciseId && exercise.id !== row.planExercise.id);
     const proposedWeight = decision === 'up'
       ? roundToPlate(currentWeight * 1.035)
       : decision === 'down'
         ? roundToPlate(currentWeight * 0.9)
-        : decision === 'change'
-          ? Number(chosen?.targetWeight || currentWeight)
-          : currentWeight;
+        : currentWeight;
     draft.decision = decision;
     draft.proposedWeight = String(proposedWeight);
     draft.error = '';
@@ -1320,71 +1704,17 @@
     renderTrainingGroupMode();
   }
 
-  function confirmGroupExercise(clientId, planExerciseId) {
-    const row = findGroupPlanExercise(clientId, planExerciseId);
-    if (!row) {
-      return;
-    }
-    const { assignment, day, planExercise } = row;
-    const draft = getGroupDraft(clientId, planExercise);
-    const fail = (message) => {
-      draft.error = message;
-      renderTrainingGroupMode();
-    };
-    if (findConfirmedGroupExercise(clientId, planExercise.id)) {
-      renderTrainingGroupMode();
-      return;
-    }
-    const effective = Array.from({ length: draft.setCount }, (_, index) => index + 1)
+  // Series efectivas escritas en el borrador (las que tienen peso).
+  function getGroupDraftEffectiveEntries(draft) {
+    return Array.from({ length: draft.setCount }, (_, index) => index + 1)
       .map((n) => ({ weight: String(draft[`s${n}Weight`] ?? '').trim(), reps: String(draft[`s${n}Reps`] ?? '').trim() }))
       .filter((entry) => entry.weight !== '' && Number.isFinite(Number(entry.weight)));
-    if (!effective.length) {
-      fail('Registra el peso de al menos una serie');
-      return;
-    }
-    if (String(draft.rir ?? '').trim() === '' || !Number.isFinite(Number(draft.rir))) {
-      fail('Falta el RIR final');
-      return;
-    }
-    if (!draft.decision) {
-      fail('Elige Subir, Mantener, Bajar o Cambiar');
-      return;
-    }
-    const proposedWeight = Number(draft.proposedWeight);
-    if (String(draft.proposedWeight ?? '').trim() === '' || !Number.isFinite(proposedWeight) || proposedWeight < 0) {
-      fail('La próxima sesión necesita un peso válido');
-      return;
-    }
+  }
 
-    // Reescritura del plan (igual que antes): nuevo peso objetivo y, si se cambia, el ejercicio.
-    const selectedExercise = getGroupExerciseOption(draft.exerciseId, planExercise);
-    const plannedWeight = Number(planExercise.targetWeight || 0);
-    const performedExerciseName = draft.decision === 'change' ? (selectedExercise.name || planExercise.exerciseName) : planExercise.exerciseName;
-    const originalLibraryExerciseId = planExercise.libraryExerciseId || '';
-    const originalExerciseName = String(planExercise.exerciseName || '').trim().toLowerCase();
-    const plannedReps = { min: planExercise.repMin ?? planExercise.repRangeMin ?? null, max: planExercise.repMax ?? planExercise.repRangeMax ?? null };
-    const plannedSets = draft.setCount;
-    const restSeconds = Number(planExercise.restSeconds || 90);
-    const coachNotes = planExercise.notes || '';
-    assignment.days.forEach((programDay) => {
-      (programDay.exercises || []).forEach((exercise) => {
-        const sameExercise = originalLibraryExerciseId
-          ? exercise.libraryExerciseId === originalLibraryExerciseId
-          : String(exercise.exerciseName || '').trim().toLowerCase() === originalExerciseName;
-        if (!sameExercise) {
-          return;
-        }
-        if (draft.decision === 'change') {
-          exercise.libraryExerciseId = selectedExercise.id || '';
-          exercise.exerciseName = performedExerciseName;
-        }
-        exercise.targetWeight = proposedWeight;
-      });
-    });
-    assignment.updatedAt = new Date().toISOString();
-
-    // Series: aproximaciones (solo pesos) y efectivas con las repeticiones tal como se
-    // escribieron; una repetición vacía se guarda como "sin dato" (null), nunca 1 ni 0.
+  // Series: aproximaciones (solo pesos) y efectivas con las repeticiones tal como se
+  // escribieron; una repetición vacía se guarda como "sin dato" (null), nunca 1 ni 0.
+  function buildGroupDraftSets(draft, effective) {
+    const rir = String(draft.rir ?? '').trim() !== '' && Number.isFinite(Number(draft.rir)) ? Number(draft.rir) : null;
     const warmups = String(draft.warmups || '').match(/[0-9]+(?:[.,][0-9]+)?/g) || [];
     const sets = warmups.map((weight, index) => ({
       setNumber: index + 1,
@@ -1399,24 +1729,29 @@
         weight: Number(entry.weight),
         reps: entry.reps === '' ? null : Number(entry.reps),
         setType: 'S',
-        rir: index === effective.length - 1 ? Number(draft.rir) : null,
+        rir: index === effective.length - 1 ? rir : null,
         completed: true
       });
     });
+    return sets;
+  }
 
+  // Agrega un ejercicio hecho a la sesión de Modo Grupo del alumno (la crea si no hay).
+  function appendGroupPerformedExercise(clientId, context, planExercise, sets, notes) {
+    const { assignment, day } = context;
     let session = findGroupSessionForClient(clientId);
     const performed = {
       id: dataApi.createId('tx-exercise'),
       programExerciseId: planExercise.id,
-      libraryExerciseId: draft.decision === 'change' ? (selectedExercise.id || '') : (originalLibraryExerciseId || selectedExercise.id || ''),
-      exerciseName: performedExerciseName,
+      libraryExerciseId: planExercise.libraryExerciseId || '',
+      exerciseName: planExercise.exerciseName,
       order: (session ? getSessionExercises(session).length : 0) + 1,
-      plannedSets,
-      plannedRepMin: plannedReps.min,
-      plannedRepMax: plannedReps.max,
-      targetWeight: plannedWeight,
-      restSeconds,
-      coachNotes,
+      plannedSets: sets.filter((setEntry) => setEntry.setType === 'S').length,
+      plannedRepMin: planExercise.repMin ?? planExercise.repRangeMin ?? null,
+      plannedRepMax: planExercise.repMax ?? planExercise.repRangeMax ?? null,
+      targetWeight: Number(planExercise.targetWeight || 0),
+      restSeconds: Number(planExercise.restSeconds || 90),
+      coachNotes: planExercise.notes || '',
       sets
     };
     if (session) {
@@ -1433,10 +1768,95 @@
         date: groupSessionUi.sessionDate,
         title: `Modo Grupo · ${day.name || 'Entrenamiento'}`,
         status: 'completed',
-        notes: JSON.stringify({ decision: draft.decision, proposedWeight, proposedExercise: performedExerciseName }),
+        notes: JSON.stringify(notes),
         exercises: [performed]
       };
       state.trainingsV08.sessions.push(session);
+    }
+    return { session, performed };
+  }
+
+  // Antes de cambiar un ejercicio: lo escrito y sin confirmar se guarda en el historial
+  // tal cual (sin tocar el plan). Devuelve la sesión si guardó algo.
+  function saveGroupDraftToHistory(clientId, context, planExercise) {
+    const key = `${clientId}::${planExercise.id}`;
+    const draft = groupSessionUi.drafts[key];
+    delete groupSessionUi.drafts[key];
+    if (!groupDraftHasData(draft) || findConfirmedGroupExercise(clientId, planExercise.id)) {
+      return null;
+    }
+    const sets = buildGroupDraftSets(draft, getGroupDraftEffectiveEntries(draft));
+    if (!sets.length) {
+      return null;
+    }
+    const { session, performed } = appendGroupPerformedExercise(clientId, context, planExercise, sets, { decision: 'changed', exercise: planExercise.exerciseName || '' });
+    performed.plannedSets = draft.setCount;
+    return session;
+  }
+
+  function confirmGroupExercise(clientId, planExerciseId) {
+    const row = findGroupPlanExercise(clientId, planExerciseId);
+    if (!row) {
+      return;
+    }
+    const { assignment, planExercise } = row;
+    const draft = getGroupDraft(clientId, planExercise);
+    const onlyToday = planExercise.overrideScope === 'today';
+    const fail = (message) => {
+      draft.error = message;
+      renderTrainingGroupMode();
+    };
+    if (findConfirmedGroupExercise(clientId, planExercise.id)) {
+      renderTrainingGroupMode();
+      return;
+    }
+    const effective = getGroupDraftEffectiveEntries(draft);
+    if (!effective.length) {
+      fail('Registra el peso de al menos una serie');
+      return;
+    }
+    if (String(draft.rir ?? '').trim() === '' || !Number.isFinite(Number(draft.rir))) {
+      fail('Falta el RIR final');
+      return;
+    }
+    if (!onlyToday && !draft.decision) {
+      fail('Elige Subir, Mantener o Bajar');
+      return;
+    }
+    const proposedWeight = Number(draft.proposedWeight);
+    if (!onlyToday && (String(draft.proposedWeight ?? '').trim() === '' || !Number.isFinite(proposedWeight) || proposedWeight < 0)) {
+      fail('La próxima sesión necesita un peso válido');
+      return;
+    }
+
+    // Primero lo hecho (con el peso objetivo que tenía hoy), después el plan.
+    const sets = buildGroupDraftSets(draft, effective);
+    const { session, performed } = appendGroupPerformedExercise(clientId, row, planExercise, sets, onlyToday
+      ? { decision: 'today', proposedExercise: planExercise.exerciseName }
+      : { decision: draft.decision, proposedWeight, proposedExercise: planExercise.exerciseName });
+    performed.plannedSets = draft.setCount;
+
+    // Nuevo peso objetivo en el programa de ESTE alumno: su asignación y sus cambios
+    // "de aquí en adelante" del mismo ejercicio. Un ejercicio de "solo hoy" no cambia nada.
+    if (!onlyToday) {
+      const libraryExerciseId = planExercise.libraryExerciseId || '';
+      const exerciseName = String(planExercise.exerciseName || '').trim().toLowerCase();
+      const sameExercise = (exercise) => (libraryExerciseId
+        ? exercise.libraryExerciseId === libraryExerciseId
+        : String(exercise.exerciseName || '').trim().toLowerCase() === exerciseName);
+      const planExercises = assignment.days.flatMap((programDay) => (programDay.exercises || []).filter(sameExercise));
+      planExercises.forEach((exercise) => {
+        exercise.targetWeight = proposedWeight;
+      });
+      if (planExercises.length) {
+        assignment.updatedAt = new Date().toISOString();
+      }
+      getClientOverrides()
+        .filter((override) => override.clientId === clientId && override.scope === 'forward' && !override.endDate && (override.id === planExercise.overrideId || sameExercise(override.exercise)))
+        .forEach((override) => {
+          override.exercise.targetWeight = proposedWeight;
+          override.updatedAt = new Date().toISOString();
+        });
     }
     dataApi.saveState(state);
     if (isCloudSessionActive()) {
@@ -1448,10 +1868,22 @@
   }
 
   function handleGroupSessionInput(event) {
+    const pickerField = event.target.getAttribute('data-group-picker-field');
+    if (pickerField && groupSessionUi.picker) {
+      groupSessionUi.picker[pickerField] = event.target.value;
+      if (pickerField === 'search') {
+        // Solo se redibujan los resultados: el buscador conserva el foco.
+        const results = event.target.closest('[data-group-picker]')?.querySelector('[data-group-picker-results]');
+        if (results) {
+          results.innerHTML = renderGroupPickerResults();
+        }
+      }
+      return;
+    }
     const field = event.target.getAttribute('data-group-field');
     const clientId = event.target.getAttribute('data-client-id');
     const planExerciseId = event.target.getAttribute('data-plan-exercise-id');
-    if (!field || !clientId || !planExerciseId || field === 'exerciseId') {
+    if (!field || !clientId || !planExerciseId) {
       return;
     }
     const row = findGroupPlanExercise(clientId, planExerciseId);
@@ -1460,12 +1892,74 @@
     }
   }
 
+  // Al cambiar la fecha o el día del programa se cierran la galería y la sesión anterior.
+  function resetGroupClientViews(clientId) {
+    if (!clientId || groupSessionUi.picker?.clientId === clientId) {
+      groupSessionUi.picker = null;
+    }
+    if (clientId) {
+      delete groupSessionUi.history[clientId];
+      delete groupSessionUi.clientNotices[clientId];
+    } else {
+      groupSessionUi.history = {};
+      groupSessionUi.clientNotices = {};
+    }
+  }
+
+  function handleGroupClick(target) {
+    if (handleGroupPickerClick(target)) {
+      return true;
+    }
+    const changeButton = target.closest('[data-group-change]');
+    if (changeButton) {
+      openGroupPicker(changeButton.getAttribute('data-client-id'), 'replace', changeButton.getAttribute('data-plan-exercise-id'));
+      return true;
+    }
+    const revertButton = target.closest('[data-group-revert]');
+    if (revertButton) {
+      revertGroupExerciseChange(revertButton.getAttribute('data-client-id'), revertButton.getAttribute('data-plan-exercise-id'));
+      return true;
+    }
+    const addButton = target.closest('[data-group-add]');
+    if (addButton) {
+      openGroupPicker(addButton.getAttribute('data-client-id'), 'add');
+      return true;
+    }
+    const historyOpen = target.closest('[data-group-history-open]');
+    if (historyOpen) {
+      const clientId = historyOpen.getAttribute('data-client-id');
+      if (groupSessionUi.picker?.clientId === clientId) {
+        groupSessionUi.picker = null;
+      }
+      groupSessionUi.history[clientId] = 0;
+      renderTrainingGroupMode();
+      return true;
+    }
+    const historyStep = target.closest('[data-group-history-step]');
+    if (historyStep) {
+      const clientId = historyStep.getAttribute('data-client-id');
+      const total = getPreviousGroupDaySessions(clientId, getGroupDayContext(clientId)?.day).length;
+      const step = historyStep.getAttribute('data-group-history-step') === 'older' ? 1 : -1;
+      groupSessionUi.history[clientId] = Math.max(0, Math.min(total - 1, (groupSessionUi.history[clientId] ?? 0) + step));
+      renderTrainingGroupMode();
+      return true;
+    }
+    const historyToday = target.closest('[data-group-history-today]');
+    if (historyToday) {
+      delete groupSessionUi.history[historyToday.getAttribute('data-client-id')];
+      renderTrainingGroupMode();
+      return true;
+    }
+    return false;
+  }
+
   function handleGroupSessionChange(event) {
     if (event.target === els.groupSessionDate) {
       groupSessionUi.sessionDate = event.target.value || getTodayLocalDate();
       groupSessionUi.dateIsManual = Boolean(event.target.value) && event.target.value !== getTodayLocalDate();
       groupSessionUi.dayChoices = {};
       groupSessionUi.message = '';
+      resetGroupClientViews('');
       renderTrainingGroupMode();
       return;
     }
@@ -1483,6 +1977,7 @@
       } else {
         selected.delete(clientId);
         delete groupSessionUi.openClients[clientId];
+        resetGroupClientViews(clientId);
       }
       groupSessionUi.selectedClientIds = Array.from(selected);
       groupSessionUi.message = '';
@@ -1495,19 +1990,8 @@
       groupSessionUi.dayChoices[clientId] = event.target.value;
       Object.keys(groupSessionUi.drafts).filter((key) => key.startsWith(`${clientId}::`)).forEach((key) => delete groupSessionUi.drafts[key]);
       groupSessionUi.message = '';
+      resetGroupClientViews(clientId);
       renderTrainingGroupMode();
-      return;
-    }
-    if (field === 'exerciseId' && clientId) {
-      const row = findGroupPlanExercise(clientId, event.target.getAttribute('data-plan-exercise-id'));
-      if (row) {
-        const draft = getGroupDraft(clientId, row.planExercise);
-        draft.exerciseId = event.target.value;
-        const chosen = row.day.exercises.find((exercise) => (exercise.libraryExerciseId || exercise.id) === event.target.value);
-        draft.proposedWeight = String(Number((chosen || row.planExercise).targetWeight || 0));
-        draft.error = '';
-        renderTrainingGroupMode();
-      }
     }
   }
 
@@ -1824,7 +2308,8 @@
   function startProgramDaySession(clientId, programDayId) {
     const client = getClientById(clientId);
     const assignment = getActiveTrainingAssignment(clientId);
-    const day = assignment?.days?.find((item) => item.id === programDayId);
+    // Con los cambios de ejercicio de este alumno para hoy (Modo Grupo).
+    const day = getEffectiveProgramDay(clientId, assignment, assignment?.days?.find((item) => item.id === programDayId), getTodayLocalDate());
     if (!client || !assignment || !day) {
       return false;
     }
@@ -6342,7 +6827,7 @@
 
   function getAgendaRoutine(clientId, dateValue) {
     const assignment = getActiveTrainingAssignment(clientId);
-    const { day } = getSelectedTrainingProgramDay(clientId, assignment);
+    const day = getEffectiveProgramDay(clientId, assignment, getSelectedTrainingProgramDay(clientId, assignment).day, dateValue);
     if (!day) {
       return assignment ? 'Selecciona una sesión del programa' : 'Sin rutina asignada';
     }
@@ -8205,6 +8690,10 @@
         agendaNoShowButton.getAttribute('data-client-id'),
         'no_show'
       );
+      return;
+    }
+
+    if (handleGroupClick(target)) {
       return;
     }
 

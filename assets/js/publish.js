@@ -7,6 +7,7 @@
   const authApi = window.VALHALLA.auth;
   const syncCore = window.VALHALLA.syncCore;
   const publishCore = window.VALHALLA.publishCore;
+  const overridesCore = window.VALHALLA.clientOverrides;
   const supabaseApi = window.VALHALLA.supabase;
   const cloudConfigured = Boolean(supabaseApi && typeof supabaseApi.isCloudEnabled === 'function' && supabaseApi.isCloudEnabled());
 
@@ -76,7 +77,9 @@
       return null;
     }
     const sessions = (v08.sessions || []).filter((session) => session.clientId === clientId);
-    const publication = publishCore.buildPublication(assignment, sessions);
+    // Con los cambios "de aquí en adelante" de este alumno (Modo Grupo); los de "solo hoy" no se publican.
+    const effective = overridesCore ? overridesCore.applyToAssignment(assignment, v08.clientOverrides) : assignment;
+    const publication = publishCore.buildPublication(effective, sessions);
     return { assignment, ...publication, contentHash: syncCore.fingerprint({ program: publication.program, progress: publication.progress }) };
   }
 
@@ -328,5 +331,10 @@
     }
   });
 
-  window.VALHALLA.publish = { renderStatus, publish };
+  // true/false si se sabe si el alumno tiene programa publicado; null si no se pudo consultar.
+  function isPublished(clientId) {
+    return ctx.online && ctx.loaded ? ctx.published.has(clientId) : null;
+  }
+
+  window.VALHALLA.publish = { renderStatus, publish, isPublished };
 })();

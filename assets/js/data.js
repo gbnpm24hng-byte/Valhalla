@@ -492,6 +492,35 @@
     };
   }
 
+  // Cambio de ejercicio de un alumno (Modo Grupo; ver client-overrides-core.js).
+  // Se descarta si le faltan datos para saber a quién y a qué día se aplica.
+  function normalizeClientOverride(override) {
+    const kind = override?.kind === 'add' || override?.kind === 'replace' ? override.kind : '';
+    const scope = override?.scope === 'today' || override?.scope === 'forward' ? override.scope : '';
+    const exercise = override?.exercise && typeof override.exercise === 'object' ? override.exercise : null;
+    if (!kind || !scope || !override.clientId || !override.dayId || !exercise || !/^\d{4}-\d{2}-\d{2}$/.test(String(override.date || ''))
+      || (kind === 'replace' && !override.targetExerciseId)) {
+      return null;
+    }
+    return {
+      id: override.id || createId('client-override'),
+      clientId: String(override.clientId),
+      programId: String(override.programId || ''),
+      assignmentId: String(override.assignmentId || ''),
+      dayId: String(override.dayId),
+      dayName: String(override.dayName || ''),
+      kind,
+      scope,
+      date: String(override.date),
+      ...(scope === 'forward' && /^\d{4}-\d{2}-\d{2}$/.test(String(override.endDate || '')) ? { endDate: String(override.endDate) } : {}),
+      targetExerciseId: kind === 'replace' ? String(override.targetExerciseId) : '',
+      replacedExerciseName: String(override.replacedExerciseName || ''),
+      exercise: normalizeTrainingProgramExercise({ ...exercise, id: exercise.id || createId('client-exercise') }, 0),
+      createdAt: override.createdAt || new Date().toISOString(),
+      updatedAt: override.updatedAt || override.createdAt || new Date().toISOString()
+    };
+  }
+
   function normalizeTrainingProgramAssignment(assignment, state) {
     const programId = assignment.programId || assignment.program?.id || '';
     const baseProgram = programId && state?.trainingsV08?.programs?.length
@@ -904,7 +933,11 @@
         })),
         sessions: mergedSessions,
         programs: normalizeArray(parsed.trainingsV08?.programs, base.trainingsV08.programs, normalizeTrainingProgram),
-        assignments: normalizeArray(parsed.trainingsV08?.assignments, base.trainingsV08.assignments, (assignment) => normalizeTrainingProgramAssignment(assignment, { trainingsV08: { programs: parsed.trainingsV08?.programs || [] } }))
+        assignments: normalizeArray(parsed.trainingsV08?.assignments, base.trainingsV08.assignments, (assignment) => normalizeTrainingProgramAssignment(assignment, { trainingsV08: { programs: parsed.trainingsV08?.programs || [] } })),
+        // Solo existe si el entrenador ya cambió o agregó un ejercicio a un alumno.
+        ...(Array.isArray(parsed.trainingsV08?.clientOverrides)
+          ? { clientOverrides: normalizeArray(parsed.trainingsV08.clientOverrides, [], normalizeClientOverride) }
+          : {})
       },
       exerciseLibrary: normalizeArray(parsed.exerciseLibrary, base.exerciseLibrary, normalizeLibraryExercise),
       sportsProfiles: normalizeArray(parsed.sportsProfiles, base.sportsProfiles, normalizeSportsProfile),
@@ -990,6 +1023,7 @@
     normalizeSportsConsideration,
     normalizeMovementStatus,
     normalizeTrainingProgram,
-    normalizeTrainingProgramAssignment
+    normalizeTrainingProgramAssignment,
+    normalizeClientOverride
   };
 })();

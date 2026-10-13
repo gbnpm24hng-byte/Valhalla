@@ -52,7 +52,10 @@
   function findPlan(state, row) {
     const assignment = (state.trainingsV08?.assignments || []).find((item) => item.id === row.assignment_id) || null;
     const day = (assignment?.days || []).find((item) => item.id === row.day_id) || null;
-    const exercise = (day?.exercises || []).find((item) => item.id === row.exercise_id) || null;
+    // Un ejercicio cambiado o agregado solo para este alumno (Modo Grupo) vive en clientOverrides.
+    const exercise = (day?.exercises || []).find((item) => item.id === row.exercise_id)
+      || (state.trainingsV08?.clientOverrides || []).find((item) => item.clientId === row.client_id && item.exercise?.id === row.exercise_id)?.exercise
+      || null;
     return { assignment, day, exercise };
   }
 
