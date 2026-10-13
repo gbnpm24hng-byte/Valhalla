@@ -2029,6 +2029,22 @@ button.sync-badge {
   padding-left: 8px;
 }
 
+/* B3.3: lo que registró el alumno se distingue en la app del entrenador. */
+.student-logged-tag {
+  display: inline-block;
+  margin: 2px 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.routine-pill--student {
+  border-left: 3px solid var(--accent);
+}
+
 /* B3.2: registro de series por el alumno (pensado para celular). */
 .sv-log-date {
   display: grid;

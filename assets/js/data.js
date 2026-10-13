@@ -347,7 +347,17 @@
     const rawType = String(setEntry.setType || setEntry.set_type || 'S').trim().toUpperCase();
     const setType = rawType === 'A' || rawType === 'T' || rawType === 'S' ? rawType : 'S';
     const rir = setEntry.rir === '' || setEntry.rir === undefined || setEntry.rir === null ? null : Number(setEntry.rir);
+    // B3.3: quién registró la serie y de qué fila de student_sets viene. Solo existen en
+    // las series traídas de los alumnos; las demás quedan exactamente como estaban.
+    const origin = {};
+    if (setEntry.loggedBy === 'student' || setEntry.loggedBy === 'coach') {
+      origin.loggedBy = setEntry.loggedBy;
+    }
+    if (setEntry.studentSetId) {
+      origin.studentSetId = String(setEntry.studentSetId);
+    }
     return {
+      ...origin,
       setNumber: Number(setEntry.setNumber || index + 1),
       weight: Number(setEntry.weight || 0),
       // null = repeticiones sin dato (no se convierte en 0); los números guardados no cambian.

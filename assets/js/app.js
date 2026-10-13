@@ -9,6 +9,8 @@
   const cloudDataApi = window.VALHALLA.cloudData;
   // Etiquetas en español para mostrar códigos de la biblioteca (labels.js).
   const labelsApi = window.VALHALLA.labels;
+  // Series registradas por los alumnos (student-import-core.js).
+  const studentImportApi = window.VALHALLA.studentImportCore;
 
   const state = dataApi.loadState();
   const currentSessionMonth = getTodayLocalDate().slice(0, 7);
@@ -69,6 +71,14 @@
     drafts: {},
     message: ''
   };
+  // B3.3: traer lo que registran los alumnos (student_sets) a las sesiones del entrenador.
+  const studentImportUi = {
+    running: false,
+    lastAutoAt: 0,
+    message: '',
+    tone: ''
+  };
+  const STUDENT_IMPORT_AUTO_MS = 60000;
   const routineBuilder = {
     screen: 'day',
     activeDayIndex: 0,
@@ -1498,6 +1508,92 @@
         draft.error = '';
         renderTrainingGroupMode();
       }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // B3.3: traer lo que registran los alumnos. Lee student_sets (RLS: solo lo del
+  // entrenador conectado) y lo junta en las sesiones locales; después se guarda como
+  // siempre (primero en el equipo, luego la nube con versión y aviso de conflicto).
+  // No toca asistencia, saldo, programas ni cargas.
+  // ---------------------------------------------------------------------------
+
+  function describeStudentImport(summary) {
+    if (!summary.added && !summary.updated) {
+      return summary.keptCoach
+        ? `No hay registros nuevos de alumnos (${summary.keptCoach} no se tocaron porque ya tenías datos).`
+        : 'No hay registros nuevos de alumnos.';
+    }
+    const parts = summary.added
+      ? [`Se ${summary.added === 1 ? 'trajo 1 serie' : `trajeron ${summary.added} series`} de alumnos`]
+      : [`Se ${summary.updated === 1 ? 'actualizó 1 serie' : `actualizaron ${summary.updated} series`} de alumnos`];
+    if (summary.added && summary.updated) parts.push(`${summary.updated} actualizada${summary.updated === 1 ? '' : 's'}`);
+    if (summary.sessionsCreated) parts.push(`${summary.sessionsCreated} sesión${summary.sessionsCreated === 1 ? '' : 'es'} nueva${summary.sessionsCreated === 1 ? '' : 's'}`);
+    if (summary.keptCoach) parts.push(`${summary.keptCoach} no se tocaron porque ya tenías datos`);
+    return `${parts.join(' · ')}.`;
+  }
+
+  function renderStudentImportMessage() {
+    const message = document.getElementById('importStudentSetsMessage');
+    if (!message) return;
+    message.textContent = studentImportUi.message;
+    message.className = `notice${studentImportUi.tone ? ` ${studentImportUi.tone}` : ''}${studentImportUi.message ? '' : ' hidden'}`;
+  }
+
+  async function importStudentSets({ manual = false } = {}) {
+    const authApi = window.VALHALLA.auth;
+    if (studentImportUi.running || !studentImportApi) {
+      return;
+    }
+    if (!window.VALHALLA.cloudSync?.isActive?.() || !authApi?.getClient) {
+      if (manual) {
+        studentImportUi.message = 'Para traer los registros de los alumnos necesitas estar conectado a la nube.';
+        studentImportUi.tone = 'warn';
+        renderStudentImportMessage();
+      }
+      return;
+    }
+    studentImportUi.running = true;
+    try {
+      const client = authApi.getClient();
+      const { data: sessionData } = await client.auth.getSession();
+      const coachId = sessionData?.session?.user?.id || '';
+      if (!coachId) {
+        return;
+      }
+      const result = await client.from('student_sets')
+        .select('id, owner_id, client_id, auth_user_id, assignment_id, session_date, day_id, exercise_id, set_type, set_number, weight, reps, rir, completed, created_at, updated_at')
+        .eq('owner_id', coachId)
+        .order('session_date', { ascending: true })
+        .limit(5000);
+      if (result.error) {
+        if (manual) {
+          studentImportUi.message = 'No se pudieron traer los registros de los alumnos. Intenta de nuevo más tarde.';
+          studentImportUi.tone = 'warn';
+          renderStudentImportMessage();
+        }
+        return;
+      }
+      ensureTrainingsV08State();
+      const summary = studentImportApi.mergeStudentSets(state, result.data || [], { coachId, createId: dataApi.createId });
+      if (manual || summary.added || summary.updated) {
+        studentImportUi.message = describeStudentImport(summary);
+        studentImportUi.tone = summary.added || summary.updated ? 'ok' : '';
+      }
+      if (summary.added || summary.updated || summary.sessionsCreated) {
+        persist();
+      } else {
+        renderStudentImportMessage();
+      }
+    } catch (error) {
+      console.error(error);
+      if (manual) {
+        studentImportUi.message = 'No se pudieron traer los registros de los alumnos. Intenta de nuevo más tarde.';
+        studentImportUi.tone = 'warn';
+        renderStudentImportMessage();
+      }
+    } finally {
+      studentImportUi.running = false;
     }
   }
 
@@ -4632,7 +4728,7 @@
 
     return `
       <div class="training-progress-grid">
-        <div><strong>Último registro</strong><div class="meta">${lastSet ? `${Number(lastSet.weight || 0)} kg${lastSet.reps === null || lastSet.reps === undefined ? '' : ` × ${Number(lastSet.reps)}`}` : 'Sin registro'}</div></div>
+        <div><strong>Último registro</strong><div class="meta">${lastSet ? `${Number(lastSet.weight || 0)} kg${lastSet.reps === null || lastSet.reps === undefined ? '' : ` × ${Number(lastSet.reps)}`}` : 'Sin registro'}</div>${studentImportApi?.isStudentSet(lastSet) ? '<span class="student-logged-tag" data-student-logged>Registrado por el alumno</span>' : ''}</div>
         <div><strong>Mejor peso histórico</strong><div class="meta">${bestWeight > 0 ? `${bestWeight} kg` : 'Sin registro'}</div></div>
         <div><strong>Primer registro</strong><div class="meta">${firstSet ? `${Number(firstSet.weight || 0)} kg${firstSet.reps === null || firstSet.reps === undefined ? '' : ` × ${Number(firstSet.reps)}`}` : 'Sin registro'}</div></div>
         <div><strong>Fecha última sesión</strong><div class="meta">${last.session.date ? escapeHtml(formatClientDate(last.session.date)) : 'Sin fecha'}</div></div>
@@ -4879,6 +4975,9 @@
 
     const existingSet = sets.find((setEntry) => Number(setEntry.setNumber || 0) === Number(nextSetNumber));
     if (existingSet) {
+      if (existingSet.loggedBy === 'student') {
+        existingSet.loggedBy = 'coach';
+      }
       existingSet.weight = weight;
       existingSet.reps = reps;
       existingSet.completed = completed;
@@ -6591,7 +6690,7 @@
         ? currentSets.map((setEntry) => `
             <div class="training-set-item">
               <div>
-                <strong>${escapeHtml(getSetDisplayLabel(currentExercise, setEntry))}</strong>
+                <strong>${escapeHtml(getSetDisplayLabel(currentExercise, setEntry))}</strong>${studentImportApi?.isStudentSet(setEntry) ? ' <span class="student-logged-tag" data-student-logged>Registrada por el alumno</span>' : ''}
                 <div class="meta">${Number(setEntry.weight || 0)} kg${setEntry.reps === null || setEntry.reps === undefined ? '' : ` × ${Number(setEntry.reps)}`} · ${setEntry.rir == null ? 'RIR pendiente' : `RIR ${Number(setEntry.rir)}`} · ${setEntry.completed !== false ? 'Completada' : 'No completada'}</div>
                 <div class="meta">${setEntry.personalRecord ? 'Posible nuevo récord' : ''}</div>
               </div>
@@ -6611,11 +6710,13 @@
       const doneSets = countDoneSets('S');
       const doneApproximations = countDoneSets('A');
       const plannedSetsForSession = getSessionExercises(session).reduce((sum, exercise) => sum + Number(exercise.plannedSets || 0), 0);
-      return `<div class="routine-pill">
+      const studentSets = studentImportApi ? studentImportApi.countStudentSets(session) : 0;
+      return `<div class="routine-pill${studentSets ? ' routine-pill--student' : ''}">
                 <div class="section-title">
                   <strong>${escapeHtml(session.title || 'Sesión')}</strong>
                   <span class="tag ${getSessionStatusTone(session.status)}">${escapeHtml(getSessionStatusLabel(session.status))}</span>
                 </div>
+                ${studentSets ? `<span class="student-logged-tag" data-student-logged>Registrado por el alumno · ${studentSets} ${studentSets === 1 ? 'serie' : 'series'}</span>` : ''}
                 <div class="meta">${escapeHtml(formatClientDate(session.date || getTodayLocalDate()))} · ${getSessionExercises(session).length} ejercicios · ${doneSets}/${plannedSetsForSession || 0} series${doneApproximations ? ` · ${doneApproximations} aprox.` : ''}</div>
                 <div class="inline-actions">
                   <button class="secondary small" type="button" data-training-open-session="${session.id}">Abrir</button>
@@ -6630,6 +6731,7 @@
     els.trainingsStudents.innerHTML = activeClients.length
       ? `${renderBucket('HOY', buckets.today)}${renderBucket('PRÓXIMAS', buckets.upcoming)}${renderBucket('COMPLETADAS', buckets.completed)}`
       : '<div class="notice">Primero debes crear un cliente</div>';
+    renderStudentImportMessage();
 
     ensureDateValue(els.routineDate);
     if (els.restPreset && els.restInput && els.restPreset.value !== 'custom') {
@@ -7418,6 +7520,10 @@
 
     const existingSet = sets.find((setEntry) => Number(setEntry.setNumber || 0) === Number(nextSetNumber));
     if (existingSet) {
+      // Una serie del alumno que el entrenador corrige pasa a ser del entrenador.
+      if (existingSet.loggedBy === 'student') {
+        existingSet.loggedBy = 'coach';
+      }
       existingSet.weight = weight;
       existingSet.reps = reps;
       existingSet.rir = rir;
@@ -9461,12 +9567,19 @@
   };
 
   window.addEventListener('valhalla:auth-changed', renderAuthPanel);
-  window.addEventListener('valhalla:sync-status', () => {
+  window.addEventListener('valhalla:sync-status', (event) => {
     const statusEl = document.getElementById('authPanelSyncStatus');
     if (statusEl) {
       statusEl.textContent = `Estado de la nube: ${window.VALHALLA.cloudSync?.statusText?.() || 'verificando…'}`;
     }
+    // B3.3: al abrir la app y al sincronizar se traen solos los registros de alumnos
+    // (como máximo una vez por minuto; el botón los trae cuando se quiera).
+    if (event.detail?.status === 'synced' && Date.now() - studentImportUi.lastAutoAt >= STUDENT_IMPORT_AUTO_MS) {
+      studentImportUi.lastAutoAt = Date.now();
+      importStudentSets();
+    }
   });
+  document.getElementById('importStudentSetsBtn')?.addEventListener('click', () => importStudentSets({ manual: true }));
   // Indicador "Publicar al alumno" por cliente (publish.js).
   window.addEventListener('valhalla:publish-changed', () => renderClients());
 
