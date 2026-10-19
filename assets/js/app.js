@@ -387,6 +387,8 @@
     planningBackToStep2: document.getElementById('planningBackToStep2'),
     planningBackToStep3: document.getElementById('planningBackToStep3'),
     planningSavedPrograms: document.getElementById('planningSavedPrograms'),
+    planningBaseProgramSelect: document.getElementById('planningBaseProgramSelect'),
+    planningLoadBaseProgramBtn: document.getElementById('planningLoadBaseProgramBtn'),
     programExerciseForm: document.getElementById('programExerciseForm'),
     programExerciseIdInput: document.getElementById('programExerciseId'),
     programExerciseNameInput: document.getElementById('programExerciseName'),
@@ -3186,6 +3188,8 @@
     if (!els.planningSavedPrograms) {
       return;
     }
+    // El selector "Programa base" lista los mismos programas (todos, no solo los 6 primeros).
+    renderPlanningBaseProgramOptions();
     const programs = getTrainingPrograms();
     if (!programs.length) {
       els.planningSavedPrograms.innerHTML = '<div class="muted">Todavía no hay programaciones guardadas.</div>';
@@ -3249,6 +3253,14 @@
     planningUi.currentDayIndex = 0;
     if (copiedProgram.days?.length) {
       copiedProgram.days = copiedProgram.days.map((day, index) => ({ ...day, order: index + 1, name: day.name || `Día ${index + 1}` }));
+    }
+    // applyPlanningChoiceData lee el nombre y la fecha de los campos del paso 2: se llenan antes
+    // con los de la copia (si no, quedaba el nombre vacío o el de otro programa).
+    if (els.planningProgramName) {
+      els.planningProgramName.value = copiedProgram.name;
+    }
+    if (els.planningProgramStartDate) {
+      els.planningProgramStartDate.value = copiedProgram.startDate || getTodayLocalDate();
     }
     applyPlanningChoiceData();
     renderPlanningClientSelection();
@@ -3339,6 +3351,7 @@
       if (els.planningProgramStartDate) {
         els.planningProgramStartDate.value = getPlanningDraftProgram().startDate || getTodayLocalDate();
       }
+      renderPlanningProgramChoices();
     }
 
     if (stepNumber === 3) {
@@ -3357,6 +3370,31 @@
       }
       renderPlanningReview();
     }
+  }
+
+  // Marca en el paso 2 el objetivo, la duración y la frecuencia del programa en edición
+  // (antes quedaban siempre "Fuerza", "4 semanas" y "2 días" aunque el programa dijera otra cosa).
+  function renderPlanningProgramChoices() {
+    const draft = getPlanningDraftProgram();
+    const objective = String(draft.objective || planningUi.objective || 'Fuerza');
+    document.querySelectorAll('[data-program-objective]').forEach((button) => {
+      button.classList.toggle('active', button.getAttribute('data-program-objective') === objective);
+    });
+    const weeks = Number(draft.durationWeeks || planningUi.duration || 4);
+    const durationButtons = [...document.querySelectorAll('[data-program-duration]')];
+    const presetWeeks = durationButtons.some((button) => button.getAttribute('data-program-duration') === String(weeks));
+    durationButtons.forEach((button) => {
+      const value = button.getAttribute('data-program-duration');
+      button.classList.toggle('active', presetWeeks ? value === String(weeks) : value === 'custom');
+    });
+    if (els.planningCustomDuration) {
+      els.planningCustomDuration.classList.toggle('hidden', presetWeeks);
+      els.planningCustomDuration.value = presetWeeks ? '' : String(weeks);
+    }
+    const frequency = String(Number(draft.weeklyFrequency || planningUi.frequency || 2));
+    document.querySelectorAll('[data-program-frequency]').forEach((button) => {
+      button.classList.toggle('active', button.getAttribute('data-program-frequency') === frequency);
+    });
   }
 
   function applyPlanningChoiceData() {
@@ -10440,6 +10478,18 @@
   els.libraryImportFile?.addEventListener('change', handleLibraryImportFile);
   els.programImportBtn?.addEventListener('click', () => els.programImportFile?.click());
   els.programImportFile?.addEventListener('change', handleProgramImportFile);
+  // "Otra duración": lo escrito es la duración del programa (antes se ignoraba y quedaba la anterior).
+  els.planningCustomDuration?.addEventListener('input', (event) => {
+    const weeks = Number(event.target.value);
+    if (Number.isInteger(weeks) && weeks >= 1 && weeks <= 52) {
+      planningUi.duration = weeks;
+      applyPlanningChoiceData();
+    }
+  });
+  // Recordar lo elegido en "Programa base" para que un redibujo no lo borre antes de "Cargar como base".
+  els.planningBaseProgramSelect?.addEventListener('change', (event) => {
+    planningUi.baseProgramId = String(event.target.value || '');
+  });
   els.newLibraryExerciseBtn?.addEventListener('click', () => {
     resetLibraryExerciseForm();
     setLibraryMessage('Nuevo ejercicio listo para guardar.', 'neutral');

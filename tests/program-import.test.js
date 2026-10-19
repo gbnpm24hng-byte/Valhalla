@@ -219,3 +219,30 @@ test('index.html carga el núcleo de importación antes de app.js y el service w
   const sw = fs.readFileSync(path.join(__dirname, '..', 'service-worker.js'), 'utf8');
   assert.match(sw, /'\.\/assets\/js\/program-import-core\.js'/);
 });
+
+test('"Usar como base" sobre un programa importado: la copia conserva nombre, semanas, días, notas y repeticiones vacías', () => {
+  const doc = fs.readFileSync(path.join(__dirname, '..', 'docs', 'formato-programa.md'), 'utf8');
+  const { program } = core.planProgramImport(doc.match(/```json\n([\s\S]*?)```/)[1], [], deps());
+  // Lo mismo que hace duplicatePlanningProgramFromBase (app.js) con el programa guardado.
+  const stored = data.importState(JSON.stringify({ trainingsV08: { programs: [program] } })).trainingsV08.programs[0];
+  const baseCopy = JSON.parse(JSON.stringify(stored));
+  const copy = data.normalizeTrainingProgram({ ...baseCopy, id: 'planning-program-copia', name: `${baseCopy.name || 'Programa'} (copia)`, assignedClientIds: [] });
+  assert.equal(copy.name, 'Ciclo de ejemplo 9 semanas (copia)');
+  assert.equal(copy.durationWeeks, 9);
+  assert.equal(copy.weeklyFrequency, 3);
+  assert.deepEqual(copy.days.map((day) => day.name), ['Lunes — A', 'Miércoles — B', 'Viernes — C']);
+  const exercises = copy.days.flatMap((day) => day.exercises);
+  assert.equal(exercises.length, 5);
+  assert.equal(exercises.filter((exercise) => exercise.notes).length, 5);
+  assert.deepEqual(exercises.filter((exercise) => exercise.repMin === null).map((exercise) => exercise.exerciseName), ['Plancha']);
+});
+
+test('el armador tiene conectados el selector "Programa base" y el campo "Otra duración"', () => {
+  const app = fs.readFileSync(path.join(__dirname, '..', 'assets', 'js', 'app.js'), 'utf8');
+  assert.match(app, /planningBaseProgramSelect: document\.getElementById\('planningBaseProgramSelect'\)/);
+  assert.match(app, /planningLoadBaseProgramBtn: document\.getElementById\('planningLoadBaseProgramBtn'\)/);
+  assert.match(app, /els\.planningCustomDuration\?\.addEventListener\('input'/);
+  // "Usar como base" llena el nombre antes de aplicar las opciones del paso 2.
+  const duplicate = app.slice(app.indexOf('function duplicatePlanningProgramFromBase'), app.indexOf('function renderPlanningClientSelection'));
+  assert.ok(duplicate.indexOf('els.planningProgramName.value = copiedProgram.name') < duplicate.indexOf('applyPlanningChoiceData()'));
+});
