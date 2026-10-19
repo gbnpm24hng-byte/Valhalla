@@ -1,4 +1,4 @@
-﻿const CACHE='valhalla-v0.9.18-borrador-grupo';
+﻿const CACHE='valhalla-v0.9.19-solo-entrenamientos';
 // SDK de Supabase fijado a una versión exacta (ver index.html). Es inmutable, así que se
 // sirve desde caché para que la pantalla de acceso también cargue sin conexión.
 const SUPABASE_SDK_URL='https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js';

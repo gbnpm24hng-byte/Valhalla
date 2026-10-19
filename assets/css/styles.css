@@ -2661,3 +2661,13 @@ details.group-athlete-row[open] > summary h3::before {
   gap: 8px;
   margin-bottom: 10px;
 }
+
+/* Modo "solo entrenamientos": oculta Inicio, Registrar (finanzas) y Nutrición sin borrarlos.
+   Para volver a mostrarlos basta con quitar la clase solo-entrenamientos del <body> en index.html. */
+.solo-entrenamientos [data-modulo-oculto] {
+  display: none !important;
+}
+
+.solo-entrenamientos .nav-inner {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}

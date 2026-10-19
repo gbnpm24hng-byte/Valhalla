@@ -8,10 +8,11 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <title>VALHALLA Finanzas</title>
-  <link rel="stylesheet" href="./assets/css/styles.css?v=0.9.18">
+  <title>VALHALLA</title>
+  <link rel="stylesheet" href="./assets/css/styles.css?v=0.9.19">
 </head>
-<body>
+<!-- Clase "solo-entrenamientos": oculta Inicio, Registrar (finanzas) y Nutrición sin borrarlos. Quitarla los vuelve a mostrar. -->
+<body class="solo-entrenamientos">
   <main id="onboardingView" class="onboarding-view hidden"></main>
   <div class="app" id="app">
     <header class="app-header">
@@ -22,17 +23,17 @@
         </div>
         <div class="brand-copy">
           <h1>VALHALLA</h1>
-          <div class="subtle">Control financiero personal y Vikingos Radical</div>
+          <div class="subtle">Vikingos Radical</div>
         </div>
       </div>
       <div class="header-actions">
         <span class="user-pill">Usuario</span>
         <span class="badge" id="cloudModeBadge">Modo Local</span>
-        <span class="badge">v0.9.18</span>
+        <span class="badge">v0.9.19</span>
       </div>
     </header>
 
-    <section id="home">
+    <section id="home" data-modulo-oculto>
       <div class="card hero-card">
         <div class="hero-content">
           <div>
@@ -97,7 +98,7 @@
       </div>
     </section>
 
-    <section id="register" class="hidden">
+    <section id="register" class="hidden" data-modulo-oculto>
       <div class="card">
         <h2>Registrar movimiento</h2>
         <form id="movementForm" class="form-grid">
@@ -1155,7 +1156,7 @@
       </div>
     </section>
 
-    <section id="nutrition" class="hidden">
+    <section id="nutrition" class="hidden" data-modulo-oculto>
       <div class="card">
         <div class="section-title">
           <h2>Nutrición</h2>
@@ -1173,7 +1174,7 @@
       <div class="card">
         <h2>Ajustes</h2>
         <form id="settingsForm" class="form-grid">
-          <div>
+          <div data-modulo-oculto>
             <label for="reserve">Reserva mínima</label>
             <input id="reserve" name="reserve" type="number" min="0">
           </div>
@@ -1182,15 +1183,15 @@
             <input id="coachWhatsAppNumber" name="coachWhatsAppNumber" type="tel" inputmode="tel" placeholder="56912345678">
             <small class="muted">Incluye código de país, solo números.</small>
           </div>
-          <div>
+          <div data-modulo-oculto>
             <label for="magicBudget">Presupuesto mensual Magic</label>
             <input id="magicBudget" name="magicBudget" type="number" min="0">
           </div>
-          <div>
+          <div data-modulo-oculto>
             <label for="antBudget">Presupuesto mensual gastos hormiga</label>
             <input id="antBudget" name="antBudget" type="number" min="0">
           </div>
-          <div>
+          <div data-modulo-oculto>
             <label for="savingsGoal">Meta de ahorro</label>
             <input id="savingsGoal" name="savingsGoal" type="number" min="0">
           </div>
@@ -1207,7 +1208,7 @@
         </div>
         <div id="onboardingQrMessage" class="notice"></div>
       </div>
-      <div class="card">
+      <div class="card" data-modulo-oculto>
         <h2>Cuentas</h2>
         <div id="accountSettings"></div>
         <div id="accountSettingsMessage" class="notice"></div>
@@ -1225,10 +1226,10 @@
 
   <nav class="nav">
     <div class="nav-inner">
-      <button class="active" type="button" data-nav="home">Inicio</button>
-      <button type="button" data-nav="register">Registrar</button>
-      <button type="button" data-nav="clients">Clientes</button>
+      <button type="button" data-nav="home" data-modulo-oculto>Inicio</button>
+      <button type="button" data-nav="register" data-modulo-oculto>Registrar</button>
       <button type="button" data-nav="trainings">Entrenamientos</button>
+      <button type="button" data-nav="clients">Clientes</button>
       <button type="button" data-nav="settings">Ajustes</button>
     </div>
   </nav>

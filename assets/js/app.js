@@ -10444,7 +10444,8 @@
     }
   });
 
-  show('home');
+  // Pantalla inicial: Entrenamientos mientras el <body> tenga la clase solo-entrenamientos (ver styles.css).
+  show(document.body.classList.contains('solo-entrenamientos') ? 'trainings' : 'home');
   render();
   // Los filtros de la biblioteca parten siempre en "Todos" (no se restaura ningún filtro).
   [els.libraryPatternFilter, els.libraryMuscleFilter, els.libraryTechnicalLevelFilter].forEach((select) => {
