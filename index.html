@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <title>VALHALLA</title>
-  <link rel="stylesheet" href="./assets/css/styles.css?v=0.9.23">
+  <link rel="stylesheet" href="./assets/css/styles.css?v=0.9.24">
 </head>
 <!-- Clase "solo-entrenamientos": oculta Inicio, Registrar (finanzas) y Nutrición sin borrarlos. Quitarla los vuelve a mostrar. -->
 <body class="solo-entrenamientos">
@@ -29,7 +29,7 @@
       <div class="header-actions">
         <span class="user-pill">Usuario</span>
         <span class="badge" id="cloudModeBadge">Modo Local</span>
-        <span class="badge">v0.9.23</span>
+        <span class="badge">v0.9.24</span>
       </div>
     </header>
 
@@ -624,6 +624,10 @@
         </div>
 
         <div id="planningWizard" class="planning-wizard">
+          <div class="planning-wizard-bar">
+            <div id="planningWizardMessage" class="notice hidden" role="status" aria-live="polite"></div>
+            <button class="ghost small" id="planningRestartBtn" type="button">Empezar de nuevo</button>
+          </div>
           <div class="planning-stepper" aria-label="Progreso del plan">
             <span class="planning-step completed"><span class="step-mark">✓</span> Alumnos</span>
             <span class="planning-step completed"><span class="step-mark">✓</span> Programa</span>
@@ -744,7 +748,7 @@
             <div id="planningReviewSummary" class="planning-review-summary"></div>
             <div class="inline-actions">
               <button class="secondary" id="planningBackToStep3" type="button">← EDITAR</button>
-              <button class="primary" id="planningSaveProgramWizardBtn" type="button">GUARDAR PROGRAMACIÓN</button>
+              <button class="primary" id="planningSaveProgramWizardBtn" type="button">Guardar y finalizar</button>
             </div>
           </div>
         </div>

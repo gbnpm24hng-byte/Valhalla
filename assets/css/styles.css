@@ -2775,3 +2775,18 @@ details.group-athlete-row[open] > summary h3::before {
     padding: 8px 10px;
   }
 }
+
+/* Armador: aviso de lo guardado y "Empezar de nuevo", visibles en todos los pasos. */
+.planning-wizard-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.planning-wizard-bar .notice {
+  flex: 1 1 220px;
+  margin: 0;
+}

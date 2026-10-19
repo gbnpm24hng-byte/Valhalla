@@ -381,6 +381,8 @@
     planningExerciseEmptyState: document.getElementById('planningExerciseEmptyState'),
     routineBuilderRoot: document.getElementById('routineBuilderRoot'),
     planningReviewSummary: document.getElementById('planningReviewSummary'),
+    planningWizardMessage: document.getElementById('planningWizardMessage'),
+    planningRestartBtn: document.getElementById('planningRestartBtn'),
     planningSaveProgramWizardBtn: document.getElementById('planningSaveProgramWizardBtn'),
     planningContinueStep1: document.getElementById('planningContinueStep1'),
     planningContinueStep2: document.getElementById('planningContinueStep2'),
@@ -3331,6 +3333,10 @@
   }
 
   function showPlanningStep(stepNumber) {
+    // Al cambiar de paso se quita el aviso ("guardado y asignado" o un error viejo).
+    if (stepNumber !== planningUi.currentStep) {
+      setPlanningWizardMessage('');
+    }
     planningUi.currentStep = stepNumber;
     const panels = [els.planningStep1, els.planningStep2, els.planningStep3, els.planningStep4];
     panels.forEach((panel, index) => {
@@ -3533,6 +3539,103 @@
     updatePlanningContinueButton();
   }
 
+  // Repeticiones de un ejercicio del armador: "8-12", "10" o "sin repeticiones" (series por
+  // tiempo; antes se veía "0-0").
+  function formatPlanningReps(exercise) {
+    const min = Number(exercise?.repMin ?? exercise?.repRangeMin ?? 0);
+    const max = Number(exercise?.repMax ?? exercise?.repRangeMax ?? 0);
+    if (!(min > 0)) {
+      return 'sin repeticiones';
+    }
+    return max > min ? `${min}-${max}` : String(min);
+  }
+
+  // Aviso arriba del armador ("✓ … guardado y asignado" o el error al guardar).
+  function setPlanningWizardMessage(text, tone = 'ok') {
+    if (!els.planningWizardMessage) {
+      return;
+    }
+    els.planningWizardMessage.textContent = text || '';
+    els.planningWizardMessage.className = `notice ${tone}${text ? '' : ' hidden'}`;
+  }
+
+  // ¿Hay algo armado sin guardar? (nombre, alumnos, ejercicios o una base cargada)
+  function isPlanningDirty() {
+    const draft = planningUi.draftProgram;
+    return Boolean(String(els.planningProgramName?.value || draft?.name || '').trim()
+      || (planningUi.selectedClientIds || []).length
+      || planningUi.baseProgramId
+      || (draft?.days || []).some((day) => (day.exercises || []).length));
+  }
+
+  // Vuelve al paso 1 vacío: sin nombre, días, ejercicios ni alumnos. Descarta solo lo que se
+  // estaba armando; los programas y asignaciones guardados no se tocan.
+  function resetPlanningWizard() {
+    Object.assign(planningUi, {
+      selectedClientIds: [],
+      objective: 'Fuerza',
+      duration: 4,
+      frequency: 3,
+      currentDayIndex: 0,
+      currentDayName: 'Día A',
+      category: 'PIERNAS',
+      selectedCategory: null,
+      exerciseDraft: null,
+      draftProgram: null,
+      baseProgramId: '',
+      moreOptionsOpen: false,
+      weeklyDays: []
+    });
+    Object.assign(routineBuilder, { screen: 'day', activeDayIndex: 0, category: null, exerciseId: null, editingIndex: null, search: '' });
+    resetRoutineBuilderDraft();
+    if (els.planningProgramName) {
+      els.planningProgramName.value = '';
+    }
+    if (els.planningProgramStartDate) {
+      els.planningProgramStartDate.value = '';
+    }
+    if (els.planningCustomDuration) {
+      els.planningCustomDuration.value = '';
+    }
+    if (els.planningReviewSummary) {
+      els.planningReviewSummary.innerHTML = '';
+    }
+    showPlanningStep(1);
+  }
+
+  // "Empezar de nuevo": con algo armado pregunta dentro de la app antes de descartarlo.
+  function askPlanningRestart() {
+    if (!isPlanningDirty()) {
+      resetPlanningWizard();
+      setPlanningWizardMessage('');
+      return;
+    }
+    document.getElementById('planningRestartModal')?.remove();
+    const overlay = document.createElement('div');
+    overlay.id = 'planningRestartModal';
+    overlay.className = 'sync-modal';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.innerHTML = `
+      <div class="sync-modal-card card">
+        <h2>¿Empezar de nuevo?</h2>
+        <p>Se descarta lo que estás armando y no está guardado. Los programas ya guardados no cambian.</p>
+        <div class="inline-actions">
+          <button class="secondary" type="button" data-planning-restart-cancel>Seguir armando</button>
+          <button class="danger" type="button" data-planning-restart-confirm>Descartar y empezar de nuevo</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    const close = () => overlay.remove();
+    overlay.querySelector('[data-planning-restart-cancel]').focus();
+    overlay.querySelector('[data-planning-restart-cancel]').addEventListener('click', close);
+    overlay.querySelector('[data-planning-restart-confirm]').addEventListener('click', () => {
+      close();
+      resetPlanningWizard();
+      setPlanningWizardMessage('');
+    });
+  }
+
   function resetRoutineBuilderDraft() {
     routineBuilder.draft = {
       sets: 3,
@@ -3591,7 +3694,7 @@
               <div class="planning-exercise-item-header">
                 <strong>${index + 1}. ${escapeHtml(exercise.exerciseName || 'Ejercicio')}</strong>
               </div>
-              <div class="meta">${Number(exercise.sets || exercise.plannedSets || 0)} × ${Number(exercise.repMin || exercise.repRangeMin || 0)}-${Number(exercise.repMax || exercise.repRangeMax || 0)}</div>
+              <div class="meta">${Number(exercise.sets || exercise.plannedSets || 0)} × ${escapeHtml(formatPlanningReps(exercise))}</div>
               <div class="meta">${Array.isArray(exercise.approximations) ? `${exercise.approximations.length} aproximaciones` : '0 aproximaciones'} · ${escapeHtml(exercise.zone || 'Sin zona')}</div>
               <div class="inline-actions">
                 <button class="ghost small" type="button" data-routine-action="edit-exercise" data-exercise-index="${index}">Editar</button>
@@ -3951,7 +4054,7 @@
             ${(exercises.length ? exercises.map((exercise, exerciseIndex) => `
               <div class="meta" style="margin-top: 8px;">
                 <strong>${exerciseIndex + 1}. ${escapeHtml(exercise.exerciseName || 'Ejercicio')}</strong>
-                <div>${Number(exercise.sets || exercise.plannedSets || 0)} × ${Number(exercise.repMin || exercise.repRangeMin || 0)}-${Number(exercise.repMax || exercise.repRangeMax || 0)}</div>
+                <div>${Number(exercise.sets || exercise.plannedSets || 0)} × ${escapeHtml(formatPlanningReps(exercise))}</div>
                 <div>${Array.isArray(exercise.approximations) ? exercise.approximations.length : 0} aproximaciones</div>
                 <div>${escapeHtml(exercise.zone || 'Sin zona')}</div>
               </div>
@@ -9304,6 +9407,8 @@
       }
       planningUi.selectedClientIds = Array.from(current);
       getPlanningDraftProgram().assignedClientIds = [...planningUi.selectedClientIds];
+      // Empezó a armar el siguiente: se quita el aviso del anterior.
+      setPlanningWizardMessage('');
       renderPlanningClientSelection();
       renderPlanningSavedPrograms();
       return;
@@ -9383,7 +9488,21 @@
     if (target === els.planningSaveProgramWizardBtn) {
       applyPlanningChoiceData();
       syncPlanningProgramToLegacyForm();
-      savePlanningProgramAndAssignments();
+      const programName = getPlanningDraftProgram().name || 'Programa';
+      const clientCount = (planningUi.selectedClientIds || []).length || (getPlanningDraftProgram().assignedClientIds || []).length;
+      if (savePlanningProgramAndAssignments()) {
+        // "Guardar y finalizar": vuelve al paso 1 vacío para armar el siguiente.
+        resetPlanningWizard();
+        setPlanningWizardMessage(`✓ ${programName} guardado y asignado a ${clientCount} ${clientCount === 1 ? 'alumno' : 'alumnos'}`, 'ok');
+      } else {
+        // Se queda en Revisar; el error (escrito en el formulario antiguo, que está oculto) se muestra aquí.
+        setPlanningWizardMessage(els.programMessage?.textContent || 'No se pudo guardar la programación.', 'bad');
+      }
+      return;
+    }
+
+    if (target === els.planningRestartBtn) {
+      askPlanningRestart();
       return;
     }
 
