@@ -2805,3 +2805,148 @@ details.group-athlete-row[open] > summary h3::before {
     grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
   }
 }
+
+/* ===== Teléfono compacto (v0.9.27): la sesión del día se ve sin hacer scroll. ===== */
+
+/* Encabezado: una línea baja, logo chico + VALHALLA; estado y versión pequeños a la derecha. */
+.app-header {
+  flex-wrap: nowrap;
+  padding: 6px 12px;
+  border-radius: 14px;
+  margin-bottom: 10px;
+  gap: 8px;
+}
+
+.app-header .brand {
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.app-header .brand-mark {
+  width: 44px;
+  min-width: 44px;
+  height: 30px;
+  border-radius: 8px;
+}
+
+.app-header .brand-copy h1 {
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
+.app-header .header-actions {
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 0;
+}
+
+.app-header .header-actions .badge,
+.app-header .header-actions .user-pill,
+.app-header #authHeaderLogout {
+  font-size: 0.72rem;
+  padding: 4px 8px;
+  min-height: 28px;
+  white-space: nowrap;
+}
+
+.app-header #syncStatusBadge {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 520px) {
+  .app-header { flex-wrap: nowrap; }
+  .app-header .header-actions { width: auto; }
+  .app-header .user-pill,
+  .app-header .brand-copy .subtle { display: none; }
+  .app-header .brand-copy h1 { font-size: 1.2rem; }
+  /* "Cerrar sesión" queda como ícono; el texto sigue en el botón para lectores de pantalla. */
+  .app-header #authHeaderLogout {
+    width: 30px;
+    min-width: 30px;
+    min-height: 28px;
+    padding: 0;
+    font-size: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .app-header #authHeaderLogout::before {
+    content: '';
+    width: 16px;
+    height: 16px;
+    background: currentColor;
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9'/%3E%3C/svg%3E") center / contain no-repeat;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9'/%3E%3C/svg%3E") center / contain no-repeat;
+  }
+  .app { padding-top: 10px; }
+}
+
+/* Pestañas de Entrenamientos: una fila de píldoras chicas. */
+.training-tabs-card {
+  padding: 8px;
+  margin-bottom: 10px;
+}
+
+#trainingViewTabs {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 6px;
+  justify-content: flex-start;
+}
+
+#trainingViewTabs button {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 36px;
+  padding: 6px 8px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+/* Texto de ayuda fijo de cada pestaña: oculto (un aviso real no lleva esta clase). */
+#trainingViewMessage.training-view-help,
+#trainingViewMessage:empty {
+  display: none;
+}
+
+/* Barra inferior: ícono sobre el texto, el activo en dorado sin bloque de fondo. */
+.nav {
+  padding: 4px 8px calc(4px + env(safe-area-inset-bottom)) 8px;
+}
+
+.nav button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 52px;
+  padding: 4px 2px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--muted);
+  background: transparent;
+}
+
+.nav button.active {
+  background: transparent;
+  color: var(--accent);
+}
+
+.nav .nav-icon {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+@media (max-width: 520px) {
+  .app { padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
+}

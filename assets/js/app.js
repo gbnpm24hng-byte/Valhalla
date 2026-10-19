@@ -2518,6 +2518,8 @@
           : viewName === 'group'
             ? 'Registra la sesión individual de cada alumno y confirma su próximo objetivo.'
             : 'Hoy: registra la clase y las series reales.';
+      // Es solo el texto de ayuda fijo: se oculta. Un aviso real debe quitar esta clase.
+      els.trainingViewMessage.classList.add('training-view-help');
     }
   }
 
