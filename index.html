@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <title>VALHALLA</title>
-  <link rel="stylesheet" href="./assets/css/styles.css?v=0.9.19">
+  <link rel="stylesheet" href="./assets/css/styles.css?v=0.9.20">
 </head>
 <!-- Clase "solo-entrenamientos": oculta Inicio, Registrar (finanzas) y Nutrición sin borrarlos. Quitarla los vuelve a mostrar. -->
 <body class="solo-entrenamientos">
@@ -29,7 +29,7 @@
       <div class="header-actions">
         <span class="user-pill">Usuario</span>
         <span class="badge" id="cloudModeBadge">Modo Local</span>
-        <span class="badge">v0.9.19</span>
+        <span class="badge">v0.9.20</span>
       </div>
     </header>
 
@@ -653,6 +653,17 @@
             </div>
             <div class="planning-panel-box">
               <div class="section-title compact">
+                <strong>IMPORTAR PROGRAMA DESDE ARCHIVO</strong>
+              </div>
+              <p class="muted">Agrega un programa nuevo, sin alumnos, desde un archivo JSON. No cambia nada de lo que ya tienes.</p>
+              <div class="inline-actions">
+                <button class="secondary small" id="programImportBtn" type="button">Importar programa</button>
+                <input id="programImportFile" class="hidden" type="file" accept=".json,application/json">
+              </div>
+              <div id="programImportMessage" class="notice" role="status" aria-live="polite"></div>
+            </div>
+            <div class="planning-panel-box">
+              <div class="section-title compact">
                 <strong>PROGRAMACIONES GUARDADAS</strong>
               </div>
               <div id="planningSavedPrograms" class="planning-program-list"></div>
@@ -1255,6 +1266,7 @@
   <script src="./assets/js/labels.js"></script>
   <script src="./assets/js/student-import-core.js"></script>
   <script src="./assets/js/group-draft-core.js"></script>
+  <script src="./assets/js/program-import-core.js"></script>
   <script src="./assets/js/app.js"></script>
 </body>
 </html>

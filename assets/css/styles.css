@@ -2179,6 +2179,15 @@ button.sync-badge {
   padding-left: 18px;
 }
 
+.program-import-days ul {
+  margin: 4px 0 10px;
+  padding-left: 18px;
+}
+
+.program-import-days li {
+  overflow-wrap: anywhere;
+}
+
 /* Modo Grupo: selección de alumnos. La regla global de input (width 100%, padding)
    hacía que la casilla ocupara todo el recuadro y empujara el nombre afuera. */
 .group-session-clients {

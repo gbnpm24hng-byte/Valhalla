@@ -9,6 +9,8 @@
   const cloudDataApi = window.VALHALLA.cloudData;
   // Etiquetas en español para mostrar códigos de la biblioteca (labels.js).
   const labelsApi = window.VALHALLA.labels;
+  // "Importar programa" del armador: valida el archivo y arma un programa nuevo (program-import-core.js).
+  const programImportApi = window.VALHALLA.programImport;
   // Series registradas por los alumnos (student-import-core.js).
   const studentImportApi = window.VALHALLA.studentImportCore;
   // Cambios de ejercicio de un alumno, aparte de su programa (client-overrides-core.js).
@@ -341,6 +343,9 @@
     newLibraryExerciseBtn: document.getElementById('newLibraryExerciseBtn'),
     libraryImportBtn: document.getElementById('libraryImportBtn'),
     libraryImportFile: document.getElementById('libraryImportFile'),
+    programImportBtn: document.getElementById('programImportBtn'),
+    programImportFile: document.getElementById('programImportFile'),
+    programImportMessage: document.getElementById('programImportMessage'),
     saveLibraryExerciseBtn: document.getElementById('saveLibraryExerciseBtn'),
     exerciseLibraryOptions: document.getElementById('exerciseLibraryOptions'),
     programForm: document.getElementById('programForm'),
@@ -4800,6 +4805,102 @@
       renderLibraryExerciseList();
       closeLibraryImportModal();
       setLibraryMessage(`Se agregaron ${finalPlan.toAdd.length} ejercicios a la biblioteca.`, 'ok');
+    });
+  }
+
+  function setProgramImportMessage(message, tone = 'neutral') {
+    if (!els.programImportMessage) {
+      return;
+    }
+    els.programImportMessage.textContent = message;
+    els.programImportMessage.className = `notice${tone === 'neutral' ? '' : ` ${tone}`}`;
+  }
+
+  function closeProgramImportModal() {
+    document.getElementById('programImportModal')?.remove();
+  }
+
+  function planProgramImportFrom(rawText) {
+    return programImportApi.planProgramImport(rawText, state.exerciseLibrary, {
+      createId: dataApi.createId,
+      fold: labelsApi.fold,
+      categorize: labelsApi.routineCategory,
+      normalizeProgram: dataApi.normalizeTrainingProgram
+    });
+  }
+
+  function handleProgramImportFile(event) {
+    const [file] = event.target.files || [];
+    event.target.value = '';
+    if (!file) {
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const plan = planProgramImportFrom(reader.result);
+      if (plan.error) {
+        closeProgramImportModal();
+        setProgramImportMessage(`No se importó nada. ${plan.error}`, 'bad');
+        return;
+      }
+      setProgramImportMessage('');
+      showProgramImportPreview(file.name, reader.result, plan.preview);
+    };
+    reader.onerror = () => setProgramImportMessage('No se pudo leer el archivo. No se importó nada.', 'bad');
+    reader.readAsText(file);
+  }
+
+  function showProgramImportPreview(fileName, rawText, preview) {
+    closeProgramImportModal();
+    const exercisesLabel = (count) => `${count} ${count === 1 ? 'ejercicio' : 'ejercicios'}`;
+    const daysMarkup = preview.days.map((day) => `
+      <li><strong>${escapeHtml(day.name)}</strong> · ${exercisesLabel(day.exercises.length)}
+        <ul>${day.exercises.map((exercise) => `<li>${escapeHtml(exercise.name)} <span class="muted">· ${exercise.sets} × ${exercise.reps === null ? 'sin repeticiones' : escapeHtml(exercise.reps)}</span>${exercise.linked ? '' : ' <span class="pill">no está en la galería</span>'}</li>`).join('')}</ul>
+      </li>`).join('');
+    const missingMarkup = preview.missing.length
+      ? `<p><strong>${exercisesLabel(preview.missing.length)}</strong> ${preview.missing.length === 1 ? 'no está en la galería y quedará' : 'no están en la galería y quedarán'} sin enlace (no se crean): ${preview.missing.map((name) => escapeHtml(name)).join(', ')}.</p>`
+      : '<p>Todos los ejercicios están en la galería.</p>';
+    const overlay = document.createElement('div');
+    overlay.id = 'programImportModal';
+    overlay.className = 'sync-modal';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.innerHTML = `
+      <div class="sync-modal-card card">
+        <h2>Importar programa</h2>
+        <p class="muted">Archivo: ${escapeHtml(fileName)}</p>
+        <p><strong>${escapeHtml(preview.name)}</strong> · ${preview.durationWeeks} semanas · ${preview.days.length} ${preview.days.length === 1 ? 'día' : 'días'} · ${exercisesLabel(preview.exerciseCount)}</p>
+        <ul class="library-import-list program-import-days">${daysMarkup}</ul>
+        ${missingMarkup}
+        <p class="muted">Se agrega como programa nuevo, sin alumnos. No se modifica ningún programa, asignación, cliente ni la galería.</p>
+        <div class="inline-actions">
+          <button class="secondary" type="button" data-program-import-cancel>Cancelar</button>
+          <button class="primary" type="button" data-program-import-confirm>Agregar programa</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    overlay.querySelector('[data-program-import-cancel]').focus();
+    overlay.querySelector('[data-program-import-cancel]').addEventListener('click', closeProgramImportModal);
+    overlay.querySelector('[data-program-import-confirm]').addEventListener('click', () => {
+      // Se rearma sobre la galería actual por si cambió mientras la ventana estaba abierta.
+      const plan = planProgramImportFrom(rawText);
+      closeProgramImportModal();
+      if (plan.error) {
+        setProgramImportMessage(`No se importó nada. ${plan.error}`, 'bad');
+        return;
+      }
+      try {
+        ensureTrainingsV08State();
+        state.trainingsV08 = programImportApi.addImportedProgram(state.trainingsV08, plan.program);
+        persist();
+      } catch (error) {
+        console.error(error);
+        setProgramImportMessage('No se pudo agregar el programa. No se importó nada.', 'bad');
+        return;
+      }
+      renderPlanningSavedPrograms();
+      renderProgramsList();
+      setProgramImportMessage(`Programa "${plan.program.name}" agregado sin alumnos. Para asignarlo, usa "Usar como base" en Programaciones guardadas.`, 'ok');
     });
   }
 
@@ -10337,6 +10438,8 @@
   els.exerciseLibrarySearch?.addEventListener('input', renderProgramLibrary);
   els.libraryImportBtn?.addEventListener('click', () => els.libraryImportFile?.click());
   els.libraryImportFile?.addEventListener('change', handleLibraryImportFile);
+  els.programImportBtn?.addEventListener('click', () => els.programImportFile?.click());
+  els.programImportFile?.addEventListener('change', handleProgramImportFile);
   els.newLibraryExerciseBtn?.addEventListener('click', () => {
     resetLibraryExerciseForm();
     setLibraryMessage('Nuevo ejercicio listo para guardar.', 'neutral');
