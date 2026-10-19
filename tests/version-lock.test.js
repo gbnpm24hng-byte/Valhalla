@@ -112,3 +112,46 @@ test('B: normalizar dos veces no cambia nada y los alias antiguos no se duplican
   assert.equal(exercise.sets[0].setType, 'A');
   assert.equal('set_type' in exercise.sets[0], false);
 });
+
+test('Publicar al alumno: bloqueado si la nube la guardó una versión más nueva', () => {
+  // Versión recién leída de la nube, más nueva que esta app.
+  assert.deepEqual(sync.publishLock({ fetched: true, cloudAppVersion: '0.9.30' }, '0.9.22'), { status: 'locked', version: '0.9.30' });
+  assert.deepEqual(sync.publishLock({ fetched: true, cloudAppVersion: '0.10.0' }, '0.9.22'), { status: 'locked', version: '0.10.0' });
+  // Este equipo ya estaba bloqueado por el guardado: no publica y no hace falta leer la nube.
+  assert.deepEqual(sync.publishLock({ alreadyLocked: true, lockedVersion: '0.9.25' }, '0.9.22'), { status: 'locked', version: '0.9.25' });
+});
+
+test('Publicar al alumno: sin poder leer la versión de la nube no publica y no aplica el candado', () => {
+  const unverified = { status: 'unverified' };
+  assert.deepEqual(sync.publishLock({ fetched: false }, '0.9.22'), unverified);
+  // Aunque haya una última versión vista (vieja, igual o nueva): se ignora.
+  assert.deepEqual(sync.publishLock({ fetched: false, lastSeenCloudAppVersion: '0.9.16' }, '0.9.22'), unverified);
+  assert.deepEqual(sync.publishLock({ fetched: false, lastSeenCloudAppVersion: '0.9.22' }, '0.9.22'), unverified);
+  assert.deepEqual(sync.publishLock({ fetched: false, lastSeenCloudAppVersion: '0.9.30' }, '0.9.22'), unverified);
+  assert.deepEqual(sync.publishLock(), unverified);
+});
+
+test('Publicar al alumno: permitido con la misma versión, una más vieja o sin versión en la nube', () => {
+  const allowed = { status: 'ok' };
+  assert.deepEqual(sync.publishLock({ fetched: true, cloudAppVersion: '0.9.22' }, '0.9.22'), allowed);
+  assert.deepEqual(sync.publishLock({ fetched: true, cloudAppVersion: '0.9.16' }, '0.9.22'), allowed);
+  assert.deepEqual(sync.publishLock({ fetched: true, cloudAppVersion: '' }, '0.9.22'), allowed, 'nube guardada antes del candado');
+});
+
+test('Publicar al alumno revisa el candado antes de escribir nada', () => {
+  const publish = read('assets/js/publish.js');
+  const body = publish.slice(publish.indexOf('async function publish('), publish.indexOf("document.addEventListener('click'"));
+  const check = body.indexOf('checkVersionLock');
+  assert.ok(check > 0, 'publish() llama a checkVersionLock');
+  assert.ok(check < body.indexOf('.upsert('), 'antes del primer upsert');
+  assert.ok(check < body.indexOf('ctx.busyClientId = clientId'), 'antes de marcar la publicación en curso');
+  assert.match(read('assets/js/cloud-sync.js'), /checkVersionLock,\n/);
+  // Solo 'ok' publica: 'locked', 'unverified' o la falta de respuesta cancelan.
+  assert.ok(body.includes("if (lock !== 'ok') {"), 'cualquier resultado distinto de ok cancela');
+  assert.ok(body.includes('No se pudo comprobar la versión de la nube. Revisa tu conexión e intenta de nuevo.'));
+  assert.ok(body.indexOf("if (lock !== 'ok') {") < body.indexOf('.upsert('), 'antes del primer upsert');
+  // Tras un error, el botón vuelve a "Reintentar": no se usa event.currentTarget después del await.
+  const handler = publish.slice(publish.indexOf('await publish(clientId, assignmentId)'), publish.indexOf('function describeError'));
+  assert.ok(!handler.includes('event.currentTarget'), 'event.currentTarget es null después del await');
+  assert.match(handler, /button\.textContent = 'Reintentar'/);
+});

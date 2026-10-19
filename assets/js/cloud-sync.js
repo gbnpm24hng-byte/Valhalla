@@ -453,6 +453,31 @@
     return true;
   }
 
+  // Antes de "Publicar al alumno" (publish.js): lee la versión que guardó la nube.
+  // 'locked': más nueva que esta app; aplica el candado (mismo aviso que el guardado).
+  // 'unverified': no se pudo leer; no se publica y el candado no se toca.
+  // 'ok': se puede publicar.
+  async function checkVersionLock(ownerId) {
+    if (!ownerId) {
+      return 'unverified';
+    }
+    const fetched = ctx.locked ? null : await fetchCloudRow(ownerId);
+    const decision = syncCore.publishLock({
+      alreadyLocked: ctx.locked,
+      lockedVersion: ctx.lockedVersion,
+      fetched: Boolean(fetched && !fetched.error),
+      cloudAppVersion: fetched?.row?.appVersion || ''
+    });
+    if (decision.status === 'locked') {
+      if (ctx.locked) {
+        showVersionLock();
+      } else {
+        applyVersionLock(ownerId, decision.version);
+      }
+    }
+    return decision.status;
+  }
+
   // ---------------------------------------------------------------------------
   // Subida inicial (no hay fila en la nube)
   // ---------------------------------------------------------------------------
@@ -1057,6 +1082,7 @@
     lastAction: '',
     isActive: () => ctx.ready,
     isLocked: () => ctx.locked,
+    checkVersionLock,
     statusText: () => {
       const badge = document.getElementById('syncStatusBadge');
       return badge ? badge.textContent.replace(/^Nube: /, '') : '';

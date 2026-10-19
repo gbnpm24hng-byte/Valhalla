@@ -184,10 +184,13 @@
     modal.querySelector('[data-publish-cancel]').focus();
     modal.querySelector('[data-publish-cancel]').addEventListener('click', closeModal);
     modal.querySelector('[data-publish-confirm]').addEventListener('click', async (event) => {
-      event.currentTarget.disabled = true;
-      event.currentTarget.textContent = 'Publicando…';
+      // event.currentTarget vale null después del await: se guarda el botón antes.
+      const button = event.currentTarget;
+      button.disabled = true;
+      button.textContent = 'Publicando…';
       const result = await publish(clientId, assignmentId);
-      if (result.ok) {
+      if (result.ok || result.locked) {
+        // Bloqueado: queda a la vista el aviso del candado (cloud-sync), no esta ventana.
         closeModal();
         return;
       }
@@ -195,8 +198,8 @@
       message.textContent = result.message;
       message.classList.remove('hidden');
       message.classList.add('auth-message--bad');
-      event.currentTarget.disabled = false;
-      event.currentTarget.textContent = 'Reintentar';
+      button.disabled = false;
+      button.textContent = 'Reintentar';
     });
   }
 
@@ -218,6 +221,16 @@
     const current = currentPublication(clientId, assignmentId);
     if (!ownerId || !current) {
       return { ok: false, message: 'No se encontró el programa asignado.' };
+    }
+    // Candado de versión (igual que el guardado en la nube): si la nube la guardó una app
+    // más nueva, no se publica nada y cloud-sync muestra el aviso de volver a abrir la app.
+    // Si no se pudo comprobar la versión, tampoco se publica (sin tocar el candado).
+    const lock = await window.VALHALLA.cloudSync?.checkVersionLock?.(ownerId);
+    if (lock === 'locked') {
+      return { ok: false, locked: true, message: 'Hay una versión nueva de la app. Ciérrala y vuelve a abrirla antes de publicar.' };
+    }
+    if (lock !== 'ok') {
+      return { ok: false, message: 'No se pudo comprobar la versión de la nube. Revisa tu conexión e intenta de nuevo.' };
     }
     // Red de seguridad antes de escribir: ningún campo prohibido a ningún nivel.
     const leaked = publishCore.findForbiddenKeys({ program: current.program, progress: current.progress });

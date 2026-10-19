@@ -307,7 +307,7 @@
   // guarda nada en la nube. Debe coincidir con el encabezado (index.html) y la caché
   // (service-worker.js); lo revisa tests/version-lock.test.js.
   // ---------------------------------------------------------------------------
-  const APP_VERSION = '0.9.21';
+  const APP_VERSION = '0.9.22';
   const APP_VERSION_KEY = 'appVersion';
 
   // -1, 0 o 1 comparando "0.9.16" con "0.9.9" por partes numéricas. Lo que no es una
@@ -328,6 +328,23 @@
   // ¿La nube la guardó una app más nueva que esta?
   function isLockedBy(cloudAppVersion, appVersion = APP_VERSION) {
     return Boolean(cloudAppVersion) && compareVersions(cloudAppVersion, appVersion) > 0;
+  }
+
+  // "Publicar al alumno" respeta el mismo candado que el guardado en la nube. Devuelve:
+  //   { status: 'locked', version }  este equipo ya está bloqueado o la nube la guardó una
+  //                                  versión más nueva (se aplica el candado);
+  //   { status: 'unverified' }       no se pudo leer la versión de la nube: no se publica,
+  //                                  pero tampoco se aplica el candado;
+  //   { status: 'ok' }               se puede publicar.
+  function publishLock({ alreadyLocked = false, lockedVersion = '', fetched = false, cloudAppVersion = '' } = {}, appVersion = APP_VERSION) {
+    if (alreadyLocked) {
+      return { status: 'locked', version: String(lockedVersion || '') };
+    }
+    if (!fetched) {
+      return { status: 'unverified' };
+    }
+    const version = String(cloudAppVersion || '');
+    return isLockedBy(version, appVersion) ? { status: 'locked', version } : { status: 'ok' };
   }
 
   // Lo que se escribe en coach_state: los datos más la versión de la app.
@@ -351,6 +368,7 @@
     APP_VERSION_KEY,
     compareVersions,
     isLockedBy,
+    publishLock,
     stampPayload,
     splitCloudData,
     evaluateUploadGuard,
