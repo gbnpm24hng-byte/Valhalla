@@ -339,6 +339,8 @@
     libraryRelationTargetIdInput: document.getElementById('libraryRelationTargetId'),
     libraryRelationTypeSelect: document.getElementById('libraryRelationType'),
     libraryExerciseList: document.getElementById('libraryExerciseList'),
+    libraryExerciseForm: document.getElementById('libraryExerciseForm'),
+    libraryExerciseCount: document.getElementById('libraryExerciseCount'),
     libraryMessage: document.getElementById('libraryMessage'),
     newLibraryExerciseBtn: document.getElementById('newLibraryExerciseBtn'),
     libraryImportBtn: document.getElementById('libraryImportBtn'),
@@ -4521,9 +4523,24 @@
     }
   }
 
+  // Fichas de la biblioteca abiertas (solo en memoria: al reabrir la app parten cerradas).
+  const libraryExpandedIds = new Set();
+
+  // El formulario "Nuevo ejercicio" / "Editar ejercicio" se muestra al pedirlo.
+  function showLibraryExerciseForm() {
+    if (!els.libraryExerciseForm) {
+      return;
+    }
+    els.libraryExerciseForm.classList.remove('hidden');
+    els.libraryExerciseForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
   function renderLibraryExerciseList() {
     if (!els.libraryExerciseList) {
       return;
+    }
+    if (els.libraryExerciseCount) {
+      els.libraryExerciseCount.textContent = String((Array.isArray(state.exerciseLibrary) ? state.exerciseLibrary : []).filter((exercise) => exercise && exercise.active !== false).length);
     }
     // Búsqueda sin tildes ni mayúsculas, por nombre y por las etiquetas en español.
     const search = labelsApi.fold(els.librarySearch?.value || '');
@@ -4547,17 +4564,23 @@
           const demand = getExerciseDemandSummary(exercise);
           const alternatives = findAlternativesForExercise(exercise);
           const baseName = findLibraryExerciseByName(exercise.baseExerciseId)?.name || '';
+          const expanded = libraryExpandedIds.has(exercise.id);
           return `
-        <div class="training-set-item library-exercise-item">
+        <div class="training-set-item library-exercise-item${expanded ? ' is-open' : ''}">
           <div class="library-exercise-main">
-            <strong>${escapeHtml(exercise.name || 'Ejercicio')}</strong>
-            <div class="meta">${escapeHtml(labelsApi.label('pattern', exercise.pattern || 'other'))} · ${escapeHtml(labelsApi.label('muscle', exercise.primaryMuscle || 'full_body'))} · ${escapeHtml(labelsApi.label('level', exercise.technicalLevel || 'beginner'))} · ${escapeHtml(labelsApi.label('loadType', exercise.loadType || 'external_load'))}</div>
+            <button class="library-exercise-toggle" type="button" data-library-exercise-toggle="${escapeHtml(exercise.id)}" aria-expanded="${expanded}">
+              <strong>${escapeHtml(exercise.name || 'Ejercicio')}</strong>
+              <span class="meta"> · ${escapeHtml(labelsApi.label('pattern', exercise.pattern || 'other'))} · ${escapeHtml(labelsApi.label('muscle', exercise.primaryMuscle || 'full_body'))}</span>
+            </button>
+            <div class="library-exercise-details"${expanded ? '' : ' hidden'}>
+            <div class="meta">${escapeHtml(labelsApi.label('level', exercise.technicalLevel || 'beginner'))} · ${escapeHtml(labelsApi.label('loadType', exercise.loadType || 'external_load'))}</div>
             ${exercise.secondaryMuscles?.length ? `<div class="meta">Músculos secundarios: ${escapeHtml(labelsApi.listLabel('muscle', exercise.secondaryMuscles))}</div>` : ''}
             ${exercise.equipments?.length ? `<div class="meta">Equipamiento: ${escapeHtml(labelsApi.listLabel('equipment', exercise.equipments))}</div>` : ''}
             <div class="meta">Demanda articular: ${escapeHtml(formatJointDemand(demand))}</div>
             <div class="meta">${escapeHtml(exercise.description || 'Sin descripción')}</div>
             ${baseName ? `<div class="meta">Base: ${escapeHtml(baseName)}</div>` : ''}
             ${alternatives.length ? `<div class="meta library-alternatives">Alternativas — mismo patrón, menor demanda: ${alternatives.map((item) => escapeHtml(item.name)).join(' · ')}</div>` : '<div class="meta library-alternatives">Alternativas — mismo patrón, menor demanda: ninguna por debajo</div>'}
+            </div>
           </div>
           <div class="inline-actions">
             <button class="ghost small" type="button" data-library-exercise-edit="${exercise.id}">Editar</button>
@@ -4660,6 +4683,7 @@
       return;
     }
     setLibraryFormTitle('Editar ejercicio');
+    showLibraryExerciseForm();
     libraryFreeTextOriginal.secondaryMuscles = {
       shown: labelsApi.listLabel('muscle', exercise.secondaryMuscles),
       values: Array.isArray(exercise.secondaryMuscles) ? exercise.secondaryMuscles.slice() : []
@@ -9232,6 +9256,25 @@
       return;
     }
 
+    // Tocar la ficha muestra u oculta su detalle (no cambia ningún dato).
+    const libraryToggle = target.closest('[data-library-exercise-toggle]');
+    if (libraryToggle) {
+      const exerciseId = libraryToggle.getAttribute('data-library-exercise-toggle');
+      const open = !libraryExpandedIds.has(exerciseId);
+      if (open) {
+        libraryExpandedIds.add(exerciseId);
+      } else {
+        libraryExpandedIds.delete(exerciseId);
+      }
+      libraryToggle.setAttribute('aria-expanded', String(open));
+      libraryToggle.closest('.library-exercise-item')?.classList.toggle('is-open', open);
+      const details = libraryToggle.parentElement.querySelector('.library-exercise-details');
+      if (details) {
+        details.hidden = !open;
+      }
+      return;
+    }
+
     const libraryEditId = target.getAttribute('data-library-exercise-edit');
     if (libraryEditId) {
       editLibraryExercise(libraryEditId);
@@ -10492,6 +10535,7 @@
   });
   els.newLibraryExerciseBtn?.addEventListener('click', () => {
     resetLibraryExerciseForm();
+    showLibraryExerciseForm();
     setLibraryMessage('Nuevo ejercicio listo para guardar.', 'neutral');
   });
   els.saveLibraryExerciseBtn?.addEventListener('click', () => {

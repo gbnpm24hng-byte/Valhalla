@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <title>VALHALLA</title>
-  <link rel="stylesheet" href="./assets/css/styles.css?v=0.9.22">
+  <link rel="stylesheet" href="./assets/css/styles.css?v=0.9.23">
 </head>
 <!-- Clase "solo-entrenamientos": oculta Inicio, Registrar (finanzas) y Nutrición sin borrarlos. Quitarla los vuelve a mostrar. -->
 <body class="solo-entrenamientos">
@@ -29,7 +29,7 @@
       <div class="header-actions">
         <span class="user-pill">Usuario</span>
         <span class="badge" id="cloudModeBadge">Modo Local</span>
-        <span class="badge">v0.9.22</span>
+        <span class="badge">v0.9.23</span>
       </div>
     </header>
 
@@ -938,14 +938,13 @@
         <div id="trainingsStudents"></div>
       </div>
 
-      <div class="card">
-        <div class="section-title">
-          <h2>Biblioteca de Ejercicios</h2>
-          <div class="inline-actions">
-            <button class="secondary small" id="newLibraryExerciseBtn" type="button">Nuevo ejercicio</button>
-            <button class="ghost small" id="libraryImportBtn" type="button">Agregar desde respaldo</button>
-            <input id="libraryImportFile" class="hidden" type="file" accept=".json,application/json">
-          </div>
+      <!-- Solo en Planificación (styles.css). Cerrada al abrir la app; <details> recuerda abierta/cerrada mientras la app siga abierta. -->
+      <details id="libraryPanel" class="card library-panel">
+        <summary class="library-panel-summary"><h2>Biblioteca de ejercicios (<span id="libraryExerciseCount">0</span>)</h2></summary>
+        <div class="inline-actions library-panel-actions">
+          <button class="secondary small" id="newLibraryExerciseBtn" type="button">+ Nuevo ejercicio</button>
+          <button class="ghost small" id="libraryImportBtn" type="button">Agregar desde respaldo</button>
+          <input id="libraryImportFile" class="hidden" type="file" accept=".json,application/json">
         </div>
         <form id="librarySearchForm" class="form-grid library-filters" autocomplete="off">
           <div class="row">
@@ -975,7 +974,8 @@
             </div>
           </div>
         </form>
-        <form id="libraryExerciseForm" class="form-grid library-exercise-form">
+        <div id="libraryMessage" class="notice"></div>
+        <form id="libraryExerciseForm" class="form-grid library-exercise-form hidden">
           <h3 id="libraryExerciseFormTitle" class="library-form-title">Nuevo ejercicio</h3>
           <input id="libraryExerciseId" type="hidden" value="">
           <div class="row">
@@ -1088,10 +1088,9 @@
             </div>
           </div>
           <button class="primary" id="saveLibraryExerciseBtn" type="button">Guardar ejercicio</button>
-          <div id="libraryMessage" class="notice"></div>
         </form>
         <div id="libraryExerciseList" class="training-set-list"></div>
-      </div>
+      </details>
     </section>
 
     <section id="studentTraining" class="hidden">

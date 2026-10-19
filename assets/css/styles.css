@@ -2680,3 +2680,98 @@ details.group-athlete-row[open] > summary h3::before {
 .solo-entrenamientos .nav-inner {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
+
+/* Biblioteca de ejercicios: solo en Planificación, cerrada como desplegable, fichas de una línea. */
+#trainings:not([data-view="planning"]) #libraryPanel {
+  display: none !important;
+}
+
+.library-panel-summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+}
+
+.library-panel-summary::-webkit-details-marker {
+  display: none;
+}
+
+.library-panel-summary::before {
+  content: '▸';
+  color: var(--accent);
+  transition: transform 0.15s ease;
+}
+
+.library-panel[open] > .library-panel-summary::before {
+  transform: rotate(90deg);
+}
+
+.library-panel-summary h2 {
+  margin: 0;
+}
+
+.library-panel-actions {
+  justify-content: flex-start;
+  margin: 12px 0;
+}
+
+.library-exercise-item {
+  align-items: center;
+  min-width: 0;
+}
+
+.library-exercise-toggle {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-height: 44px;
+  padding: 4px 0;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  /* Cerrada: una sola línea, recortada con "…". Abierta: el nombre completo. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.library-exercise-item.is-open .library-exercise-toggle {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* .training-set-item strong es bloque: en la ficha cerrada nombre y datos van en la misma línea. */
+.library-exercise-toggle strong,
+.library-exercise-toggle .meta {
+  display: inline;
+}
+
+.library-exercise-details {
+  margin-top: 6px;
+}
+
+@media (max-width: 520px) {
+  .library-exercise-item {
+    flex-direction: row;
+    align-items: center;
+  }
+  .library-exercise-item.is-open {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .library-exercise-item > .inline-actions {
+    flex-shrink: 0;
+    flex-wrap: nowrap;
+    gap: 6px;
+  }
+  .library-exercise-item > .inline-actions button {
+    min-height: 40px;
+    padding: 8px 10px;
+  }
+}
