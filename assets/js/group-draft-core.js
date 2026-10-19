@@ -147,6 +147,35 @@
   }
 
   // ¿Vale la pena guardarlo? Sin nada escrito sin confirmar, se borra.
+  // "Última vez" (al estilo Hevy): series efectivas hechas la última vez, como texto para
+  // las casillas. Peso o repeticiones sin dato quedan ''.
+  function lastSetValues(effectiveSets) {
+    const text = (value) => (value === null || value === undefined || value === '' || !Number.isFinite(Number(value)) ? '' : String(Number(value)));
+    return (Array.isArray(effectiveSets) ? effectiveSets : []).map((setEntry) => ({ weight: text(setEntry?.weight), reps: text(setEntry?.reps) }));
+  }
+
+  // "Repetir última vez": copia los valores de la última vez solo a las casillas vacías de
+  // peso y repeticiones (nunca pisa lo escrito) y sube la cantidad de series hasta las de la
+  // última vez (máximo maxSets; nunca la baja). No toca RIR, aproximaciones, comentario ni
+  // decisión. Devuelve una copia del borrador y cuántas casillas llenó.
+  function fillFromLast(draft, lastSets, maxSets = 10) {
+    const next = { ...(isPlainObject(draft) ? draft : {}) };
+    const values = (Array.isArray(lastSets) ? lastSets : []).slice(0, maxSets);
+    const currentCount = Math.max(1, Math.round(Number(next.setCount)) || 1);
+    next.setCount = Math.min(maxSets, Math.max(currentCount, values.length));
+    let filled = 0;
+    values.forEach((value, index) => {
+      ['weight', 'reps'].forEach((part) => {
+        const key = `s${index + 1}${part === 'weight' ? 'Weight' : 'Reps'}`;
+        if (String(next[key] ?? '').trim() === '' && value?.[part]) {
+          next[key] = value[part];
+          filled += 1;
+        }
+      });
+    });
+    return { draft: next, filled };
+  }
+
   function isWorthSaving(snapshot) {
     return Boolean(snapshot) && hasUnconfirmedData(snapshot);
   }
@@ -161,6 +190,8 @@
     buildSnapshot,
     readSnapshot,
     classify,
-    isWorthSaving
+    isWorthSaving,
+    lastSetValues,
+    fillFromLast
   };
 })();

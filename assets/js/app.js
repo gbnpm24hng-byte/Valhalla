@@ -1648,7 +1648,8 @@
     const tag = planExercise.overrideId
       ? `<span class="tag ${onlyToday ? 'warn' : 'ok'} group-override-tag">${onlyToday ? 'Solo hoy' : `Solo para ${escapeHtml(getClientFirstName(client))}`}</span>`
       : '';
-    const lastTime = formatLastGroupPerformance(findLastGroupPerformance(clientId, planExercise, groupSessionUi.sessionDate));
+    const lastFound = findLastGroupPerformance(clientId, planExercise, groupSessionUi.sessionDate);
+    const lastTime = formatLastGroupPerformance(lastFound);
     const heading = `
       <div class="group-ex-head">
         <strong>${confirmed ? '✓ ' : ''}${index + 1}. ${escapeHtml(planExercise.exerciseName || 'Ejercicio')}</strong>
@@ -1680,6 +1681,8 @@
         </div>`;
     }
     const draft = getGroupDraft(clientId, planExercise);
+    // Valores de la última vez por serie: se ven en gris en las casillas vacías.
+    const lastSets = lastFound ? groupDraftApi.lastSetValues(getGroupEffectiveSets(lastFound.exercise)) : [];
     const decisionLabels = [['up', '↑ Subir'], ['keep', '→ Mantener'], ['down', '↓ Bajar']];
     const field = (name, label, type, extra = '') => `<label>${label}<input type="${type}" ${extra} data-group-field="${name}" ${attrs} value="${escapeHtml(draft[name] ?? '')}"></label>`;
     const setNumbers = Array.from({ length: draft.setCount }, (_, index) => index + 1);
@@ -1691,13 +1694,14 @@
     return `
       <div class="group-exercise" data-group-exercise="${pid}">
         ${heading}
+        ${lastSets.length ? `<button class="secondary group-repeat-last" type="button" data-group-repeat-last ${attrs}>Repetir última vez</button>` : ''}
         <div class="group-set-grid">
           ${field('warmups', 'Aproximaciones', 'text', 'inputmode="text" placeholder="30/40 kg"')}
           ${setNumbers.map((n) => `
             <div class="group-set">
               <span class="group-set-label">S${n}</span>
-              ${field(`s${n}Weight`, `<span class="sr-only">S${n} peso en kg</span>`, 'number', 'min="0" step="0.5" inputmode="decimal" placeholder="kg"')}
-              ${field(`s${n}Reps`, `<span class="sr-only">S${n} repeticiones</span>`, 'number', 'min="0" step="1" inputmode="numeric" placeholder="reps"')}
+              ${field(`s${n}Weight`, `<span class="sr-only">S${n} peso en kg</span>`, 'number', `min="0" step="0.5" inputmode="decimal" placeholder="${lastSets[n - 1]?.weight ? `${escapeHtml(lastSets[n - 1].weight)} kg` : 'kg'}"`)}
+              ${field(`s${n}Reps`, `<span class="sr-only">S${n} repeticiones</span>`, 'number', `min="0" step="1" inputmode="numeric" placeholder="${lastSets[n - 1]?.reps ? `${escapeHtml(lastSets[n - 1].reps)} reps` : 'reps'}"`)}
             </div>`).join('')}
           ${field('rir', 'RIR final', 'number', 'min="0" max="10" step="1" inputmode="numeric"')}
         </div>
@@ -2026,6 +2030,23 @@
         draft.setCount = last - 1;
       }
     }
+    renderTrainingGroupMode();
+  }
+
+  // "Repetir última vez": llena las casillas vacías con la última vez (group-draft-core.js).
+  // Solo llena el formulario: no guarda ni confirma.
+  function repeatLastGroupPerformance(clientId, planExerciseId) {
+    const row = findGroupPlanExercise(clientId, planExerciseId);
+    if (!row) {
+      return;
+    }
+    const found = findLastGroupPerformance(clientId, row.planExercise, groupSessionUi.sessionDate);
+    if (!found) {
+      return;
+    }
+    const key = `${clientId}::${row.planExercise.id}`;
+    const result = groupDraftApi.fillFromLast(getGroupDraft(clientId, row.planExercise), groupDraftApi.lastSetValues(getGroupEffectiveSets(found.exercise)), GROUP_MAX_SETS);
+    groupSessionUi.drafts[key] = { ...result.draft, error: '' };
     renderTrainingGroupMode();
   }
 
@@ -9327,6 +9348,12 @@
         groupDecisionButton.getAttribute('data-plan-exercise-id'),
         groupDecisionButton.getAttribute('data-group-decision')
       );
+      return;
+    }
+
+    const groupRepeatButton = target.closest('[data-group-repeat-last]');
+    if (groupRepeatButton) {
+      repeatLastGroupPerformance(groupRepeatButton.getAttribute('data-client-id'), groupRepeatButton.getAttribute('data-plan-exercise-id'));
       return;
     }
 

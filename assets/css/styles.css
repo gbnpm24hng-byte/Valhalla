@@ -2790,3 +2790,18 @@ details.group-athlete-row[open] > summary h3::before {
   flex: 1 1 220px;
   margin: 0;
 }
+
+/* Modo Grupo: "Repetir última vez" (llena las casillas vacías con la última vez). */
+.group-repeat-last {
+  width: 100%;
+  min-height: 48px;
+  margin: 8px 0;
+}
+
+/* Columnas de series más anchas en pantallas grandes: caben "72.5 kg" y "8 reps"
+   (valores de la última vez en gris). En el teléfono no cambia (regla de max-width: 520px). */
+@media (min-width: 521px) {
+  .group-exercise .group-set-grid {
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  }
+}

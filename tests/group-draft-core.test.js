@@ -75,3 +75,67 @@ test('hoy se retoma solo; de otro día se pregunta; sin nada no hay borrador', (
   assert.equal(core.classify(onlySelected, '2026-10-12'), 'none');
   assert.equal(core.isWorthSaving(snap), true);
 });
+
+test('Repetir última vez: valores de la última vez como texto; sin dato queda vacío', () => {
+  assert.deepEqual(core.lastSetValues([{ weight: 60, reps: 8 }, { weight: 62.5, reps: null }, { weight: '', reps: 6 }]), [
+    { weight: '60', reps: '8' }, { weight: '62.5', reps: '' }, { weight: '', reps: '6' }
+  ]);
+  assert.deepEqual(core.lastSetValues(null), []);
+});
+
+test('Repetir última vez: borrador vacío se llena y sube las series a las de la última vez', () => {
+  const draft = { setCount: 3, warmups: '', rir: '', decision: '', proposedWeight: '60', error: '' };
+  const last = [{ weight: '60', reps: '8' }, { weight: '60', reps: '8' }, { weight: '62.5', reps: '6' }, { weight: '62.5', reps: '5' }];
+  const { draft: next, filled } = core.fillFromLast(draft, last, 10);
+  assert.equal(next.setCount, 4);
+  assert.deepEqual([1, 2, 3, 4].map((n) => [next[`s${n}Weight`], next[`s${n}Reps`]]), [['60', '8'], ['60', '8'], ['62.5', '6'], ['62.5', '5']]);
+  assert.equal(filled, 8);
+  // No copia RIR, aproximaciones, decisión ni la propuesta de peso; no cambia el recibido.
+  assert.equal(next.rir, '');
+  assert.equal(next.warmups, '');
+  assert.equal(next.decision, '');
+  assert.equal(next.proposedWeight, '60');
+  assert.equal(draft.s1Weight, undefined);
+  assert.equal(draft.setCount, 3);
+});
+
+test('Repetir última vez: no pisa lo escrito ni baja la cantidad de series', () => {
+  const draft = { setCount: 4, s1Weight: '70', s2Reps: '10', s4Weight: '80', rir: '2', warmups: '30/40', comment: { text: 'Nota falsa', visibleToStudent: false } };
+  const last = [{ weight: '60', reps: '8' }, { weight: '60', reps: '8' }];
+  const { draft: next, filled } = core.fillFromLast(draft, last, 10);
+  assert.equal(next.setCount, 4, 'la última vez tuvo 2: no baja de 4');
+  assert.equal(next.s1Weight, '70');
+  assert.equal(next.s1Reps, '8');
+  assert.equal(next.s2Weight, '60');
+  assert.equal(next.s2Reps, '10');
+  assert.equal(next.s4Weight, '80');
+  assert.equal(next.s3Weight, undefined);
+  assert.equal(filled, 2);
+  assert.equal(next.rir, '2');
+  assert.equal(next.warmups, '30/40');
+  assert.deepEqual(next.comment, { text: 'Nota falsa', visibleToStudent: false });
+  // Una casilla con solo espacios cuenta como vacía; un valor sin dato no se copia.
+  const blanks = core.fillFromLast({ setCount: 1, s1Weight: '  ' }, [{ weight: '50', reps: '' }], 10).draft;
+  assert.equal(blanks.s1Weight, '50');
+  assert.equal(blanks.s1Reps, undefined);
+});
+
+test('Repetir última vez: con más series que el máximo copia solo hasta el máximo', () => {
+  const last = Array.from({ length: 12 }, (_, index) => ({ weight: String(40 + index), reps: '8' }));
+  const { draft: next } = core.fillFromLast({ setCount: 3 }, last, 10);
+  assert.equal(next.setCount, 10);
+  assert.equal(next.s10Weight, '49');
+  assert.equal(next.s11Weight, undefined);
+  assert.equal(next.s12Weight, undefined);
+  // El borrador guardado en el teléfono conserva las 10 series (máximo de cleanEntry).
+  const snapshot = core.readSnapshot(JSON.stringify(core.buildSnapshot({ ownerId: 'coach-falso', today: '2026-10-19', ui: { sessionDate: '2026-10-19', selectedClientIds: ['cli-a'], drafts: { 'cli-a::ej-1': next } } })), 'coach-falso');
+  assert.equal(snapshot.drafts['cli-a::ej-1'].setCount, 10);
+  assert.equal(snapshot.drafts['cli-a::ej-1'].s10Weight, '49');
+});
+
+test('Repetir última vez: sin última vez no cambia nada', () => {
+  const draft = { setCount: 3, s1Weight: '70' };
+  const { draft: next, filled } = core.fillFromLast(draft, [], 10);
+  assert.deepEqual(next, draft);
+  assert.equal(filled, 0);
+});
