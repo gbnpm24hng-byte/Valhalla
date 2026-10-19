@@ -572,7 +572,7 @@
       title: itemPayload?.title || 'Consideración',
       description: itemPayload?.description || null,
       status: itemPayload?.status || 'activa',
-      noted_on: itemPayload?.noted_on || new Date().toISOString().slice(0, 10),
+      noted_on: itemPayload?.noted_on || dataApi.localDateString(),
       review_date: itemPayload?.review_date || null
     };
     const { data, error } = await client

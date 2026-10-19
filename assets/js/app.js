@@ -30,7 +30,7 @@
   const nutritionUi = {
     selectedClientId: state.clients[0]?.id || '',
     editingPlanId: null,
-    dailyDate: new Date().toISOString().slice(0, 10)
+    dailyDate: getTodayLocalDate()
   };
   const trainingUi = {
     selectedClientId: '',
@@ -884,10 +884,9 @@
     return date.toLocaleDateString('es-CL');
   }
 
+  // Hoy en la hora local del equipo (data.js).
   function getTodayLocalDate() {
-    const today = new Date();
-    const timezoneOffset = today.getTimezoneOffset() * 60000;
-    return new Date(today.getTime() - timezoneOffset).toISOString().slice(0, 10);
+    return dataApi.localDateString();
   }
 
   function ensureDateValue(input) {
@@ -8950,7 +8949,7 @@
       id: dataApi.createId('log'),
       clientId: payload.clientId,
       planId: profile?.currentPlanId || '',
-      date: payload.date || new Date().toISOString().slice(0, 10),
+      date: payload.date || getTodayLocalDate(),
       cycleDay: Number(payload.cycleDay || 1),
       completedMeals: selectedMeals.length,
       totalMeals: plan?.days?.find((day) => Number(day.dayNumber) === Number(payload.cycleDay || 1))?.meals?.length || 0,

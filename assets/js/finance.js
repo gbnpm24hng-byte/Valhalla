@@ -1,5 +1,5 @@
 (function () {
-  const { createInitialState } = window.VALHALLA.data;
+  const { createInitialState, localDateString } = window.VALHALLA.data;
 
   function formatCurrency(value) {
     return new Intl.NumberFormat('es-CL', {
@@ -41,7 +41,7 @@
   }
 
   function getMonthMovements(state, referenceDate = new Date()) {
-    const monthKey = referenceDate.toISOString().slice(0, 7);
+    const monthKey = localDateString(referenceDate).slice(0, 7);
     return state.movements.filter((movement) => movement.date && movement.date.slice(0, 7) === monthKey);
   }
 
@@ -217,7 +217,7 @@
         type: 'income',
         amount: client.amount,
         category: 'alumno',
-        date: new Date().toISOString().slice(0, 10),
+        date: localDateString(),
         description: `Pago ${client.name}`,
         segment: 'business'
       });

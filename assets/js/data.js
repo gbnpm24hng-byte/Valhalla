@@ -127,6 +127,13 @@
   const STORAGE_KEY = 'valhalla_v07';
   const LEGACY_STORAGE_KEYS = ['valhalla_v05', 'valhalla_v06'];
 
+  // Fecha de hoy (o de `date`) en la hora local del equipo, "AAAA-MM-DD". La usan data.js,
+  // app.js (getTodayLocalDate), finance.js y cloud-data.js. toISOString() da la fecha en UTC:
+  // en Chile, de 21:00 a medianoche, sería el día siguiente.
+  function localDateString(date = new Date()) {
+    return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
+  }
+
   function createId(prefix) {
     return `${prefix}-${(typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`)}`;
   }
@@ -265,7 +272,7 @@
       title: item.title || '',
       description: item.description || '',
       status: item.status || 'activa',
-      notedOn: item.notedOn || item.noted_on || new Date().toISOString().slice(0, 10),
+      notedOn: item.notedOn || item.noted_on || localDateString(),
       reviewDate: item.reviewDate || item.review_date || ''
     };
   }
@@ -803,7 +810,7 @@
       id: log.id || createId('log'),
       clientId: log.clientId || '',
       planId: log.planId || '',
-      date: log.date || new Date().toISOString().slice(0, 10),
+      date: log.date || localDateString(),
       cycleDay: Number(log.cycleDay || 1),
       completedMeals: Number(log.completedMeals || 0),
       totalMeals: Number(log.totalMeals || 0),
@@ -1055,6 +1062,7 @@
     exportState,
     importState,
     createId,
+    localDateString,
     normalizeClient,
     resetClientSessionMonth,
     normalizeLibraryExercise,
