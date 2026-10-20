@@ -19,9 +19,10 @@ function extractFunction(name) {
   throw new Error(`Llaves sin cerrar en ${name}`);
 }
 
-function build({ sessionDate, dayChoices = {}, hoyDayId = '' }) {
+// sessions: sesiones del alumno (B3.4: la de Modo Grupo o la del alumno en esa fecha deciden el día).
+function build({ sessionDate, dayChoices = {}, hoyDayId = '', sessions = [] }) {
   const groupSessionUi = { sessionDate, dayChoices };
-  const factory = new Function('groupSessionUi', 'getTodayLocalDate', 'getSelectedTrainingProgramDay', `
+  const factory = new Function('groupSessionUi', 'getTodayLocalDate', 'getSelectedTrainingProgramDay', 'getTrainingSessionsByClient', 'getSessionExercises', 'studentImportApi', `
     ${extractFunction('getWeekdayFromProgramDayName')}
     ${extractFunction('getGroupProgramDay')}
     return { getWeekdayFromProgramDayName, getGroupProgramDay };`);
@@ -31,7 +32,10 @@ function build({ sessionDate, dayChoices = {}, hoyDayId = '' }) {
     (clientId, assignment) => {
       const index = assignment.days.findIndex((day) => day.id === hoyDayId);
       return { day: index >= 0 ? assignment.days[index] : null, index };
-    }
+    },
+    () => sessions,
+    (session) => session.exercises || [],
+    { isStudentSet: (entry) => entry?.loggedBy === 'student' }
   );
 }
 
@@ -87,4 +91,18 @@ test('se salta días sin ejercicios al elegir automáticamente', () => {
   const withEmpty = { id: 'a', days: [{ id: 'vacio', name: 'Lunes — Vacío', exercises: [] }, ...GROUP.days.slice(1)] };
   assert.equal(build({ sessionDate: '2026-10-05' }).getGroupProgramDay('c', withEmpty).day.id, 'mie');
   assert.equal(build({ sessionDate: '2026-10-05' }).getGroupProgramDay('c', { id: 'x', days: [] }).day, null);
+});
+
+test('B3.4: el día de la sesión de Modo Grupo de esa fecha y, si no hay, el que registró el alumno', () => {
+  const studentSession = { date: '2026-10-05', programDayId: 'vie', groupSessionId: null, exercises: [{ sets: [{ loggedBy: 'student', weight: 40 }] }] };
+  const groupSession = { date: '2026-10-05', programDayId: 'mie', groupSessionId: 'group-x', exercises: [{ sets: [{ weight: 50 }] }] };
+  // Lunes: sin sesiones gana el día de la semana; con lo del alumno (Viernes), su día.
+  assert.equal(build({ sessionDate: '2026-10-05', sessions: [studentSession] }).getGroupProgramDay('c', GROUP).day.id, 'vie');
+  // Lo de Modo Grupo de esa fecha gana a lo del alumno; la elección manual gana a todo.
+  assert.equal(build({ sessionDate: '2026-10-05', sessions: [studentSession, groupSession] }).getGroupProgramDay('c', GROUP).day.id, 'mie');
+  assert.equal(build({ sessionDate: '2026-10-05', dayChoices: { c: 'lun' }, sessions: [studentSession, groupSession] }).getGroupProgramDay('c', GROUP).day.id, 'lun');
+  // Otra fecha, otra asignación o sesiones sin series del alumno no cuentan.
+  assert.equal(build({ sessionDate: '2026-10-07', sessions: [studentSession] }).getGroupProgramDay('c', GROUP).day.id, 'mie');
+  assert.equal(build({ sessionDate: '2026-10-05', sessions: [{ ...studentSession, programDayId: 'pt1' }] }).getGroupProgramDay('c', GROUP).day.id, 'lun');
+  assert.equal(build({ sessionDate: '2026-10-05', sessions: [{ ...studentSession, exercises: [{ sets: [{ weight: 40 }] }] }] }).getGroupProgramDay('c', GROUP).day.id, 'lun');
 });

@@ -17,6 +17,9 @@ Guarda primero en localStorage y sincroniza con Supabase (coach_state + tablas d
   guardados en trainingsV08.clientOverrides y aplicados encima de su asignación (nunca tocan el programa común).
 - group-draft-core.js — borrador de Modo Grupo (lo escrito sin confirmar), solo en el teléfono:
   clave propia valhalla_group_draft:<cuenta>, fuera del estado; no sube a la nube ni sale en respaldos.
+- student-import-core.js — "Traer registros" (B3.3): junta student_sets en las sesiones sin pisar lo del entrenador.
+- coach-sets-core.js — B3.4: Modo Grupo prellena con lo del alumno; al confirmar escribe en student_sets solo lo
+  corregido o no registrado (coach_validated). Lo pendiente vive en valhalla_coach_sets:<cuenta>, fuera del estado.
 - onboarding.js — formulario público de ingreso (?onboarding=1), sin login.
 - cloud-data.js — capa de tablas antiguas, desactivada. supabase/ — migración A0 y prueba de RLS (SQL).
 

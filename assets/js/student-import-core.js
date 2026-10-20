@@ -59,9 +59,32 @@
     return { assignment, day, exercise };
   }
 
+  // B3.4: alumno con dos sesiones la misma fecha con distinto día del programa (no se
+  // fusionan; se avisa). Solo revisa las fechas de las filas traídas.
+  function findDaySplits(state, rows) {
+    const sessions = state.trainingsV08?.sessions || [];
+    const assignments = state.trainingsV08?.assignments || [];
+    const pairs = new Map();
+    (rows || []).forEach((row) => pairs.set(`${row.client_id}|${row.session_date}`, { clientId: row.client_id, date: row.session_date }));
+    const splits = [];
+    pairs.forEach(({ clientId, date }) => {
+      const sameDay = sessions.filter((session) => session.clientId === clientId && session.date === date && session.programDayId);
+      const dayIds = [...new Set(sameDay.map((session) => session.programDayId))];
+      if (dayIds.length < 2) return;
+      const dayNames = dayIds.map((dayId) => {
+        const session = sameDay.find((item) => item.programDayId === dayId);
+        const day = assignments.find((item) => item.id === session.programAssignmentId)?.days?.find((item) => item.id === dayId);
+        return String(session.programDayName || day?.name || 'Día');
+      });
+      splits.push({ clientId, date, dayNames });
+    });
+    return splits.sort((a, b) => a.date.localeCompare(b.date) || a.clientId.localeCompare(b.clientId));
+  }
+
   // rows: filas de student_sets. Devuelve el resumen; cambia `state` en el lugar.
-  function mergeStudentSets(state, rows, { coachId, createId, now = new Date() }) {
-    const summary = { added: 0, updated: 0, keptCoach: 0, unchanged: 0, sessionsCreated: 0, ignored: 0 };
+  // skipRow (B3.4): filas que no se tocan porque el entrenador tiene esa serie pendiente de subir.
+  function mergeStudentSets(state, rows, { coachId, createId, now = new Date(), skipRow = null }) {
+    const summary = { added: 0, updated: 0, keptCoach: 0, unchanged: 0, sessionsCreated: 0, ignored: 0, splits: [] };
     if (!state.trainingsV08 || typeof state.trainingsV08 !== 'object') {
       state.trainingsV08 = { plans: [], sessions: [], programs: [], assignments: [] };
     }
@@ -77,6 +100,8 @@
       if (!ok) summary.ignored += 1;
       return ok;
     });
+    const pendingCoach = new Set(skipRow ? usable.filter((row) => skipRow(row)) : []);
+    summary.keptCoach += pendingCoach.size;
     // Orden estable: por fecha, aproximaciones antes que efectivas, y por número.
     usable.sort((a, b) => String(a.session_date).localeCompare(String(b.session_date))
       || String(a.client_id).localeCompare(String(b.client_id))
@@ -85,6 +110,7 @@
       || Number(a.set_number) - Number(b.set_number));
 
     for (const row of usable) {
+      if (pendingCoach.has(row)) continue;
       const id = rowId(row);
       const plan = findPlan(state, row);
 
@@ -139,6 +165,8 @@
       if (known) {
         if (known.loggedBy === STUDENT && !sameValues(known, row)) {
           applyRow(known, row);
+          // B3.4: si el entrenador ya la había revisado, el cambio del alumno se vuelve a revisar.
+          known.coachValidated = false;
           summary.updated += 1;
         } else if (known.loggedBy === STUDENT) {
           summary.unchanged += 1;
@@ -182,6 +210,7 @@
       sets.push(entry);
       summary.added += 1;
     }
+    summary.splits = findDaySplits(state, usable);
     return summary;
   }
 
@@ -193,5 +222,5 @@
     return (session?.exercises || []).reduce((sum, exercise) => sum + (exercise.sets || []).filter(isStudentSet).length, 0);
   }
 
-  window.VALHALLA.studentImportCore = { mergeStudentSets, isStudentSet, countStudentSets, rowId };
+  window.VALHALLA.studentImportCore = { mergeStudentSets, findDaySplits, isStudentSet, countStudentSets, rowId };
 })();

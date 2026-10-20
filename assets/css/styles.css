@@ -3263,6 +3263,30 @@ details.group-athlete-row[open] > summary h3::before {
   width: 56px;
 }
 
+/* B3.4: lo que registró el alumno, en gris (Modo Grupo, lista y compacta). */
+.group-student-logged {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.group-student-feel {
+  align-self: center;
+  color: var(--muted);
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.group-exercise--compact .group-student-feel-label {
+  display: none;
+}
+
+.group-import-notice {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
 .group-exercise--compact .group-repeat-last {
   flex: 1 1 auto;
   width: auto;

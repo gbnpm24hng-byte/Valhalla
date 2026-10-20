@@ -13,6 +13,8 @@
   const programImportApi = window.VALHALLA.programImport;
   // Series registradas por los alumnos (student-import-core.js).
   const studentImportApi = window.VALHALLA.studentImportCore;
+  // B3.4: Modo Grupo con lo del alumno y lo que se escribe en student_sets (coach-sets-core.js).
+  const coachSetsApi = window.VALHALLA.coachSetsCore;
   // Cambios de ejercicio de un alumno, aparte de su programa (client-overrides-core.js).
   const overridesApi = window.VALHALLA.clientOverrides;
   // Borrador de Modo Grupo guardado solo en este teléfono (group-draft-core.js).
@@ -98,7 +100,9 @@
     activeClientId: '',
     focus: {},
     moreOpen: {},
-    clientsOpen: null
+    clientsOpen: null,
+    // Línea pequeña sobre lo traído de los alumnos (sin conexión, error o dos sesiones el mismo día).
+    importNotice: ''
   };
   // Cuenta dueña del borrador (el borrador queda ligado a ella) y si ya se revisó al abrir.
   let groupDraftOwner = '';
@@ -111,6 +115,11 @@
     tone: ''
   };
   const STUDENT_IMPORT_AUTO_MS = 60000;
+  // B3.4: vínculos de alumnos (client_links) leídos de la nube, solo en memoria. Mientras no
+  // se leen, lo confirmado queda pendiente y se decide al subir.
+  const studentLinks = { loaded: false, ownerId: '', byClient: new Map() };
+  const coachSetsUi = { flushing: false };
+  const GROUP_IMPORT_OFFLINE = 'Sin conexión: no se trajeron registros de alumnos';
   const routineBuilder = {
     screen: 'day',
     activeDayIndex: 0,
@@ -1064,9 +1073,11 @@
   }
 
   // Día del programa para Modo Grupo, en este orden:
-  // 1) el elegido a mano en Modo Grupo; 2) el que empieza con el día de la semana de la
-  // fecha de sesión; 3) la "Sesión del programa" elegida en Hoy; 4) el primer día con
-  // ejercicios. Así un alumno con asignación activa siempre tiene un día.
+  // 1) el elegido a mano en Modo Grupo; 2) el de la sesión de Modo Grupo que ya tiene en esa
+  // fecha; 3) el que registró el alumno en esa fecha (B3.4: así no quedan dos sesiones el
+  // mismo día); 4) el que empieza con el día de la semana de la fecha de sesión; 5) la
+  // "Sesión del programa" elegida en Hoy; 6) el primer día con ejercicios. Así un alumno
+  // con asignación activa siempre tiene un día.
   function getGroupProgramDay(clientId, assignment) {
     const days = Array.isArray(assignment?.days) ? assignment.days : [];
     const withExercises = (day) => Array.isArray(day?.exercises) && day.exercises.length > 0;
@@ -1074,6 +1085,17 @@
     const chosen = byId(groupSessionUi.dayChoices[clientId]);
     if (chosen >= 0) {
       return { day: days[chosen], index: chosen, reason: 'manual' };
+    }
+    const sameDate = getTrainingSessionsByClient(clientId).filter((session) => session.date === groupSessionUi.sessionDate && byId(session.programDayId) >= 0);
+    const fromGroup = sameDate.find((session) => session.groupSessionId);
+    if (fromGroup && withExercises(days[byId(fromGroup.programDayId)])) {
+      return { day: days[byId(fromGroup.programDayId)], index: byId(fromGroup.programDayId), reason: 'session' };
+    }
+    const fromStudent = studentImportApi
+      ? sameDate.find((session) => getSessionExercises(session).some((exercise) => (exercise.sets || []).some(studentImportApi.isStudentSet)))
+      : null;
+    if (fromStudent && withExercises(days[byId(fromStudent.programDayId)])) {
+      return { day: days[byId(fromStudent.programDayId)], index: byId(fromStudent.programDayId), reason: 'student' };
     }
     const weekday = new Date(`${groupSessionUi.sessionDate || getTodayLocalDate()}T12:00:00`).getDay();
     const byWeekday = days.findIndex((day) => withExercises(day) && getWeekdayFromProgramDayName(day.name) === weekday);
@@ -1155,10 +1177,10 @@
     const key = `${clientId}::${planExercise.id}`;
     if (!groupSessionUi.drafts[key]) {
       // setCount vale solo para esta sesión: "+ serie" y "− serie" no tocan la rutina.
+      // Una casilla existe recién cuando el entrenador la toca: mientras no, se ve lo que
+      // registró el alumno (B3.4).
       groupSessionUi.drafts[key] = {
-        warmups: '',
         setCount: getGroupPlannedSets(planExercise),
-        rir: '',
         decision: '',
         proposedWeight: String(Number(planExercise.targetWeight || 0)),
         error: ''
@@ -1179,6 +1201,7 @@
   }
 
   // Ejercicio del plan ya confirmado en la fecha (evita duplicar al confirmar dos veces).
+  // B3.4: si tiene series del alumno sin revisar, todavía no está confirmado.
   function findConfirmedGroupExercise(clientId, planExerciseId) {
     for (const session of getTrainingSessionsByClient(clientId)) {
       if (!session.groupSessionId || session.date !== groupSessionUi.sessionDate) {
@@ -1186,10 +1209,56 @@
       }
       const exercise = getSessionExercises(session).find((item) => item.programExerciseId === planExerciseId);
       if (exercise) {
+        return coachSetsApi?.hasUnreviewedStudentSets(exercise) ? null : { session, exercise };
+      }
+    }
+    return null;
+  }
+
+  // ---- B3.4: lo que registró el alumno en Modo Grupo ----
+
+  // Ejercicio del alumno en la fecha y día de Modo Grupo (en la sesión que trajo "Traer
+  // registros" o en la de Modo Grupo), si tiene series suyas sin revisar.
+  function findGroupStudentExercise(clientId, dayId, planExerciseId) {
+    if (!coachSetsApi) {
+      return null;
+    }
+    for (const session of getTrainingSessionsByClient(clientId)) {
+      if (session.date !== groupSessionUi.sessionDate || session.programDayId !== dayId) {
+        continue;
+      }
+      const exercise = getSessionExercises(session).find((item) => item.programExerciseId === planExerciseId && coachSetsApi.hasUnreviewedStudentSets(item));
+      if (exercise) {
         return { session, exercise };
       }
     }
     return null;
+  }
+
+  // Prellenado del alumno: { values, studentRir } o null.
+  function getGroupStudentPrefill(clientId, context, planExercise) {
+    const found = context ? findGroupStudentExercise(clientId, context.day.id, planExercise.id) : null;
+    return found ? coachSetsApi.prefillValues(found.exercise) : null;
+  }
+
+  // Lo que se ve y se confirma: lo escrito por el entrenador encima de lo del alumno.
+  function getResolvedGroupDraft(clientId, context, planExercise) {
+    const draft = getGroupDraft(clientId, planExercise);
+    const prefill = getGroupStudentPrefill(clientId, context, planExercise);
+    return prefill ? coachSetsApi.resolveDraft(draft, prefill.values, GROUP_MAX_SETS) : draft;
+  }
+
+  // "Registrado por Ana" (gris) y su sensación junto al RIR.
+  function renderGroupStudentLogged(client, prefill) {
+    if (!prefill) {
+      return { line: '', feel: '' };
+    }
+    const feelFromRir = window.VALHALLA.studentView?.format?.feelFromRir;
+    const feel = prefill.studentRir !== null && feelFromRir ? feelFromRir(prefill.studentRir) : '';
+    return {
+      line: `<p class="meta group-student-logged" data-group-student-logged>Registrado por ${escapeHtml(getClientFirstName(client))}</p>`,
+      feel: feel ? `<span class="meta group-student-feel" data-group-student-feel title="Se sintió: ${escapeHtml(feel)}"><span class="group-student-feel-label">Se sintió: </span>${escapeHtml(feel)}</span>` : ''
+    };
   }
 
   function getClientFirstName(client) {
@@ -1696,7 +1765,9 @@
           ${changeButton}
         </div>`;
     }
-    const draft = getGroupDraft(clientId, planExercise);
+    const prefill = getGroupStudentPrefill(clientId, context, planExercise);
+    const draft = getResolvedGroupDraft(clientId, context, planExercise);
+    const studentLogged = renderGroupStudentLogged(client, prefill);
     // Valores de la última vez por serie: se ven en gris en las casillas vacías.
     const lastSets = lastFound ? groupDraftApi.lastSetValues(getGroupEffectiveSets(lastFound.exercise)) : [];
     const decisionLabels = [['up', '↑ Subir'], ['keep', '→ Mantener'], ['down', '↓ Bajar']];
@@ -1710,6 +1781,7 @@
     return `
       <div class="group-exercise" data-group-exercise="${pid}">
         ${heading}
+        ${studentLogged.line}
         ${lastSets.length ? `<button class="secondary group-repeat-last" type="button" data-group-repeat-last ${attrs}>Repetir última vez</button>` : ''}
         <div class="group-set-grid">
           ${field('warmups', 'Aproximaciones', 'text', 'inputmode="text" placeholder="30/40 kg"')}
@@ -1720,6 +1792,7 @@
               ${field(`s${n}Reps`, `<span class="sr-only">S${n} repeticiones</span>`, 'number', `min="0" step="1" inputmode="numeric" placeholder="${lastSets[n - 1]?.reps ? `${escapeHtml(lastSets[n - 1].reps)} reps` : 'reps'}"`)}
             </div>`).join('')}
           ${field('rir', 'RIR final', 'number', 'min="0" max="10" step="1" inputmode="numeric"')}
+          ${studentLogged.feel}
         </div>
         <div class="group-set-count" role="group" aria-label="Series de esta sesión">
           <button class="secondary small" type="button" data-group-set-remove ${attrs} ${draft.setCount <= 1 ? 'disabled' : ''}>− serie</button>
@@ -1895,7 +1968,8 @@
       : '';
     const lastFound = findLastGroupPerformance(clientId, planExercise, groupSessionUi.sessionDate);
     const lastTime = formatLastGroupPerformance(lastFound);
-    const draft = confirmed || pickerHere ? null : getGroupDraft(clientId, planExercise);
+    const draft = confirmed || pickerHere ? null : getResolvedGroupDraft(clientId, context, planExercise);
+    const studentLogged = renderGroupStudentLogged(client, draft ? getGroupStudentPrefill(clientId, context, planExercise) : null);
     const comment = pickerHere ? null : renderGroupComment(clientId, planExercise, confirmed, attrs);
     const editingComment = groupSessionUi.commentEditor?.clientId === clientId && groupSessionUi.commentEditor.planExerciseId === planExercise.id;
     const moreOpen = !pickerHere && (Boolean(groupSessionUi.moreOpen[clientId]) || editingComment);
@@ -1953,6 +2027,7 @@
     return `
       <div class="group-exercise group-exercise--compact" data-group-exercise="${pid}">
         ${nav}
+        ${studentLogged.line}
         <div class="group-compact-sets">
           ${setNumbers.map((n) => `
             <div class="group-set">
@@ -1964,6 +2039,7 @@
         </div>
         <div class="group-compact-row">
           <label class="group-compact-rir">RIR final<input type="number" min="0" max="10" step="1" inputmode="numeric" data-group-field="rir" ${attrs} value="${escapeHtml(draft.rir ?? '')}"></label>
+          ${studentLogged.feel}
           <button class="secondary group-icon-btn" type="button" data-group-set-remove ${attrs} aria-label="Quitar una serie" title="− serie" ${draft.setCount <= 1 ? 'disabled' : ''}>−</button>
           <button class="secondary group-icon-btn" type="button" data-group-set-add ${attrs} aria-label="Agregar una serie" title="+ serie" ${draft.setCount >= GROUP_MAX_SETS ? 'disabled' : ''}>+</button>
           ${lastSets.length ? `<button class="secondary group-repeat-last" type="button" data-group-repeat-last ${attrs}>Repetir última vez</button>` : ''}
@@ -2062,8 +2138,10 @@
     Object.assign(groupSessionUi, {
       selectedClientIds: [], sessionDate: getTodayLocalDate(), dateIsManual: false, dayChoices: {}, openClients: {}, drafts: {},
       message: '', picker: null, history: {}, clientNotices: {}, commentEditor: null, draftNotice: '', pendingDraft: null, cancelAsk: false,
-      activeClientId: '', focus: {}, moreOpen: {}, clientsOpen: null
+      activeClientId: '', focus: {}, moreOpen: {}, clientsOpen: null, importNotice: ''
     });
+    // Los vínculos de alumnos de la cuenta anterior no valen para esta.
+    Object.assign(studentLinks, { loaded: false, ownerId: '', byClient: new Map() });
   }
 
   function groupClientNames(ids) {
@@ -2220,18 +2298,22 @@
       els.groupSessionRows.innerHTML = renderGroupDraftBanner();
       return;
     }
+    // B3.4: línea pequeña sobre lo traído de los alumnos (sin conexión o dos sesiones el mismo día).
+    const importLine = groupSessionUi.importNotice
+      ? `<p class="meta group-import-notice" data-group-import-notice role="status">${escapeHtml(groupSessionUi.importNotice)}</p>`
+      : '';
     if (!groupSessionUi.selectedClientIds.length) {
-      els.groupSessionRows.innerHTML = `${renderGroupDraftBanner()}<div class="muted">Selecciona de 1 a 4 alumnos.</div>`;
+      els.groupSessionRows.innerHTML = `${importLine}${renderGroupDraftBanner()}<div class="muted">Selecciona de 1 a 4 alumnos.</div>`;
       return;
     }
     els.groupSessionRows.querySelectorAll('details[data-group-row]').forEach((details) => {
       groupSessionUi.openClients[details.getAttribute('data-group-row')] = details.open;
     });
     if (compact) {
-      els.groupSessionRows.innerHTML = renderGroupDraftBanner() + renderGroupCompact();
+      els.groupSessionRows.innerHTML = importLine + renderGroupDraftBanner() + renderGroupCompact();
       return;
     }
-    els.groupSessionRows.innerHTML = renderGroupDraftBanner() + renderGroupSessionActions() + groupSessionUi.selectedClientIds.map((clientId, position) => {
+    els.groupSessionRows.innerHTML = importLine + renderGroupDraftBanner() + renderGroupSessionActions() + groupSessionUi.selectedClientIds.map((clientId, position) => {
       const client = getClientById(clientId);
       const name = escapeHtml(client ? getClientDisplayName(client) : 'Alumno');
       const isOpen = groupSessionUi.openClients[clientId] ?? position === 0;
@@ -2305,17 +2387,26 @@
       return;
     }
     const draft = getGroupDraft(clientId, row.planExercise);
+    // Con lo del alumno a la vista, cuentan también sus series (B3.4).
+    const resolved = getResolvedGroupDraft(clientId, row, row.planExercise);
     draft.error = '';
     if (delta > 0) {
-      draft.setCount = Math.min(GROUP_MAX_SETS, draft.setCount + 1);
-    } else if (draft.setCount > 1) {
-      const last = draft.setCount;
-      const hasData = [draft[`s${last}Weight`], draft[`s${last}Reps`]].some((value) => String(value ?? '').trim() !== '');
+      draft.setCount = Math.min(GROUP_MAX_SETS, resolved.setCount + 1);
+    } else if (resolved.setCount > 1) {
+      const last = resolved.setCount;
+      const hasData = [resolved[`s${last}Weight`], resolved[`s${last}Reps`]].some((value) => String(value ?? '').trim() !== '');
       if (hasData) {
         draft.error = `La serie ${last} tiene datos: bórralos antes de quitarla`;
       } else {
-        delete draft[`s${last}Weight`];
-        delete draft[`s${last}Reps`];
+        // Si el alumno tenía datos en esa serie (y el entrenador los borró), queda vacía a propósito.
+        const prefill = getGroupStudentPrefill(clientId, row, row.planExercise)?.values || {};
+        [`s${last}Weight`, `s${last}Reps`].forEach((key) => {
+          if (prefill[key]) {
+            draft[key] = '';
+          } else {
+            delete draft[key];
+          }
+        });
         draft.setCount = last - 1;
       }
     }
@@ -2334,7 +2425,7 @@
       return;
     }
     const key = `${clientId}::${row.planExercise.id}`;
-    const result = groupDraftApi.fillFromLast(getGroupDraft(clientId, row.planExercise), groupDraftApi.lastSetValues(getGroupEffectiveSets(found.exercise)), GROUP_MAX_SETS);
+    const result = groupDraftApi.fillFromLast(getResolvedGroupDraft(clientId, row, row.planExercise), groupDraftApi.lastSetValues(getGroupEffectiveSets(found.exercise)), GROUP_MAX_SETS);
     groupSessionUi.drafts[key] = { ...result.draft, error: '' };
     renderTrainingGroupMode();
   }
@@ -2371,10 +2462,22 @@
     return sets;
   }
 
+  // B3.4: sin sesión de Modo Grupo en la fecha, la que trajo "Traer registros" del mismo
+  // día del programa pasa a ser la de Modo Grupo (así no quedan dos sesiones el mismo día).
+  function adoptGroupStudentSession(clientId, day) {
+    const session = getTrainingSessionsByClient(clientId).find((item) => !item.groupSessionId
+      && item.date === groupSessionUi.sessionDate && item.programDayId === day.id
+      && getSessionExercises(item).some((exercise) => (exercise.sets || []).some((setEntry) => coachSetsApi?.isStudentSet(setEntry))));
+    if (session) {
+      session.groupSessionId = getGroupSessionId();
+    }
+    return session || null;
+  }
+
   // Agrega un ejercicio hecho a la sesión de Modo Grupo del alumno (la crea si no hay).
   function appendGroupPerformedExercise(clientId, context, planExercise, sets, notes) {
     const { assignment, day } = context;
-    let session = findGroupSessionForClient(clientId);
+    let session = findGroupSessionForClient(clientId) || adoptGroupStudentSession(clientId, day);
     const performed = {
       id: dataApi.createId('tx-exercise'),
       programExerciseId: planExercise.id,
@@ -2437,11 +2540,13 @@
     if (!row) {
       return;
     }
-    const { assignment, planExercise } = row;
-    const draft = getGroupDraft(clientId, planExercise);
+    const { assignment, day, planExercise } = row;
+    const stored = getGroupDraft(clientId, planExercise);
+    // Lo que se ve: lo del alumno con lo que tocó el entrenador encima (B3.4).
+    const draft = getResolvedGroupDraft(clientId, row, planExercise);
     const onlyToday = planExercise.overrideScope === 'today';
     const fail = (message) => {
-      draft.error = message;
+      stored.error = message;
       renderTrainingGroupMode();
     };
     if (findConfirmedGroupExercise(clientId, planExercise.id)) {
@@ -2468,13 +2573,36 @@
     }
 
     // Primero lo hecho (con el peso objetivo que tenía hoy), después el plan.
-    const sets = buildGroupDraftSets(draft, effective);
-    const { session, performed } = appendGroupPerformedExercise(clientId, row, planExercise, sets, onlyToday
+    // B3.4: cada serie se compara con la del alumno; lo que cambió o él no registró se
+    // escribe en student_sets (solo si el alumno registra sus series).
+    const coachSets = getCoachSetsTarget(clientId);
+    const studentFound = findGroupStudentExercise(clientId, day.id, planExercise.id);
+    const plan = coachSetsApi
+      ? coachSetsApi.planConfirm({ previous: studentFound?.exercise.sets || [], confirmed: buildGroupDraftSets(draft, effective), write: Boolean(coachSets.ownerId), mark: coachSets.known })
+      : { sets: buildGroupDraftSets(draft, effective), changes: [] };
+    const sessionNotes = onlyToday
       ? { decision: 'today', proposedExercise: planExercise.exerciseName }
-      : { decision: draft.decision, proposedWeight, proposedExercise: planExercise.exerciseName });
+      : { decision: draft.decision, proposedWeight, proposedExercise: planExercise.exerciseName };
+    let session;
+    let performed;
+    if (studentFound) {
+      // Se completa el ejercicio que trajo "Traer registros" (no se agrega otro).
+      ({ session, exercise: performed } = studentFound);
+      performed.sets = plan.sets;
+      if (!session.groupSessionId) {
+        session.groupSessionId = getGroupSessionId();
+      }
+    } else {
+      ({ session, performed } = appendGroupPerformedExercise(clientId, row, planExercise, plan.sets, sessionNotes));
+    }
     performed.plannedSets = draft.setCount;
     if (draft.comment) {
       performed.comment = draft.comment;
+    }
+    if (plan.changes.length) {
+      queueCoachSets(coachSets.ownerId, {
+        ownerId: coachSets.ownerId, clientId, assignmentId: assignment.id, sessionDate: groupSessionUi.sessionDate, dayId: day.id, exerciseId: planExercise.id
+      }, plan.changes);
     }
 
     // Nuevo peso objetivo en el programa de ESTE alumno: su asignación y sus cambios
@@ -2678,6 +2806,7 @@
       groupSessionUi.dayChoices = {};
       groupSessionUi.message = '';
       resetGroupClientViews('');
+      importStudentSetsForGroup();
       renderTrainingGroupMode();
       return;
     }
@@ -2722,11 +2851,23 @@
   // No toca asistencia, saldo, programas ni cargas.
   // ---------------------------------------------------------------------------
 
+  // B3.4: "<nombre> tiene dos sesiones el <fecha> (<día> y <día>)".
+  function describeDaySplits(splits) {
+    return (splits || []).map((split) => {
+      const client = getClientById(split.clientId);
+      const names = split.dayNames;
+      const days = names.length > 1 ? `${names.slice(0, -1).join(', ')} y ${names[names.length - 1]}` : names[0];
+      return `${client ? getClientDisplayName(client) : 'Un alumno'} tiene dos sesiones el ${formatGroupShortDate(split.date)} (${days}).`;
+    });
+  }
+
   function describeStudentImport(summary) {
+    const splits = describeDaySplits(summary.splits);
+    const withSplits = (text) => [text, ...splits].join(' ');
     if (!summary.added && !summary.updated) {
-      return summary.keptCoach
+      return withSplits(summary.keptCoach
         ? `No hay registros nuevos de alumnos (${summary.keptCoach} no se tocaron porque ya tenías datos).`
-        : 'No hay registros nuevos de alumnos.';
+        : 'No hay registros nuevos de alumnos.');
     }
     const parts = summary.added
       ? [`Se ${summary.added === 1 ? 'trajo 1 serie' : `trajeron ${summary.added} series`} de alumnos`]
@@ -2734,7 +2875,7 @@
     if (summary.added && summary.updated) parts.push(`${summary.updated} actualizada${summary.updated === 1 ? '' : 's'}`);
     if (summary.sessionsCreated) parts.push(`${summary.sessionsCreated} sesión${summary.sessionsCreated === 1 ? '' : 'es'} nueva${summary.sessionsCreated === 1 ? '' : 's'}`);
     if (summary.keptCoach) parts.push(`${summary.keptCoach} no se tocaron porque ya tenías datos`);
-    return `${parts.join(' · ')}.`;
+    return withSplits(`${parts.join(' · ')}.`);
   }
 
   function renderStudentImportMessage() {
@@ -2744,18 +2885,130 @@
     message.className = `notice${studentImportUi.tone ? ` ${studentImportUi.tone}` : ''}${studentImportUi.message ? '' : ' hidden'}`;
   }
 
+  function cloudReady() {
+    return Boolean(window.VALHALLA.cloudSync?.isActive?.()) && Boolean(window.VALHALLA.auth?.getClient) && navigator.onLine !== false;
+  }
+
+  function isNetworkError(error) {
+    return navigator.onLine === false || /fetch|network|timeout/i.test(String(error?.message || error || ''));
+  }
+
+  function currentCoachId() {
+    return groupDraftOwner || window.VALHALLA.authGate?.getUser?.()?.id || '';
+  }
+
+  // ---- B3.4: lo que el entrenador confirma en Modo Grupo, a student_sets ----
+
+  // ¿Se escribe para este alumno? ownerId vacío = no. known = se sabe que registra sus
+  // series (vínculo activo con can_self_log). Sin haber leído los vínculos (sin conexión),
+  // queda pendiente y se decide al subir.
+  function getCoachSetsTarget(clientId) {
+    const ownerId = coachSetsApi && window.VALHALLA.supabase?.isCloudEnabled?.() ? currentCoachId() : '';
+    if (!ownerId) {
+      return { ownerId: '', known: false };
+    }
+    if (studentLinks.loaded && studentLinks.ownerId === ownerId) {
+      const canSelfLog = studentLinks.byClient.get(clientId)?.canSelfLog === true;
+      return { ownerId: canSelfLog ? ownerId : '', known: canSelfLog };
+    }
+    return { ownerId, known: false };
+  }
+
+  function readCoachSetsOutbox(ownerId) {
+    try {
+      return coachSetsApi.readOutbox(localStorage.getItem(coachSetsApi.storageKey(ownerId)), ownerId);
+    } catch (error) {
+      return [];
+    }
+  }
+
+  function writeCoachSetsOutbox(ownerId, items) {
+    try {
+      const key = coachSetsApi.storageKey(ownerId);
+      if (items.length) {
+        localStorage.setItem(key, coachSetsApi.serializeOutbox(ownerId, items));
+      } else {
+        localStorage.removeItem(key);
+      }
+    } catch (error) {
+      console.warn('No se pudo guardar lo pendiente para los alumnos', error);
+    }
+  }
+
+  // Deja en el teléfono lo que hay que escribir y lo sube si hay conexión.
+  function queueCoachSets(ownerId, base, changes) {
+    const { rows, skipped } = coachSetsApi.buildRows(base, changes);
+    if (skipped) {
+      console.warn(`${skipped} serie(s) no se escriben para el alumno: fuera de los límites de la base`);
+    }
+    if (!rows.length) {
+      return;
+    }
+    writeCoachSetsOutbox(ownerId, coachSetsApi.queueRows(readCoachSetsOutbox(ownerId), rows));
+    flushCoachSets();
+  }
+
+  // Vínculos activos de los alumnos (RLS: solo los del entrenador conectado).
+  async function loadStudentLinks(client, ownerId) {
+    const result = await client.from('client_links').select('client_id, can_self_log').eq('owner_id', ownerId).eq('active', true);
+    if (result.error) {
+      return null;
+    }
+    studentLinks.byClient = new Map((result.data || []).map((row) => [row.client_id, { canSelfLog: row.can_self_log === true }]));
+    studentLinks.loaded = true;
+    studentLinks.ownerId = ownerId;
+    return studentLinks.byClient;
+  }
+
+  // Sube lo pendiente: solo de alumnos que registran sus series (lo demás se descarta sin
+  // escribir). Con el candado de versión activo no sube. Devuelve 'ok', 'empty', 'offline' o 'error'.
+  async function flushCoachSets({ links = null } = {}) {
+    const ownerId = currentCoachId();
+    if (!coachSetsApi || !ownerId || coachSetsUi.flushing || !readCoachSetsOutbox(ownerId).length) {
+      return 'empty';
+    }
+    if (!cloudReady() || window.VALHALLA.cloudSync?.isLocked?.()) {
+      return 'offline';
+    }
+    coachSetsUi.flushing = true;
+    try {
+      const client = window.VALHALLA.auth.getClient();
+      const byClient = links || await loadStudentLinks(client, ownerId);
+      if (!byClient) {
+        return 'error';
+      }
+      const { send, drop } = coachSetsApi.splitByLinks(readCoachSetsOutbox(ownerId), byClient);
+      if (send.length) {
+        const result = await client.from('student_sets').upsert(send.map((item) => item.row), { onConflict: coachSetsApi.CONFLICT_COLUMNS });
+        if (result.error) {
+          console.error(result.error);
+          writeCoachSetsOutbox(ownerId, coachSetsApi.removeDone(readCoachSetsOutbox(ownerId), drop));
+          return isNetworkError(result.error) ? 'offline' : 'error';
+        }
+      }
+      writeCoachSetsOutbox(ownerId, coachSetsApi.removeDone(readCoachSetsOutbox(ownerId), [...send, ...drop]));
+      return 'ok';
+    } catch (error) {
+      console.error(error);
+      return isNetworkError(error) ? 'offline' : 'error';
+    } finally {
+      coachSetsUi.flushing = false;
+    }
+  }
+
+  // Devuelve 'ok', 'busy', 'offline' o 'error'.
   async function importStudentSets({ manual = false } = {}) {
     const authApi = window.VALHALLA.auth;
     if (studentImportUi.running || !studentImportApi) {
-      return;
+      return 'busy';
     }
-    if (!window.VALHALLA.cloudSync?.isActive?.() || !authApi?.getClient) {
+    if (!cloudReady()) {
       if (manual) {
         studentImportUi.message = 'Para traer los registros de los alumnos necesitas estar conectado a la nube.';
         studentImportUi.tone = 'warn';
         renderStudentImportMessage();
       }
-      return;
+      return 'offline';
     }
     studentImportUi.running = true;
     try {
@@ -2763,7 +3016,12 @@
       const { data: sessionData } = await client.auth.getSession();
       const coachId = sessionData?.session?.user?.id || '';
       if (!coachId) {
-        return;
+        return 'error';
+      }
+      // B3.4: antes de traer, sube lo que el entrenador dejó pendiente para los alumnos.
+      const links = coachSetsApi ? await loadStudentLinks(client, coachId) : null;
+      if (links) {
+        await flushCoachSets({ links });
       }
       const result = await client.from('student_sets')
         .select('id, owner_id, client_id, auth_user_id, assignment_id, session_date, day_id, exercise_id, set_type, set_number, weight, reps, rir, completed, created_at, updated_at')
@@ -2776,19 +3034,32 @@
           studentImportUi.tone = 'warn';
           renderStudentImportMessage();
         }
-        return;
+        return isNetworkError(result.error) ? 'offline' : 'error';
       }
       ensureTrainingsV08State();
-      const summary = studentImportApi.mergeStudentSets(state, result.data || [], { coachId, createId: dataApi.createId });
-      if (manual || summary.added || summary.updated) {
+      // Lo que el entrenador todavía tiene pendiente de subir no se toca (su corrección gana).
+      const pending = new Set(coachSetsApi ? readCoachSetsOutbox(coachId).map((item) => item.key) : []);
+      const summary = studentImportApi.mergeStudentSets(state, result.data || [], {
+        coachId,
+        createId: dataApi.createId,
+        skipRow: pending.size ? (row) => pending.has(coachSetsApi.conflictKey(row)) : null
+      });
+      const splits = describeDaySplits(summary.splits);
+      if (manual || summary.added || summary.updated || splits.length) {
         studentImportUi.message = describeStudentImport(summary);
-        studentImportUi.tone = summary.added || summary.updated ? 'ok' : '';
+        studentImportUi.tone = summary.added || summary.updated ? 'ok' : splits.length ? 'warn' : '';
       }
+      // Modo Grupo: la línea pequeña muestra los avisos de dos sesiones (o se limpia).
+      groupSessionUi.importNotice = splits.join(' ');
       if (summary.added || summary.updated || summary.sessionsCreated) {
         persist();
       } else {
         renderStudentImportMessage();
+        if (trainingUi.activeTrainingView === 'group') {
+          renderTrainingGroupMode();
+        }
       }
+      return 'ok';
     } catch (error) {
       console.error(error);
       if (manual) {
@@ -2796,9 +3067,27 @@
         studentImportUi.tone = 'warn';
         renderStudentImportMessage();
       }
+      return isNetworkError(error) ? 'offline' : 'error';
     } finally {
       studentImportUi.running = false;
     }
+  }
+
+  // B3.4: al abrir Modo Grupo y al cambiar la fecha se traen los registros de los alumnos
+  // (la misma función de "Traer registros"). Sin conexión, Modo Grupo sigue igual.
+  function importStudentSetsForGroup() {
+    if (!cloudReady()) {
+      groupSessionUi.importNotice = GROUP_IMPORT_OFFLINE;
+      return;
+    }
+    importStudentSets().then((status) => {
+      if (status === 'offline' || status === 'error') {
+        groupSessionUi.importNotice = status === 'offline' ? GROUP_IMPORT_OFFLINE : 'No se pudieron traer los registros de alumnos.';
+        if (trainingUi.activeTrainingView === 'group') {
+          renderTrainingGroupMode();
+        }
+      }
+    });
   }
 
   function setTrainingView(viewName) {
@@ -2810,6 +3099,10 @@
       groupSessionUi.sessionDate = getTodayLocalDate();
       groupSessionUi.dateIsManual = false;
       groupSessionUi.dayChoices = {};
+    }
+    // B3.4: al abrir Modo Grupo se trae lo que registraron los alumnos.
+    if (viewName === 'group' && previousView !== 'group') {
+      importStudentSetsForGroup();
     }
     const trainingsSection = document.getElementById('trainings');
     if (trainingsSection) {
@@ -11110,8 +11403,12 @@
     if (event.detail?.status === 'synced' && Date.now() - studentImportUi.lastAutoAt >= STUDENT_IMPORT_AUTO_MS) {
       studentImportUi.lastAutoAt = Date.now();
       importStudentSets();
+    } else if (event.detail?.status === 'synced') {
+      // B3.4: lo que el entrenador dejó pendiente para los alumnos sube al volver la nube.
+      flushCoachSets();
     }
   });
+  window.addEventListener('online', () => flushCoachSets());
   document.getElementById('importStudentSetsBtn')?.addEventListener('click', () => importStudentSets({ manual: true }));
   // Indicador "Publicar al alumno" por cliente (publish.js).
   window.addEventListener('valhalla:publish-changed', () => renderClients());
