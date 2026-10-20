@@ -3356,3 +3356,767 @@ details.group-athlete-row[open] > summary h3::before {
     padding: 10px;
   }
 }
+
+/* ===== Vista del alumno con la marca nueva (v0.9.29). Solo aplica dentro de la vista del
+   alumno: negro, carbón, amarillo con texto negro encima, hueso; verde solo para la serie
+   guardada y rojo solo para la firma. ===== */
+.auth-gate.auth-gate--student {
+  background: #0E0E0C;
+  padding: 12px 12px calc(28px + env(safe-area-inset-bottom));
+}
+
+.auth-gate--student .student-view {
+  --sv-bg: #0E0E0C;
+  --sv-card: #1C1B17;
+  --sv-card-2: #26241F;
+  --sv-line: rgba(242, 238, 227, 0.12);
+  --sv-accent: #FFCC1A;
+  --sv-ink: #0E0E0C;
+  --sv-text: #F2EEE3;
+  --sv-muted: rgba(242, 238, 227, 0.62);
+  --sv-green: #34B36A;
+  --sv-red: #E0352B;
+  max-width: 560px;
+  gap: 12px;
+  color: var(--sv-text);
+}
+
+.auth-gate--student .student-view button,
+.auth-gate--student .student-view select,
+.auth-gate--student .student-view input,
+.auth-gate--student .student-view summary {
+  min-height: 44px;
+}
+
+.auth-gate--student .student-view .sv-meta {
+  color: var(--sv-muted);
+}
+
+.auth-gate--student .sv-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0;
+  background: none;
+  border: 0;
+  box-shadow: none;
+}
+
+.auth-gate--student .sv-header .brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.auth-gate--student .sv-header .brand-mark {
+  width: 44px;
+  min-width: 44px;
+  height: 32px;
+  border-radius: 8px;
+}
+
+.auth-gate--student .sv-title {
+  color: var(--sv-text);
+  font-size: 1.05rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+}
+
+.auth-gate--student .sv-ghost {
+  background: transparent;
+  color: var(--sv-text);
+  border: 1px solid var(--sv-line);
+  border-radius: 12px;
+  padding: 8px 12px;
+  font-weight: 700;
+  box-shadow: none;
+}
+
+.auth-gate--student .sv-ghost:disabled {
+  opacity: 0.35;
+}
+
+.auth-gate--student .sv-primary,
+.auth-gate--student .sv-next {
+  background: var(--sv-accent);
+  color: var(--sv-ink);
+  border: 0;
+  border-radius: 14px;
+  font-weight: 800;
+  box-shadow: none;
+}
+
+.auth-gate--student .sv-hello {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.auth-gate--student .sv-hello-name {
+  margin: 0;
+  font-size: 1.45rem;
+  line-height: 1.15;
+  color: var(--sv-text);
+  overflow-wrap: anywhere;
+}
+
+.auth-gate--student .sv-streak {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--sv-accent);
+  color: var(--sv-ink);
+  font-size: 0.82rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.auth-gate--student .sv-card,
+.auth-gate--student .sv-logout-confirm {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 16px;
+  background: var(--sv-card);
+  border: 1px solid var(--sv-line);
+  box-shadow: none;
+}
+
+.auth-gate--student .sv-logout-confirm .inline-actions button {
+  flex: 1 1 0;
+}
+
+.auth-gate--student .auth-offline-banner {
+  margin: 0;
+  background: var(--sv-card);
+  border-color: var(--sv-line);
+  color: var(--sv-text);
+}
+
+.auth-gate--student .sv-screen {
+  display: grid;
+  gap: 12px;
+}
+
+/* Semana: 7 círculos L a D. */
+.auth-gate--student .sv-week {
+  list-style: none;
+  margin: 0;
+  padding: 10px 8px;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+  border-radius: 16px;
+  background: var(--sv-card);
+}
+
+.auth-gate--student .sv-week-day {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  font-size: 0.75rem;
+  color: var(--sv-muted);
+  font-weight: 700;
+}
+
+.auth-gate--student .sv-week-dot {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--sv-card-2);
+  border: 2px solid transparent;
+  color: var(--sv-ink);
+  font-weight: 900;
+}
+
+.auth-gate--student .sv-week-day.is-done .sv-week-dot {
+  background: var(--sv-accent);
+}
+
+.auth-gate--student .sv-week-day.is-today .sv-week-dot {
+  border-color: var(--sv-text);
+}
+
+.auth-gate--student .sv-week-day.is-today {
+  color: var(--sv-text);
+}
+
+.auth-gate--student .sv-program-title {
+  margin: 0;
+  font-weight: 700;
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+
+.auth-gate--student .sv-log-date {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: var(--sv-muted);
+  font-weight: 700;
+  margin: 0;
+}
+
+.auth-gate--student .sv-log-date select {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: var(--sv-card);
+  color: var(--sv-text);
+  border: 1px solid var(--sv-line);
+  font-size: 1rem;
+}
+
+/* Botones de días y programas. */
+.auth-gate--student .sv-chips {
+  position: relative;
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: none;
+}
+
+.auth-gate--student .sv-chip {
+  flex: 0 0 auto;
+  max-width: 82%;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--sv-line);
+  background: var(--sv-card);
+  color: var(--sv-text);
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: none;
+}
+
+.auth-gate--student .sv-chip.is-active {
+  background: var(--sv-accent);
+  border-color: var(--sv-accent);
+  color: var(--sv-ink);
+}
+
+/* Ejercicios del día. */
+.auth-gate--student .sv-ex-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.auth-gate--student .sv-ex-list .sv-exercise {
+  padding: 0;
+  border: 0;
+}
+
+.auth-gate--student .sv-ex-card {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--sv-line);
+  background: var(--sv-card);
+  color: var(--sv-text);
+  text-align: left;
+  box-shadow: none;
+}
+
+.auth-gate--student .sv-ex-card-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.auth-gate--student .sv-ex-card strong {
+  overflow-wrap: anywhere;
+}
+
+.auth-gate--student .sv-ex-progress {
+  flex: 0 0 auto;
+  min-width: 44px;
+  text-align: center;
+  font-weight: 800;
+  color: var(--sv-muted);
+}
+
+.auth-gate--student .sv-check {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--sv-accent);
+  color: var(--sv-ink);
+  font-weight: 900;
+}
+
+.auth-gate--student .sv-next {
+  width: 100%;
+  min-height: 56px;
+  padding: 12px 16px;
+  font-size: 1.05rem;
+}
+
+.auth-gate--student .sv-wide {
+  width: 100%;
+}
+
+.auth-gate--student .sv-history {
+  border-radius: 14px;
+  background: var(--sv-card);
+  border: 1px solid var(--sv-line);
+  padding: 0 12px;
+}
+
+.auth-gate--student .sv-history > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.auth-gate--student .sv-history .sv-day {
+  margin-bottom: 8px;
+  background: var(--sv-card-2);
+  border-color: var(--sv-line);
+}
+
+.auth-gate--student .sv-history-exercise {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--sv-line);
+}
+
+.auth-gate--student .sv-note {
+  margin: 0;
+  color: var(--sv-text);
+  border-left-color: var(--sv-accent);
+}
+
+/* Pantalla de un ejercicio. */
+.auth-gate--student .sv-ex-top,
+.auth-gate--student .sv-ex-steps {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.auth-gate--student .sv-ex-count {
+  font-weight: 800;
+  color: var(--sv-muted);
+  white-space: nowrap;
+}
+
+.auth-gate--student .sv-ex-name {
+  margin: 0;
+  font-size: 1.6rem;
+  line-height: 1.15;
+  color: var(--sv-text);
+  overflow-wrap: anywhere;
+}
+
+.auth-gate--student .sv-ex-scheme {
+  margin: -6px 0 0;
+}
+
+.auth-gate--student .sv-ref {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-radius: 14px;
+  background: var(--sv-card);
+  border: 1px solid var(--sv-line);
+}
+
+.auth-gate--student .sv-ref-cell {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  min-width: 0;
+}
+
+.auth-gate--student .sv-ref-cell + .sv-ref-cell {
+  border-left: 1px solid var(--sv-line);
+}
+
+.auth-gate--student .sv-ref-label {
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--sv-accent);
+}
+
+.auth-gate--student .sv-ref-cell .sv-meta {
+  overflow-wrap: anywhere;
+}
+
+.auth-gate--student .sv-log,
+.auth-gate--student .sv-plan {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.auth-gate--student .sv-log-head,
+.auth-gate--student .sv-log-row {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1.15fr) minmax(0, 1fr) 52px;
+  align-items: center;
+  gap: 6px;
+}
+
+.auth-gate--student .sv-log-head {
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: var(--sv-muted);
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.auth-gate--student .sv-log-row {
+  padding: 8px;
+  border-radius: 14px;
+  background: var(--sv-card);
+  border: 1px solid var(--sv-line);
+}
+
+.auth-gate--student .sv-log-row .sv-set-label,
+.auth-gate--student .sv-plan-row .sv-set-label {
+  min-width: 0;
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: var(--sv-accent);
+}
+
+.auth-gate--student .sv-stepper {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) 34px;
+  align-items: center;
+  border-radius: 12px;
+  background: var(--sv-card-2);
+  overflow: hidden;
+}
+
+.auth-gate--student .sv-step-btn {
+  min-width: 0;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--sv-accent);
+  font-size: 1.3rem;
+  font-weight: 800;
+  box-shadow: none;
+}
+
+.auth-gate--student .sv-stepper input {
+  min-width: 0;
+  width: 100%;
+  padding: 6px 2px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--sv-text);
+  text-align: center;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.auth-gate--student .sv-stepper input:disabled {
+  opacity: 1;
+  color: var(--sv-text);
+}
+
+.auth-gate--student .sv-check-btn {
+  width: 52px;
+  min-height: 52px;
+  padding: 0;
+  border-radius: 14px;
+  background: var(--sv-accent);
+  color: var(--sv-ink);
+  font-size: 1.4rem;
+  font-weight: 900;
+  box-shadow: none;
+}
+
+.auth-gate--student .sv-log-row.is-saved .sv-check-btn,
+.auth-gate--student .sv-log-row[data-locked] .sv-check-btn {
+  background: var(--sv-green);
+  color: var(--sv-ink);
+}
+
+.auth-gate--student .sv-log-row[data-locked] .sv-check-btn:disabled {
+  opacity: 1;
+}
+
+.auth-gate--student .sv-log-row.is-saved {
+  border-color: rgba(52, 179, 106, 0.55);
+}
+
+.auth-gate--student .sv-log-row.is-rejected {
+  border-color: var(--sv-accent);
+}
+
+.auth-gate--student .sv-row-foot {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  align-items: center;
+}
+
+.auth-gate--student .sv-row-foot:not(:has(:not(:empty):not(.hidden))) {
+  display: none;
+}
+
+.auth-gate--student .sv-log-status {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--sv-muted);
+}
+
+/* "✓ Guardada" ya lo dice el botón verde: queda solo para lectores de pantalla. */
+.auth-gate--student .sv-log-row.is-saved .sv-log-status[data-status="saved"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+}
+
+.auth-gate--student .sv-log-status[data-status="coach"] {
+  color: var(--sv-green);
+}
+
+.auth-gate--student .sv-log-status[data-status="rejected"],
+.auth-gate--student .sv-log-row-error,
+.auth-gate--student .sv-log-msg--bad {
+  color: var(--sv-text);
+}
+
+.auth-gate--student .sv-log-row-error {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding-left: 8px;
+  border-left: 3px solid var(--sv-accent);
+  font-size: 0.82rem;
+}
+
+.auth-gate--student .sv-feel-tag {
+  font-size: 0.78rem;
+  color: var(--sv-muted);
+}
+
+.auth-gate--student .sv-record {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--sv-accent);
+  color: var(--sv-ink);
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.auth-gate--student .sv-feel {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 14px;
+  background: var(--sv-card);
+  border: 1px solid var(--sv-accent);
+}
+
+.auth-gate--student .sv-feel-question {
+  margin: 0;
+  font-weight: 800;
+}
+
+.auth-gate--student .sv-feel-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.auth-gate--student .sv-feel-btn {
+  display: grid;
+  gap: 2px;
+  min-height: 56px;
+  padding: 6px 4px;
+  border-radius: 12px;
+  background: var(--sv-accent);
+  color: var(--sv-ink);
+  box-shadow: none;
+}
+
+.auth-gate--student .sv-feel-btn span {
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.auth-gate--student .sv-approx {
+  border-radius: 14px;
+  background: var(--sv-card);
+  border: 1px solid var(--sv-line);
+  padding: 0 10px;
+}
+
+.auth-gate--student .sv-approx > summary {
+  display: flex;
+  align-items: center;
+  font-weight: 700;
+  color: var(--sv-muted);
+  cursor: pointer;
+}
+
+.auth-gate--student .sv-approx-rows {
+  display: grid;
+  gap: 8px;
+  padding-bottom: 10px;
+}
+
+.auth-gate--student .sv-approx .sv-log-row {
+  background: var(--sv-card-2);
+}
+
+.auth-gate--student .sv-log-msg {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--sv-muted);
+}
+
+.auth-gate--student .sv-log-msg--bad {
+  padding-left: 8px;
+  border-left: 3px solid var(--sv-accent);
+}
+
+.auth-gate--student .sv-log-undefined {
+  color: var(--sv-muted);
+}
+
+.auth-gate--student .sv-plan-head,
+.auth-gate--student .sv-plan-row {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+
+.auth-gate--student .sv-plan-head {
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: var(--sv-muted);
+}
+
+.auth-gate--student .sv-plan-row {
+  min-height: 44px;
+  padding: 6px 10px;
+  border-radius: 12px;
+  background: var(--sv-card);
+  font-weight: 700;
+}
+
+/* Resumen. */
+.auth-gate--student .sv-summary {
+  text-align: center;
+}
+
+.auth-gate--student .sv-summary-kicker {
+  margin: 8px 0 0;
+  color: var(--sv-accent);
+  font-size: 1.5rem;
+  font-weight: 900;
+}
+
+.auth-gate--student .sv-summary-title {
+  margin: 0;
+  font-size: 1.15rem;
+  color: var(--sv-text);
+}
+
+.auth-gate--student .sv-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.auth-gate--student .sv-stat {
+  display: grid;
+  gap: 2px;
+  padding: 12px 6px;
+  border-radius: 14px;
+  background: var(--sv-card);
+}
+
+.auth-gate--student .sv-stat strong {
+  font-size: 1.5rem;
+  color: var(--sv-accent);
+  overflow-wrap: anywhere;
+}
+
+.auth-gate--student .sv-stat span {
+  font-size: 0.78rem;
+  color: var(--sv-muted);
+}
+
+.auth-gate--student .sv-summary-records {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border-radius: 14px;
+  background: var(--sv-card);
+  text-align: left;
+}
+
+.auth-gate--student .sv-summary-records h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.auth-gate--student .sv-records {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.auth-gate--student .sv-records li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.auth-gate--student .sv-records .sv-check {
+  width: 24px;
+  height: 24px;
+  font-size: 0.8rem;
+}
+
+.auth-gate--student .sv-share-msg {
+  margin: 0;
+  color: var(--sv-muted);
+  white-space: pre-line;
+}
+
+.auth-gate--student .sv-signature {
+  margin: 6px 0 0;
+  color: var(--sv-red);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
