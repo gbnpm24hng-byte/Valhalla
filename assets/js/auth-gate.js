@@ -134,11 +134,12 @@
     return `
       <div class="auth-brand">
         <div class="brand-mark auth-brand-mark">
-          <img class="brand-logo" src="./assets/images/logo-vikingos.png" alt="Vikingos Radical" onerror="this.style.display='none'; this.parentElement.classList.add('brand-mark--fallback');">
+          <img class="brand-logo" src="./assets/images/valhalla-logo.svg" alt="Vikingos Radical" onerror="this.style.display='none'; this.parentElement.classList.add('brand-mark--fallback');">
           <span class="brand-fallback">VR</span>
         </div>
         <h1 class="auth-title">VALHALLA</h1>
         <p class="auth-subtitle">Vikingos Radical</p>
+        <p class="brand-signature">by Vikingos Radical</p>
       </div>`;
   }
 

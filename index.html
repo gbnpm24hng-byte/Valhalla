@@ -3,13 +3,15 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#080808">
+  <meta name="theme-color" content="#0E0E0C">
+  <link rel="apple-touch-icon" href="./assets/images/valhalla-icono-512.png">
+  <link rel="icon" type="image/svg+xml" href="./assets/images/valhalla-icono-app.svg">
   <link rel="manifest" href="./manifest.json">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <title>VALHALLA</title>
-  <link rel="stylesheet" href="./assets/css/styles.css?v=0.9.30">
+  <link rel="stylesheet" href="./assets/css/styles.css?v=0.9.31">
 </head>
 <!-- Clase "solo-entrenamientos": oculta Inicio, Registrar (finanzas) y Nutrición sin borrarlos. Quitarla los vuelve a mostrar. -->
 <body class="solo-entrenamientos">
@@ -18,7 +20,7 @@
     <header class="app-header">
       <div class="brand">
         <div class="brand-mark">
-          <img class="brand-logo" src="./assets/images/logo-vikingos.png" alt="Vikingos Radical" onerror="this.style.display='none'; this.parentElement.classList.add('brand-mark--fallback');">
+          <img class="brand-logo" src="./assets/images/valhalla-logo.svg" alt="Vikingos Radical" onerror="this.style.display='none'; this.parentElement.classList.add('brand-mark--fallback');">
           <span class="brand-fallback">VR</span>
         </div>
         <div class="brand-copy">
@@ -29,7 +31,7 @@
       <div class="header-actions">
         <span class="user-pill">Usuario</span>
         <span class="badge" id="cloudModeBadge">Modo Local</span>
-        <span class="badge">v0.9.30</span>
+        <span class="badge">v0.9.31</span>
       </div>
     </header>
 
@@ -1233,6 +1235,7 @@
         <input id="fileInput" type="file" accept=".json,application/json">
         <div id="importMessage" class="notice"></div>
       </div>
+      <p class="brand-signature">by Vikingos Radical</p>
     </section>
   </div>
 
