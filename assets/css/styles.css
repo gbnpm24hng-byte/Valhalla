@@ -3449,8 +3449,8 @@ details.group-athlete-row[open] > summary h3::before {
 }
 
 .auth-gate--student .sv-header .brand-mark {
-  width: 44px;
-  min-width: 44px;
+  width: 32px;
+  min-width: 32px;
   height: 32px;
   border-radius: 8px;
 }

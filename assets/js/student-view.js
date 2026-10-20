@@ -825,7 +825,7 @@
         <header class="sv-header">
           <div class="brand">
             <div class="brand-mark">
-              <img class="brand-logo" src="./assets/images/logo-vikingos.png" alt="Vikingos Radical" onerror="this.style.display='none'; this.parentElement.classList.add('brand-mark--fallback');">
+              <img class="brand-logo" src="./assets/images/valhalla-logo.svg" alt="Vikingos Radical" onerror="this.style.display='none'; this.parentElement.classList.add('brand-mark--fallback');">
               <span class="brand-fallback">VR</span>
             </div>
             <span class="sv-title">VALHALLA</span>
