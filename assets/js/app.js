@@ -89,7 +89,16 @@
     draftNotice: '',
     pendingDraft: null,
     // "Descartar lo no confirmado" esperando confirmación.
-    cancelAsk: false
+    cancelAsk: false,
+    // Vista: 'compact' (fila de alumnos + un ejercicio a la vez) o 'list' (todo en lista).
+    // Lo de aquí abajo vive solo en memoria: no entra al borrador ni al estado.
+    layout: 'compact',
+    // Vista compacta: alumno elegido, ejercicio en que quedó cada uno ({ id, index }),
+    // panel "⋯" abierto por alumno y lista de alumnos del grupo desplegada (null = automático).
+    activeClientId: '',
+    focus: {},
+    moreOpen: {},
+    clientsOpen: null
   };
   // Cuenta dueña del borrador (el borrador queda ligado a ella) y si ya se revisó al abrir.
   let groupDraftOwner = '';
@@ -1493,6 +1502,13 @@
     if (keptSession) {
       groupSessionUi.clientNotices[clientId] += ` Las series escritas de ${replaced.exerciseName || 'el ejercicio anterior'} quedaron en su historial.`;
     }
+    // Vista compacta: un ejercicio agregado queda a la vista (va al final del día).
+    if (picker.mode === 'add') {
+      const added = getGroupDayContext(clientId)?.exercises || [];
+      if (added.length) {
+        groupSessionUi.focus[clientId] = { id: added[added.length - 1].id, index: added.length - 1 };
+      }
+    }
     groupSessionUi.picker = null;
     renderTrainingGroupMode();
   }
@@ -1721,6 +1737,247 @@
       </div>`;
   }
 
+  // "Sesión del programa" de un alumno (lista y panel "⋯" de la vista compacta).
+  function renderGroupDaySelect(clientId, assignment, day, disabled) {
+    return `<label>Sesión del programa<select data-group-field="dayId" data-client-id="${escapeHtml(clientId)}" ${disabled ? 'disabled' : ''}>${(assignment.days || []).map((programDay) => `<option value="${escapeHtml(programDay.id)}" ${programDay.id === day.id ? 'selected' : ''} ${(programDay.exercises || []).length ? '' : 'disabled'}>${escapeHtml(programDay.name || 'Día')}${(programDay.exercises || []).length ? '' : ' (sin ejercicios)'}</option>`).join('')}</select></label>`;
+  }
+
+  // ---- Modo Grupo compacto: fila de alumnos arriba y UN ejercicio del alumno elegido ----
+  // Usa los mismos borradores, botones (data-group-*) y funciones de guardado que la lista;
+  // solo cambia cómo se ve. Alumno elegido y ejercicio de cada uno viven solo en memoria.
+
+  // RIR final -> decisión sugerida: 3 o más, Subir; 0, 1 o 2, Mantener. Bajar es siempre a mano.
+  function getGroupSuggestedDecision(rir) {
+    const text = String(rir ?? '').trim();
+    if (text === '' || !Number.isFinite(Number(text))) {
+      return '';
+    }
+    return Number(text) >= 3 ? 'up' : 'keep';
+  }
+
+  // Al escribir el RIR se preselecciona la sugerencia (y su próxima carga), salvo que el
+  // entrenador ya haya elegido otra cosa a mano. Pinta sin redibujar: el RIR conserva el foco.
+  function applyGroupSuggestedDecision(planExercise, draft, previousRir, card) {
+    const suggestion = getGroupSuggestedDecision(draft.rir);
+    if (planExercise.overrideScope === 'today' || !suggestion
+      || (draft.decision && draft.decision !== getGroupSuggestedDecision(previousRir))) {
+      return;
+    }
+    if (draft.decision !== suggestion) {
+      draft.decision = suggestion;
+      draft.proposedWeight = String(getGroupProposedWeight(planExercise, suggestion));
+    }
+    card?.querySelectorAll('[data-group-decision]').forEach((button) => {
+      const pressed = button.getAttribute('data-group-decision') === draft.decision;
+      button.classList.toggle('primary', pressed);
+      button.classList.toggle('secondary', !pressed);
+      button.setAttribute('aria-pressed', String(pressed));
+    });
+    const proposed = card?.querySelector('[data-group-field="proposedWeight"]');
+    if (proposed) {
+      proposed.value = draft.proposedWeight;
+    }
+  }
+
+  function getGroupActiveClientId() {
+    if (!groupSessionUi.selectedClientIds.includes(groupSessionUi.activeClientId)) {
+      groupSessionUi.activeClientId = groupSessionUi.selectedClientIds[0] || '';
+    }
+    return groupSessionUi.activeClientId;
+  }
+
+  // Ejercicio a la vista del alumno: el que dejó (por id; si cambió, en la misma posición)
+  // o, la primera vez, el primero sin confirmar.
+  function getGroupFocusIndex(clientId, exercises) {
+    const saved = groupSessionUi.focus[clientId];
+    let index = saved ? exercises.findIndex((exercise) => exercise.id === saved.id) : -1;
+    if (index < 0 && saved) {
+      index = Math.min(Math.max(Number(saved.index) || 0, 0), exercises.length - 1);
+    }
+    if (index < 0) {
+      index = Math.max(exercises.findIndex((exercise) => !findConfirmedGroupExercise(clientId, exercise.id)), 0);
+    }
+    groupSessionUi.focus[clientId] = { id: exercises[index].id, index };
+    return index;
+  }
+
+  function stepGroupFocus(clientId, step) {
+    const exercises = getGroupDayContext(clientId)?.exercises || [];
+    if (exercises.length < 2) {
+      return;
+    }
+    const index = (getGroupFocusIndex(clientId, exercises) + step + exercises.length) % exercises.length;
+    groupSessionUi.focus[clientId] = { id: exercises[index].id, index };
+  }
+
+  // Después de confirmar: el siguiente sin confirmar hacia adelante (da la vuelta). Si ya
+  // está todo confirmado, queda en el mismo.
+  function advanceGroupFocus(clientId, fromIndex) {
+    const exercises = getGroupDayContext(clientId)?.exercises || [];
+    for (let step = 1; step <= exercises.length; step += 1) {
+      const index = (fromIndex + step) % exercises.length;
+      if (!findConfirmedGroupExercise(clientId, exercises[index].id)) {
+        groupSessionUi.focus[clientId] = { id: exercises[index].id, index };
+        return;
+      }
+    }
+  }
+
+  // Nombre corto en la fila de alumnos: el primer nombre; si dos se repiten, con la inicial
+  // del apellido.
+  function getGroupShortNames(clientIds) {
+    const names = clientIds.map((clientId) => {
+      const parts = String(getClientDisplayName(getClientById(clientId) || {}) || 'Alumno').trim().split(/\s+/);
+      return { first: parts[0] || 'Alumno', initial: parts[1] ? `${parts[1][0]}.` : '' };
+    });
+    return names.map((name) => (names.filter((other) => other.first === name.first).length > 1 && name.initial ? `${name.first} ${name.initial}` : name.first));
+  }
+
+  function renderGroupAthleteBar() {
+    const activeId = getGroupActiveClientId();
+    const shortNames = getGroupShortNames(groupSessionUi.selectedClientIds);
+    const tabs = groupSessionUi.selectedClientIds.map((clientId, position) => {
+      const client = getClientById(clientId);
+      const exercises = getGroupDayContext(clientId)?.exercises || [];
+      const done = exercises.filter((exercise) => findConfirmedGroupExercise(clientId, exercise.id)).length;
+      const allDone = exercises.length > 0 && done === exercises.length;
+      const active = clientId === activeId;
+      return `
+        <button class="group-athlete-tab${active ? ' is-active' : ''}${allDone ? ' is-done' : ''}" type="button" role="tab" aria-selected="${active}" data-group-athlete="${escapeHtml(clientId)}" title="${escapeHtml(client ? getClientDisplayName(client) : 'Alumno')}">
+          <span class="group-athlete-name">${escapeHtml(shortNames[position])}</span>
+          <span class="group-athlete-progress" data-group-athlete-progress>${allDone ? '✓' : `${done}/${exercises.length || '—'}`}</span>
+        </button>`;
+    }).join('');
+    return `<div class="group-athlete-bar" role="tablist" aria-label="Alumnos del grupo">${tabs}</div>`;
+  }
+
+  function renderGroupCompact() {
+    const clientId = getGroupActiveClientId();
+    const client = getClientById(clientId);
+    const context = getGroupDayContext(clientId);
+    const cid = escapeHtml(clientId);
+    const inHistory = Boolean(context) && groupSessionUi.history[clientId] !== undefined;
+    const previousCount = context && !inHistory ? getPreviousGroupDaySessions(clientId, context.day).length : 0;
+    const notice = groupSessionUi.clientNotices[clientId];
+    const tools = `
+      <div class="group-compact-tools">
+        ${inHistory ? '' : `<button class="secondary small group-history-open" type="button" data-group-history-open data-client-id="${cid}" ${previousCount ? '' : 'disabled'} title="${previousCount ? 'Ver su sesión anterior de este día' : 'No hay sesiones anteriores de este día'}">◀ Sesión anterior</button>`}
+        ${groupSessionUi.cancelAsk ? '' : '<button class="ghost small" type="button" data-group-cancel>Descartar lo no confirmado</button>'}
+      </div>
+      ${groupSessionUi.cancelAsk ? renderGroupSessionActions() : ''}
+      ${notice ? `<p class="notice ok group-client-notice" role="status">${escapeHtml(notice)}</p>` : ''}`;
+    let body;
+    if (!context) {
+      body = '<div class="notice warn">No tiene un programa activo con ejercicios.</div>';
+    } else if (inHistory) {
+      body = renderGroupHistory(clientId, context);
+    } else if (groupSessionUi.picker?.clientId === clientId && groupSessionUi.picker.mode === 'add') {
+      body = renderGroupPicker(clientId, context);
+    } else {
+      body = renderGroupCompactExercise(clientId, client, context);
+    }
+    return `${renderGroupAthleteBar()}${tools}<div class="group-compact-card" data-group-row="${cid}">${body}</div>`;
+  }
+
+  function renderGroupCompactExercise(clientId, client, context) {
+    const { assignment, day, exercises } = context;
+    const index = getGroupFocusIndex(clientId, exercises);
+    const planExercise = exercises[index];
+    const confirmed = findConfirmedGroupExercise(clientId, planExercise.id);
+    const cid = escapeHtml(clientId);
+    const pid = escapeHtml(planExercise.id);
+    const attrs = `data-client-id="${cid}" data-plan-exercise-id="${pid}"`;
+    const picker = groupSessionUi.picker;
+    const pickerHere = picker && picker.clientId === clientId && picker.mode === 'replace' && picker.targetExerciseId === planExercise.id;
+    const onlyToday = planExercise.overrideScope === 'today';
+    const tag = planExercise.overrideId
+      ? `<span class="tag ${onlyToday ? 'warn' : 'ok'} group-override-tag">${onlyToday ? 'Solo hoy' : `Solo para ${escapeHtml(getClientFirstName(client))}`}</span>`
+      : '';
+    const lastFound = findLastGroupPerformance(clientId, planExercise, groupSessionUi.sessionDate);
+    const lastTime = formatLastGroupPerformance(lastFound);
+    const draft = confirmed || pickerHere ? null : getGroupDraft(clientId, planExercise);
+    const comment = pickerHere ? null : renderGroupComment(clientId, planExercise, confirmed, attrs);
+    const editingComment = groupSessionUi.commentEditor?.clientId === clientId && groupSessionUi.commentEditor.planExerciseId === planExercise.id;
+    const moreOpen = !pickerHere && (Boolean(groupSessionUi.moreOpen[clientId]) || editingComment);
+    // Hay algo guardado detrás de "⋯" (comentario o aproximaciones): el botón lo avisa.
+    const moreHasData = Boolean(getGroupComment(clientId, planExercise, confirmed)) || Boolean(String(draft?.warmups || '').trim());
+    const nav = `
+      <div class="group-compact-nav">
+        <button class="secondary group-icon-btn" type="button" data-group-ex-step="-1" data-client-id="${cid}" aria-label="Ejercicio anterior" ${exercises.length < 2 ? 'disabled' : ''}>◀</button>
+        <div class="group-compact-title">
+          <strong>${confirmed ? '✓ ' : ''}${escapeHtml(planExercise.exerciseName || 'Ejercicio')}</strong>
+          <span class="meta">${index + 1} de ${exercises.length}</span>
+        </div>
+        <button class="secondary group-icon-btn" type="button" data-group-ex-step="1" data-client-id="${cid}" aria-label="Ejercicio siguiente" ${exercises.length < 2 ? 'disabled' : ''}>▶</button>
+        ${pickerHere ? '' : `<button class="${moreOpen ? 'primary' : 'secondary'} group-icon-btn group-more-btn${moreHasData ? ' has-data' : ''}" type="button" data-group-more data-client-id="${cid}" aria-expanded="${moreOpen}" aria-label="Más opciones${moreHasData ? ' (tiene datos)' : ''}">⋯</button>`}
+      </div>
+      <div class="group-compact-meta">
+        <span class="meta">Objetivo: ${Number(planExercise.targetWeight || 0)} kg × ${escapeHtml(getGroupRepsLabel(planExercise))}</span>
+        ${tag}
+        ${lastTime ? `<span class="meta group-last-time" data-group-last-time title="${escapeHtml(lastTime)}">${escapeHtml(lastTime)}</span>` : ''}
+      </div>`;
+    if (pickerHere) {
+      return `<div class="group-exercise group-exercise--compact" data-group-exercise="${pid}">${nav}${renderGroupPicker(clientId, context)}</div>`;
+    }
+    const field = (name, label, type, extra = '') => `<label>${label}<input type="${type}" ${extra} data-group-field="${name}" ${attrs} value="${escapeHtml(draft?.[name] ?? '')}"></label>`;
+    const more = moreOpen ? `
+      <div class="group-compact-more" data-group-more-panel>
+        ${draft ? field('warmups', 'Aproximaciones', 'text', 'inputmode="text" placeholder="30/40 kg"') : ''}
+        ${comment.block}
+        <div class="group-change-actions">
+          ${comment.button}
+          <button class="ghost small group-change-btn" type="button" data-group-change ${attrs}>Cambiar ejercicio</button>
+          ${planExercise.overrideId ? `<button class="ghost small group-revert-btn" type="button" data-group-revert="${escapeHtml(planExercise.overrideId)}" ${attrs}>Quitar cambio</button>` : ''}
+        </div>
+        <div class="group-compact-client-options">
+          ${renderGroupDaySelect(clientId, assignment, day, false)}
+          <button class="secondary small group-add-btn" type="button" data-group-add data-client-id="${cid}">+ Agregar ejercicio</button>
+        </div>
+      </div>` : '';
+    if (confirmed) {
+      return `
+        <div class="group-exercise group-exercise--compact group-exercise--done" data-group-exercise="${pid}">
+          ${nav}
+          <p class="group-saved">Guardado: ${escapeHtml(getClientFirstName(client))}, ${escapeHtml(confirmed.exercise.exerciseName || planExercise.exerciseName || 'Ejercicio')}.${onlyToday ? '' : ` Próxima sesión: ${Number(planExercise.targetWeight || 0)} kg`}</p>
+          ${more}
+        </div>`;
+    }
+    const lastSets = lastFound ? groupDraftApi.lastSetValues(getGroupEffectiveSets(lastFound.exercise)) : [];
+    const setNumbers = Array.from({ length: draft.setCount }, (_, setIndex) => setIndex + 1);
+    const decisionLabels = [['up', '↑ Subir'], ['keep', '→ Mantener'], ['down', '↓ Bajar']];
+    // Un ejercicio de "solo hoy" no está en el programa: no hay próxima sesión que decidir.
+    const decisions = onlyToday ? '' : `
+      <div class="group-decisions" role="group" aria-label="Decisión">
+        ${decisionLabels.map(([value, label]) => `<button class="${draft.decision === value ? 'primary' : 'secondary'} small" type="button" data-group-decision="${value}" ${attrs} aria-pressed="${draft.decision === value}">${label}</button>`).join('')}
+      </div>`;
+    return `
+      <div class="group-exercise group-exercise--compact" data-group-exercise="${pid}">
+        ${nav}
+        <div class="group-compact-sets">
+          ${setNumbers.map((n) => `
+            <div class="group-set">
+              <span class="group-set-label">S${n}</span>
+              ${field(`s${n}Weight`, `<span class="sr-only">S${n} peso en kg</span>`, 'number', `min="0" step="0.5" inputmode="decimal" placeholder="${lastSets[n - 1]?.weight ? `${escapeHtml(lastSets[n - 1].weight)} kg` : 'kg'}"`)}
+              <span class="group-set-times" aria-hidden="true">×</span>
+              ${field(`s${n}Reps`, `<span class="sr-only">S${n} repeticiones</span>`, 'number', `min="0" step="1" inputmode="numeric" placeholder="${lastSets[n - 1]?.reps ? `${escapeHtml(lastSets[n - 1].reps)} reps` : 'reps'}"`)}
+            </div>`).join('')}
+        </div>
+        <div class="group-compact-row">
+          <label class="group-compact-rir">RIR final<input type="number" min="0" max="10" step="1" inputmode="numeric" data-group-field="rir" ${attrs} value="${escapeHtml(draft.rir ?? '')}"></label>
+          <button class="secondary group-icon-btn" type="button" data-group-set-remove ${attrs} aria-label="Quitar una serie" title="− serie" ${draft.setCount <= 1 ? 'disabled' : ''}>−</button>
+          <button class="secondary group-icon-btn" type="button" data-group-set-add ${attrs} aria-label="Agregar una serie" title="+ serie" ${draft.setCount >= GROUP_MAX_SETS ? 'disabled' : ''}>+</button>
+          ${lastSets.length ? `<button class="secondary group-repeat-last" type="button" data-group-repeat-last ${attrs}>Repetir última vez</button>` : ''}
+        </div>
+        ${decisions}
+        <div class="group-compact-confirm">
+          ${onlyToday ? '<span class="meta">Solo hoy: no cambia su programa.</span>' : `<label class="group-compact-next">Próxima sesión<span><input type="number" min="0" step="2.5" inputmode="decimal" data-group-field="proposedWeight" ${attrs} value="${escapeHtml(draft.proposedWeight)}"> kg</span></label>`}
+          <button class="primary group-confirm-btn" type="button" data-group-confirm="${cid}" data-plan-exercise-id="${pid}" aria-label="Confirmar ${escapeHtml(planExercise.exerciseName || 'ejercicio')}">✓ Confirmar</button>
+        </div>
+        <p class="group-confirm-error${draft.error ? '' : ' hidden'}" role="alert">${escapeHtml(draft.error)}</p>
+        ${more}
+      </div>`;
+  }
+
   // ---- Borrador de Modo Grupo (solo en este teléfono) ----
   // Se guarda a cada cambio en su propia clave por cuenta; nunca sube a la nube ni cuenta
   // como sesión. Al abrir: si es de hoy se retoma solo; si es de otro día se pregunta.
@@ -1773,6 +2030,8 @@
     groupSessionUi.history = {};
     groupSessionUi.clientNotices = {};
     groupSessionUi.cancelAsk = false;
+    groupSessionUi.focus = {};
+    groupSessionUi.moreOpen = {};
   }
 
   function checkGroupDraft() {
@@ -1802,7 +2061,8 @@
     groupDraftOwner = ownerId;
     Object.assign(groupSessionUi, {
       selectedClientIds: [], sessionDate: getTodayLocalDate(), dateIsManual: false, dayChoices: {}, openClients: {}, drafts: {},
-      message: '', picker: null, history: {}, clientNotices: {}, commentEditor: null, draftNotice: '', pendingDraft: null, cancelAsk: false
+      message: '', picker: null, history: {}, clientNotices: {}, commentEditor: null, draftNotice: '', pendingDraft: null, cancelAsk: false,
+      activeClientId: '', focus: {}, moreOpen: {}, clientsOpen: null
     });
   }
 
@@ -1857,6 +2117,7 @@
     Object.assign(groupSessionUi, {
       selectedClientIds: [], dateIsManual: false, dayChoices: {}, openClients: {}, drafts: {}, picker: null, history: {},
       clientNotices: {}, commentEditor: null, draftNotice: '', cancelAsk: false,
+      activeClientId: '', focus: {}, moreOpen: {}, clientsOpen: null,
       message: 'Se descartó lo no confirmado. Lo ya confirmado sigue guardado.'
     });
     discardStoredGroupDraft();
@@ -1919,14 +2180,34 @@
     if (groupSessionUi.picker && !groupSessionUi.selectedClientIds.includes(groupSessionUi.picker.clientId)) {
       groupSessionUi.picker = null;
     }
+    const compact = groupSessionUi.layout === 'compact';
+    els.trainingGroupView.classList.toggle('group-mode-view--compact', compact);
+    const layoutToggle = els.trainingGroupView.querySelector('[data-group-layout-toggle]');
+    if (layoutToggle) {
+      layoutToggle.textContent = compact ? 'Ver lista' : 'Ver compacta';
+      layoutToggle.setAttribute('aria-label', compact ? 'Ver todos los ejercicios en lista' : 'Ver un ejercicio a la vez');
+      layoutToggle.disabled = locked;
+    }
     if (els.groupSessionClients) {
-      els.groupSessionClients.innerHTML = activeClients.length
+      const chips = activeClients.length
         ? activeClients.map((client) => `
           <label class="group-session-client${groupSessionUi.selectedClientIds.includes(client.id) ? ' selected' : ''}" title="${escapeHtml(getClientDisplayName(client))}">
             <input type="checkbox" data-group-client="${escapeHtml(client.id)}" ${groupSessionUi.selectedClientIds.includes(client.id) ? 'checked' : ''} ${locked ? 'disabled' : ''}>
             <span>${escapeHtml(getClientDisplayName(client))}</span>
           </label>`).join('')
         : '<div class="muted">No hay alumnos activos.</div>';
+      // Vista compacta con alumnos elegidos: la lista se pliega para que quepa la tarjeta.
+      const folded = compact && groupSessionUi.selectedClientIds.length > 0;
+      els.groupSessionClients.classList.toggle('group-session-clients--folded', folded);
+      els.groupSessionClients.innerHTML = folded
+        ? `<details class="group-clients-details" data-group-clients-details ${groupSessionUi.clientsOpen ? 'open' : ''}>
+            <summary>Alumnos del grupo (${groupSessionUi.selectedClientIds.length}/4) · cambiar</summary>
+            <div class="group-session-clients-list">${chips}</div>
+          </details>`
+        : chips;
+      els.groupSessionClients.querySelector('[data-group-clients-details]')?.addEventListener('toggle', (event) => {
+        groupSessionUi.clientsOpen = event.target.open;
+      });
     }
     if (els.groupSessionMessage) {
       els.groupSessionMessage.textContent = groupSessionUi.message || '';
@@ -1946,6 +2227,10 @@
     els.groupSessionRows.querySelectorAll('details[data-group-row]').forEach((details) => {
       groupSessionUi.openClients[details.getAttribute('data-group-row')] = details.open;
     });
+    if (compact) {
+      els.groupSessionRows.innerHTML = renderGroupDraftBanner() + renderGroupCompact();
+      return;
+    }
     els.groupSessionRows.innerHTML = renderGroupDraftBanner() + renderGroupSessionActions() + groupSessionUi.selectedClientIds.map((clientId, position) => {
       const client = getClientById(clientId);
       const name = escapeHtml(client ? getClientDisplayName(client) : 'Alumno');
@@ -1974,7 +2259,7 @@
             <div><h3>${name}</h3><div class="meta">${escapeHtml(assignment.programName || 'Programa')}</div></div>
             <span class="pill group-progress${done === exercises.length ? ' group-progress--done' : ''}">${done} de ${exercises.length} ejercicios confirmados</span>
           </summary>
-          <label>Sesión del programa<select data-group-field="dayId" data-client-id="${escapeHtml(clientId)}" ${inHistory ? 'disabled' : ''}>${(assignment.days || []).map((programDay) => `<option value="${escapeHtml(programDay.id)}" ${programDay.id === day.id ? 'selected' : ''} ${(programDay.exercises || []).length ? '' : 'disabled'}>${escapeHtml(programDay.name || 'Día')}${(programDay.exercises || []).length ? '' : ' (sin ejercicios)'}</option>`).join('')}</select></label>
+          ${renderGroupDaySelect(clientId, assignment, day, inHistory)}
           ${inHistory ? '' : `<button class="secondary small group-history-open" type="button" data-group-history-open data-client-id="${escapeHtml(clientId)}" ${previousCount ? '' : 'disabled'} title="${previousCount ? 'Ver su sesión anterior de este día' : 'No hay sesiones anteriores de este día'}">◀ Sesión anterior</button>`}
           ${notice ? `<p class="notice ok group-client-notice" role="status">${escapeHtml(notice)}</p>` : ''}
           ${body}
@@ -1988,21 +2273,25 @@
     return planExercise ? { ...context, planExercise } : null;
   }
 
+  // Peso de la próxima sesión según la decisión (redondeado a 2,5 kg al subir o bajar).
+  function getGroupProposedWeight(planExercise, decision) {
+    const currentWeight = Number(planExercise.targetWeight || 0);
+    const roundToPlate = (weight) => Math.round(weight / 2.5) * 2.5;
+    return decision === 'up'
+      ? roundToPlate(currentWeight * 1.035)
+      : decision === 'down'
+        ? roundToPlate(currentWeight * 0.9)
+        : currentWeight;
+  }
+
   function selectGroupDecision(clientId, planExerciseId, decision) {
     const row = findGroupPlanExercise(clientId, planExerciseId);
     if (!row) {
       return;
     }
     const draft = getGroupDraft(clientId, row.planExercise);
-    const currentWeight = Number(row.planExercise.targetWeight || 0);
-    const roundToPlate = (weight) => Math.round(weight / 2.5) * 2.5;
-    const proposedWeight = decision === 'up'
-      ? roundToPlate(currentWeight * 1.035)
-      : decision === 'down'
-        ? roundToPlate(currentWeight * 0.9)
-        : currentWeight;
     draft.decision = decision;
-    draft.proposedWeight = String(proposedWeight);
+    draft.proposedWeight = String(getGroupProposedWeight(row.planExercise, decision));
     draft.error = '';
     groupSessionUi.message = '';
     renderTrainingGroupMode();
@@ -2216,6 +2505,8 @@
     }
     delete groupSessionUi.drafts[`${clientId}::${planExercise.id}`];
     groupSessionUi.message = '';
+    // Vista compacta: la tarjeta pasa sola al siguiente ejercicio pendiente del alumno.
+    advanceGroupFocus(clientId, row.exercises.findIndex((exercise) => exercise.id === planExercise.id));
     renderTrainingGroupMode();
   }
 
@@ -2262,7 +2553,12 @@
     }
     const row = findGroupPlanExercise(clientId, planExerciseId);
     if (row) {
-      getGroupDraft(clientId, row.planExercise)[field] = event.target.value;
+      const draft = getGroupDraft(clientId, row.planExercise);
+      const previousRir = draft.rir;
+      draft[field] = event.target.value;
+      if (field === 'rir' && groupSessionUi.layout === 'compact') {
+        applyGroupSuggestedDecision(row.planExercise, draft, previousRir, event.target.closest('[data-group-exercise]'));
+      }
     }
   }
 
@@ -2277,9 +2573,13 @@
     if (clientId) {
       delete groupSessionUi.history[clientId];
       delete groupSessionUi.clientNotices[clientId];
+      delete groupSessionUi.focus[clientId];
+      delete groupSessionUi.moreOpen[clientId];
     } else {
       groupSessionUi.history = {};
       groupSessionUi.clientNotices = {};
+      groupSessionUi.focus = {};
+      groupSessionUi.moreOpen = {};
     }
   }
 
@@ -2290,6 +2590,38 @@
       return true;
     }
     if (handleGroupPickerClick(target) || handleGroupCommentClick(target) || handleGroupDraftClick(target)) {
+      return true;
+    }
+    // Vista compacta: cambiar de vista, de alumno, de ejercicio y abrir "⋯".
+    if (target.closest('[data-group-layout-toggle]')) {
+      groupSessionUi.layout = groupSessionUi.layout === 'compact' ? 'list' : 'compact';
+      renderTrainingGroupMode();
+      return true;
+    }
+    const athleteTab = target.closest('[data-group-athlete]');
+    if (athleteTab) {
+      groupSessionUi.activeClientId = athleteTab.getAttribute('data-group-athlete');
+      groupSessionUi.clientsOpen = false;
+      renderTrainingGroupMode();
+      return true;
+    }
+    const exerciseStep = target.closest('[data-group-ex-step]');
+    if (exerciseStep) {
+      stepGroupFocus(exerciseStep.getAttribute('data-client-id'), Number(exerciseStep.getAttribute('data-group-ex-step')));
+      renderTrainingGroupMode();
+      return true;
+    }
+    const moreButton = target.closest('[data-group-more]');
+    if (moreButton) {
+      const clientId = moreButton.getAttribute('data-client-id');
+      groupSessionUi.moreOpen[clientId] = moreButton.getAttribute('aria-expanded') !== 'true';
+      if (!groupSessionUi.moreOpen[clientId] && groupSessionUi.commentEditor?.clientId === clientId) {
+        groupSessionUi.commentEditor = null;
+      }
+      renderTrainingGroupMode();
+      if (groupSessionUi.moreOpen[clientId]) {
+        els.groupSessionRows?.querySelector('[data-group-more-panel]')?.scrollIntoView({ block: 'nearest' });
+      }
       return true;
     }
     const changeButton = target.closest('[data-group-change]');
@@ -2366,6 +2698,8 @@
         resetGroupClientViews(clientId);
       }
       groupSessionUi.selectedClientIds = Array.from(selected);
+      // Vista compacta: la lista de alumnos sigue abierta mientras se eligen.
+      groupSessionUi.clientsOpen = true;
       groupSessionUi.message = '';
       renderTrainingGroupMode();
       return;

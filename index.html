@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <title>VALHALLA</title>
-  <link rel="stylesheet" href="./assets/css/styles.css?v=0.9.27">
+  <link rel="stylesheet" href="./assets/css/styles.css?v=0.9.28">
 </head>
 <!-- Clase "solo-entrenamientos": oculta Inicio, Registrar (finanzas) y Nutrición sin borrarlos. Quitarla los vuelve a mostrar. -->
 <body class="solo-entrenamientos">
@@ -29,7 +29,7 @@
       <div class="header-actions">
         <span class="user-pill">Usuario</span>
         <span class="badge" id="cloudModeBadge">Modo Local</span>
-        <span class="badge">v0.9.27</span>
+        <span class="badge">v0.9.28</span>
       </div>
     </header>
 
@@ -923,7 +923,8 @@
       <div id="trainingGroupView" class="card hidden group-mode-view">
         <div class="section-title group-mode-header">
           <h2>MODO GRUPO</h2>
-          <label for="groupSessionDate">Fecha de sesión<input id="groupSessionDate" type="date"></label>
+          <label for="groupSessionDate"><span class="group-date-label">Fecha de sesión</span><input id="groupSessionDate" type="date"></label>
+          <button class="secondary small group-layout-toggle" type="button" data-group-layout-toggle>Ver lista</button>
         </div>
         <div id="groupSessionClients" class="group-session-clients"></div>
         <div id="groupSessionMessage" class="notice"></div>
