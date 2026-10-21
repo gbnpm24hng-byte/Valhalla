@@ -112,9 +112,14 @@
     running: false,
     lastAutoAt: 0,
     message: '',
-    tone: ''
+    tone: '',
+    // Lo nuevo de la última vez que se trajeron registros (solo en memoria; lo muestra Hoy):
+    // { count, clientIds } o null si no llegó nada nuevo.
+    lastNew: null
   };
   const STUDENT_IMPORT_AUTO_MS = 60000;
+  // Sección a la vista (para marcar el botón activo de la barra inferior).
+  let currentSection = '';
   // B3.4: vínculos de alumnos (client_links) leídos de la nube, solo en memoria. Mientras no
   // se leen, lo confirmado queda pendiente y se decide al subir.
   const studentLinks = { loaded: false, ownerId: '', byClient: new Map() };
@@ -1078,7 +1083,8 @@
   // mismo día); 4) el que empieza con el día de la semana de la fecha de sesión; 5) la
   // "Sesión del programa" elegida en Hoy; 6) el primer día con ejercicios. Así un alumno
   // con asignación activa siempre tiene un día.
-  function getGroupProgramDay(clientId, assignment) {
+  // date: la fecha de Modo Grupo; Hoy la usa con la fecha de hoy para mostrar el día de cada clase.
+  function getGroupProgramDay(clientId, assignment, date = groupSessionUi.sessionDate || getTodayLocalDate()) {
     const days = Array.isArray(assignment?.days) ? assignment.days : [];
     const withExercises = (day) => Array.isArray(day?.exercises) && day.exercises.length > 0;
     const byId = (id) => days.findIndex((day) => day.id === id);
@@ -1086,7 +1092,7 @@
     if (chosen >= 0) {
       return { day: days[chosen], index: chosen, reason: 'manual' };
     }
-    const sameDate = getTrainingSessionsByClient(clientId).filter((session) => session.date === groupSessionUi.sessionDate && byId(session.programDayId) >= 0);
+    const sameDate = getTrainingSessionsByClient(clientId).filter((session) => session.date === date && byId(session.programDayId) >= 0);
     const fromGroup = sameDate.find((session) => session.groupSessionId);
     if (fromGroup && withExercises(days[byId(fromGroup.programDayId)])) {
       return { day: days[byId(fromGroup.programDayId)], index: byId(fromGroup.programDayId), reason: 'session' };
@@ -1097,7 +1103,7 @@
     if (fromStudent && withExercises(days[byId(fromStudent.programDayId)])) {
       return { day: days[byId(fromStudent.programDayId)], index: byId(fromStudent.programDayId), reason: 'student' };
     }
-    const weekday = new Date(`${groupSessionUi.sessionDate || getTodayLocalDate()}T12:00:00`).getDay();
+    const weekday = new Date(`${date}T12:00:00`).getDay();
     const byWeekday = days.findIndex((day) => withExercises(day) && getWeekdayFromProgramDayName(day.name) === weekday);
     if (byWeekday >= 0) {
       return { day: days[byWeekday], index: byWeekday, reason: 'weekday' };
@@ -3039,6 +3045,9 @@
       ensureTrainingsV08State();
       // Lo que el entrenador todavía tiene pendiente de subir no se toca (su corrección gana).
       const pending = new Set(coachSetsApi ? readCoachSetsOutbox(coachId).map((item) => item.key) : []);
+      const studentSetIds = () => state.trainingsV08.sessions.flatMap((session) => getSessionExercises(session)
+        .flatMap((exercise) => getExerciseSets(exercise).filter((entry) => entry.studentSetId).map((entry) => ({ id: entry.studentSetId, clientId: session.clientId }))));
+      const knownBefore = new Set(studentSetIds().map((item) => item.id));
       const summary = studentImportApi.mergeStudentSets(state, result.data || [], {
         coachId,
         createId: dataApi.createId,
@@ -3051,12 +3060,18 @@
       }
       // Modo Grupo: la línea pequeña muestra los avisos de dos sesiones (o se limpia).
       groupSessionUi.importNotice = splits.join(' ');
+      // Hoy: aviso de registros nuevos (series que no estaban antes de traer).
+      const arrived = studentSetIds().filter((item) => !knownBefore.has(item.id));
+      studentImportUi.lastNew = arrived.length ? { count: arrived.length, clientIds: [...new Set(arrived.map((item) => item.clientId))] } : null;
       if (summary.added || summary.updated || summary.sessionsCreated) {
         persist();
       } else {
         renderStudentImportMessage();
         if (trainingUi.activeTrainingView === 'group') {
           renderTrainingGroupMode();
+        }
+        if (trainingUi.activeTrainingView === 'today') {
+          renderTrainingAgenda();
         }
       }
       return 'ok';
@@ -3119,9 +3134,7 @@
         element.classList.toggle('hidden', key !== viewName);
       }
     });
-    document.querySelectorAll('#trainingViewTabs button').forEach((button) => {
-      button.classList.toggle('active', button.getAttribute('data-training-view') === viewName);
-    });
+    updateNavActive();
     if (viewName === 'planning') {
       const currentStep = Number.isInteger(planningUi.currentStep) && planningUi.currentStep >= 1 && planningUi.currentStep <= 4
         ? planningUi.currentStep
@@ -7378,6 +7391,33 @@
     els.authPanel.innerHTML = '<div class="notice">Modo Local activo. Los datos siguen guardándose en localStorage.</div>';
   }
 
+  // Barra inferior: Hoy · Alumnos · Programas · Ajustes. Hoy y Programas son vistas de
+  // Entrenamientos (data-nav-view); Modo Grupo cuenta como Hoy y Progreso como Alumnos.
+  function updateNavActive() {
+    const view = trainingUi.activeTrainingView;
+    const key = currentSection === 'trainings'
+      ? (view === 'planning' ? 'trainings:planning' : view === 'progress' ? 'clients' : 'trainings:today')
+      : currentSection;
+    document.querySelectorAll('[data-nav]').forEach((button) => {
+      const id = button.hasAttribute('data-nav-view') ? `${button.getAttribute('data-nav')}:${button.getAttribute('data-nav-view')}` : button.getAttribute('data-nav');
+      button.classList.toggle('active', id === key);
+    });
+  }
+
+  // "Progreso" en la tarjeta de un alumno: la vista Progreso de siempre, con ese alumno elegido.
+  function openClientProgress(clientId) {
+    trainingUi.selectedClientId = clientId;
+    trainingUi.selectedExercise = '';
+    if (els.historyExercise) {
+      els.historyExercise.value = '';
+    }
+    setActiveSessionForClient(clientId);
+    trainingUi.activeTrainingView = 'progress';
+    show('trainings');
+    renderTrainings();
+    els.trainingProgressView?.scrollIntoView({ block: 'start' });
+  }
+
   function show(section) {
     if (els.cloudModeBadge) {
       els.cloudModeBadge.textContent = isCloudSessionActive() ? 'Modo Cloud' : 'Modo Local';
@@ -7389,9 +7429,8 @@
     if (els.nav) {
       els.nav.classList.toggle('hidden', section === 'studentTraining');
     }
-    document.querySelectorAll('[data-nav]').forEach((button) => {
-      button.classList.toggle('active', button.getAttribute('data-nav') === section);
-    });
+    currentSection = section;
+    updateNavActive();
     if (section === 'clients') {
       refreshClients().catch(() => {});
     }
@@ -7655,6 +7694,7 @@
             <button class="ghost small" type="button" data-client-sports="${client.id}" aria-expanded="${clientUi.detailId === client.id && clientUi.detailType === 'sports'}">${clientUi.detailId === client.id && clientUi.detailType === 'sports' ? 'Cerrar ficha deportiva' : 'Ficha deportiva'}</button>
             <button class="secondary small" type="button" data-client-edit="${client.id}">Editar</button>
             <button class="secondary small" type="button" data-client-whatsapp="${client.id}" ${whatsappPhone ? '' : 'disabled'}>WhatsApp</button>
+            ${getActiveTrainingClients().some((item) => item.id === client.id) ? `<button class="secondary small" type="button" data-client-progress="${client.id}">Progreso</button>` : ''}
           </div>
           ${clientUi.detailId === client.id ? (clientUi.detailType === 'sports' ? renderSportsProfilePanel(client) : renderClientDetail(client)) : ''}
         </article>`;
@@ -8156,11 +8196,20 @@
 
   function renderAgendaSlot(slot, showAttendanceAction = false) {
     const modeLabel = slot.modality === 'group' ? `Grupo (${slot.groupSize})` : 'Personalizado';
-    const statusLabels = { attended: 'Asistió', rescheduled: 'Reagendada', no_show: 'No asistió' };
     return `
       <article class="training-agenda-slot">
         <div class="training-agenda-slot-heading"><strong>${escapeHtml(slot.time)}</strong><span class="pill">${modeLabel}</span></div>
-        <div class="training-agenda-students">${slot.students.map((student) => `
+        <div class="training-agenda-students">${slot.students.map((student) => renderAgendaStudent(slot, student, showAttendanceAction)).join('')}
+        </div>
+        ${showAttendanceAction ? `<button class="primary training-agenda-weights" type="button" data-agenda-group="${escapeHtml(slot.sessionKey)}">Registrar pesos</button>` : ''}
+      </article>`;
+  }
+
+  // Un alumno de la agenda con sus controles de asistencia. La usan la agenda (en "Más")
+  // y el panel "Asistencia" de cada tarjeta de Hoy: mismos botones y mismas funciones.
+  function renderAgendaStudent(slot, student, showAttendanceAction) {
+    const statusLabels = { attended: 'Asistió', rescheduled: 'Reagendada', no_show: 'No asistió' };
+    return `
           <div class="training-agenda-student">
             <div><strong>${escapeHtml(student.name)}</strong><div class="meta">${escapeHtml(student.routine)}</div></div>
             <div class="training-agenda-student-actions">
@@ -8183,10 +8232,118 @@
                 <p class="notice">Con 7 o más días de aviso, o si lo pidió el entrenador, queda como Reagendada sin descuento. Con menos de 7 días pedido por el alumno, se registra como No asistió y descuenta la sesión.</p>
                 <div class="inline-actions"><button class="primary small" type="submit">Confirmar decisión</button><button class="secondary small" type="button" data-agenda-reschedule-close>Cancelar</button></div>
               </form>` : ''}
-          </div>`).join('')}
-        </div>
-        ${showAttendanceAction ? `<button class="primary training-agenda-weights" type="button" data-agenda-group="${escapeHtml(slot.sessionKey)}">Registrar pesos</button>` : ''}
-      </article>`;
+          </div>`;
+  }
+
+  // ---- Hoy: avisos y clases del día (solo leen datos) ----
+
+  // Tarjetas de Hoy con el panel "Asistencia" desplegado (solo en memoria).
+  const todayAttendanceOpen = new Set();
+
+  // Alumnos activos cuyo último entrenamiento registrado (con series efectivas) fue hace
+  // 7 días o más. Los que nunca registraron nada no aparecen.
+  function getInactiveTrainingClients(todayValue = getTodayLocalDate()) {
+    const dayMs = 86400000;
+    return getActiveTrainingClients().map((client) => {
+      const last = getTrainingSessionsByClient(client.id)
+        .filter((session) => session.date && session.date <= todayValue && getSessionExercises(session).some((exercise) => countExerciseSets(exercise) > 0))
+        .map((session) => session.date)
+        .sort()
+        .pop();
+      if (!last) {
+        return null;
+      }
+      const days = Math.round((Date.parse(`${todayValue}T12:00:00`) - Date.parse(`${last}T12:00:00`)) / dayMs);
+      return days >= 7 ? { client, days } : null;
+    }).filter(Boolean).sort((a, b) => b.days - a.days);
+  }
+
+  function getInitials(name) {
+    const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+    return ((parts[0]?.[0] || '') + (parts[1]?.[0] || '')).toUpperCase() || '?';
+  }
+
+  // Día del programa de cada alumno de la clase, el mismo que elegirá Modo Grupo hoy.
+  function getClassDayLabel(slot, todayValue) {
+    const names = slot.students.map((student) => {
+      const assignment = getActiveTrainingAssignment(student.id);
+      return assignment ? getGroupProgramDay(student.id, assignment, todayValue).day?.name || '' : '';
+    }).filter(Boolean);
+    const unique = [...new Set(names)];
+    return unique.length ? unique.join(' / ') : 'Sin rutina asignada';
+  }
+
+  // La próxima clase: la primera con hora que no terminó (se cuenta una hora de clase);
+  // si no hay, la primera sin hora.
+  function getNextClassKey(slots, now = new Date()) {
+    const minutesNow = now.getHours() * 60 + now.getMinutes();
+    const timed = slots.find((slot) => /^\d{2}:\d{2}$/.test(slot.time)
+      && Number(slot.time.slice(0, 2)) * 60 + Number(slot.time.slice(3)) + 60 > minutesNow);
+    return (timed || slots.find((slot) => !/^\d{2}:\d{2}$/.test(slot.time)))?.sessionKey || '';
+  }
+
+  function renderTodayOverview(todaySlots) {
+    const todayValue = getTodayLocalDate();
+    const dateEl = document.getElementById('todayDate');
+    if (dateEl) {
+      const label = new Date(`${todayValue}T12:00:00`).toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' });
+      dateEl.textContent = label.charAt(0).toUpperCase() + label.slice(1);
+    }
+    const inactiveEl = document.getElementById('todayInactiveNotice');
+    if (inactiveEl) {
+      const inactive = getInactiveTrainingClients(todayValue);
+      const names = getGroupShortNames(inactive.map((item) => item.client.id));
+      inactiveEl.innerHTML = inactive.length
+        ? `<strong>Hace 7 días o más sin entrenar</strong><span>${inactive.map((item, index) => `${escapeHtml(names[index])} (${item.days} días)`).join(', ')}</span>`
+        : '';
+      inactiveEl.classList.toggle('hidden', !inactive.length);
+    }
+    const lastNew = studentImportUi.lastNew;
+    const newEl = document.getElementById('todayNewSetsNotice');
+    if (newEl) {
+      const ids = (lastNew?.clientIds || []).filter((id) => getClientById(id));
+      newEl.innerHTML = lastNew && ids.length
+        ? `<strong>${lastNew.count} ${lastNew.count === 1 ? 'registro nuevo' : 'registros nuevos'} de alumnos</strong><span>${getGroupShortNames(ids).map(escapeHtml).join(', ')}</span>`
+        : '';
+      newEl.classList.toggle('hidden', !(lastNew && ids.length));
+    }
+    const classesEl = document.getElementById('todayClasses');
+    if (!classesEl) {
+      return;
+    }
+    if (!todaySlots.length) {
+      classesEl.innerHTML = `
+        <div class="today-empty">
+          <p class="muted">No hay clases programadas para hoy.</p>
+          <button class="secondary" type="button" data-training-view="group">Abrir Modo Grupo</button>
+        </div>`;
+      return;
+    }
+    const nextKey = getNextClassKey(todaySlots);
+    const fresh = new Set(lastNew?.clientIds || []);
+    classesEl.innerHTML = todaySlots.map((slot) => {
+      const isNext = slot.sessionKey === nextKey;
+      const open = todayAttendanceOpen.has(slot.sessionKey);
+      const people = slot.students.map((student) => {
+        const attended = student.attendance?.status === 'attended';
+        const notes = [fresh.has(student.id) ? 'registro nuevo' : '', attended ? 'asistió' : ''].filter(Boolean).join(' · ');
+        return `
+        <span class="today-avatar${fresh.has(student.id) ? ' is-new' : ''}${attended ? ' is-attended' : ''}" title="${escapeHtml(student.name)}${notes ? ` · ${notes}` : ''}" data-today-student="${escapeHtml(student.id)}">${escapeHtml(getInitials(student.name))}${attended ? '<span class="today-avatar-check" data-today-attended aria-label="Asistió">✓</span>' : ''}</span>`;
+      }).join('');
+      return `
+        <article class="today-class${isNext ? ' is-next' : ''}" data-today-class="${escapeHtml(slot.sessionKey)}">
+          <div class="today-class-head">
+            <h3 class="today-class-time">${escapeHtml(slot.time)} · ${slot.modality === 'group' ? 'GRUPO' : 'PERSONAL'}</h3>
+            <span class="today-class-day">${escapeHtml(getClassDayLabel(slot, todayValue))}</span>
+          </div>
+          <div class="today-class-people" aria-label="Alumnos de la clase">${people}</div>
+          <div class="today-class-actions">
+            <button class="${isNext ? 'primary' : 'secondary today-outline'} today-class-btn" type="button" data-agenda-group="${escapeHtml(slot.sessionKey)}">${isNext ? 'Empezar clase' : 'Ver clase'}</button>
+            <button class="secondary today-outline today-attendance-btn" type="button" data-today-attendance="${escapeHtml(slot.sessionKey)}" aria-expanded="${open}">Asistencia</button>
+          </div>
+          ${open ? `<div class="today-attendance training-agenda-students" data-today-attendance-panel>${slot.students.map((student) => renderAgendaStudent(slot, student, true)).join('')}</div>` : ''}
+        </article>`;
+    }).join('');
   }
 
   function renderTrainingAgenda() {
@@ -8195,6 +8352,7 @@
       els.trainingAgendaDate.textContent = today.toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' });
     }
     const todaySlots = getAgendaSlotsForDate(today);
+    renderTodayOverview(todaySlots);
     if (els.trainingAgendaToday) {
       els.trainingAgendaToday.innerHTML = todaySlots.length
         ? todaySlots.map((slot) => renderAgendaSlot(slot, true)).join('')
@@ -8260,7 +8418,7 @@
     groupSessionUi.openClients = {};
     groupSessionUi.message = clientIds.length > 4 ? 'Modo Grupo admite hasta 4 alumnos: se marcaron los primeros 4.' : '';
     setTrainingView('group');
-    els.trainingViewTabs?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    els.trainingGroupView?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   function markAgendaAttendance(sessionKey, clientId) {
@@ -9755,6 +9913,29 @@
     const navButton = target.closest('[data-nav]');
     if (navButton) {
       show(navButton.getAttribute('data-nav'));
+      if (navButton.hasAttribute('data-nav-view')) {
+        setTrainingView(navButton.getAttribute('data-nav-view'));
+        window.scrollTo(0, 0);
+      }
+      return;
+    }
+
+    // Hoy: "Asistencia" despliega en la tarjeta los mismos controles de la agenda.
+    const todayAttendanceButton = target.closest('[data-today-attendance]');
+    if (todayAttendanceButton) {
+      const key = todayAttendanceButton.getAttribute('data-today-attendance');
+      if (todayAttendanceOpen.has(key)) {
+        todayAttendanceOpen.delete(key);
+      } else {
+        todayAttendanceOpen.add(key);
+      }
+      renderTrainingAgenda();
+      return;
+    }
+
+    const clientProgressButton = target.closest('[data-client-progress]');
+    if (clientProgressButton) {
+      openClientProgress(clientProgressButton.getAttribute('data-client-progress'));
       return;
     }
 

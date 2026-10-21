@@ -1676,7 +1676,7 @@ button.small {
 @media (max-width: 520px) {
   .app { padding: 14px 14px 120px; }
   .grid { grid-template-columns: 1fr; }
-  .nav-inner { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .nav-inner { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .nutrition-metrics-grid { grid-template-columns: 1fr; }
   .nutrition-plan-card,
   .nutrition-client-card { flex-direction: column; align-items: flex-start; }
@@ -2703,7 +2703,7 @@ details.group-athlete-row[open] > summary h3::before {
 }
 
 .solo-entrenamientos .nav-inner {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 /* Biblioteca de ejercicios: solo en Planificación, cerrada como desplegable, fichas de una línea. */
@@ -4158,4 +4158,192 @@ details.group-athlete-row[open] > summary h3::before {
   color: var(--sv-red);
   font-weight: 800;
   letter-spacing: 0.06em;
+}
+
+
+/* ===== Hoy (v0.9.33): fecha, avisos y una tarjeta por clase. Lo de antes queda en "Más". ===== */
+.today-view {
+  display: grid;
+  gap: 12px;
+}
+
+.today-head {
+  display: grid;
+  gap: 2px;
+}
+
+.today-title {
+  font-size: 1.9rem;
+  line-height: 1;
+}
+
+.today-date {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.today-alert {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid;
+  font-size: 0.9rem;
+}
+
+.today-alert strong {
+  font-size: 0.95rem;
+}
+
+.today-alert--bad {
+  background: rgba(239, 107, 107, 0.12);
+  border-color: rgba(239, 107, 107, 0.45);
+  color: var(--danger);
+}
+
+.today-alert--bad span {
+  color: var(--text);
+}
+
+.today-alert--new {
+  background: rgba(255, 204, 26, 0.1);
+  border-color: rgba(255, 204, 26, 0.45);
+  color: var(--accent);
+}
+
+.today-alert--new span {
+  color: var(--text);
+}
+
+.today-classes {
+  display: grid;
+  gap: 10px;
+}
+
+.today-class {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  min-width: 0;
+}
+
+.today-class.is-next {
+  border-color: rgba(255, 204, 26, 0.55);
+}
+
+.today-class-head {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.today-class-time {
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.today-class-day {
+  color: var(--muted);
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.today-class-people {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.today-avatar {
+  display: inline-grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.today-avatar.is-new {
+  border-color: var(--accent);
+}
+
+.today-avatar {
+  position: relative;
+}
+
+/* Asistencia marcada: ✓ verde sobre el círculo. */
+.today-avatar-check {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--success);
+  color: var(--sv-ink);
+  font-size: 0.7rem;
+  font-weight: 800;
+  border: 2px solid var(--surface-2);
+}
+
+.today-class-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.today-attendance {
+  display: grid;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  min-width: 0;
+}
+
+.today-attendance .training-agenda-student {
+  min-width: 0;
+}
+
+.today-class-btn {
+  width: 100%;
+}
+
+button.today-outline {
+  background: transparent;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+}
+
+.today-empty {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+}
+
+.today-more {
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
+.today-more > summary {
+  cursor: pointer;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.today-more-links {
+  margin: 6px 0 12px;
 }

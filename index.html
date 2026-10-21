@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <title>VALHALLA</title>
-  <link rel="stylesheet" href="./assets/css/styles.css?v=0.9.32">
+  <link rel="stylesheet" href="./assets/css/styles.css?v=0.9.33">
 </head>
 <!-- Clase "solo-entrenamientos": oculta Inicio, Registrar (finanzas) y Nutrición sin borrarlos. Quitarla los vuelve a mostrar. -->
 <body class="solo-entrenamientos">
@@ -31,7 +31,7 @@
       <div class="header-actions">
         <span class="user-pill">Usuario</span>
         <span class="badge" id="cloudModeBadge">Modo Local</span>
-        <span class="badge">v0.9.32</span>
+        <span class="badge">v0.9.33</span>
       </div>
     </header>
 
@@ -166,8 +166,8 @@
       <div class="card">
         <div class="section-title client-section-head">
           <div>
-            <p class="eyebrow">Clientes</p>
-            <h2>Clientes</h2>
+            <p class="eyebrow">Alumnos</p>
+            <h2>Alumnos</h2>
           </div>
           <button class="primary client-new-button" id="newClientBtn" type="button">Nuevo cliente</button>
         </div>
@@ -373,17 +373,24 @@
     </section>
 
     <section id="trainings" class="hidden" data-view="today">
-      <div class="card training-tabs-card">
-        <div class="inline-actions" id="trainingViewTabs" aria-label="Entrenamientos">
-          <button class="secondary active" type="button" data-training-view="today">Hoy</button>
-          <button class="secondary" type="button" data-training-view="planning">Programas</button>
-          <button class="secondary" type="button" data-training-view="group">Grupo</button>
-          <button class="secondary" type="button" data-training-view="progress">Progreso</button>
-        </div>
-        <div id="trainingViewMessage" class="notice"></div>
-      </div>
+      <div id="trainingViewMessage" class="notice"></div>
 
-      <div id="trainingTodayView" class="card">
+      <div id="trainingTodayView" class="card today-view">
+        <div class="today-head">
+          <h2 class="today-title">Hoy</h2>
+          <p id="todayDate" class="today-date"></p>
+        </div>
+        <div id="todayInactiveNotice" class="today-alert today-alert--bad hidden" role="status" data-today-inactive></div>
+        <div id="todayNewSetsNotice" class="today-alert today-alert--new hidden" role="status" data-today-new></div>
+        <div id="todayClasses" class="today-classes"></div>
+
+        <!-- Lo que estaba en Hoy y no entra en la pantalla nueva: plegado, sin cambios. -->
+        <details id="trainingTodayMore" class="today-more">
+        <summary>Más</summary>
+        <div class="inline-actions today-more-links">
+          <button class="secondary small" type="button" data-training-view="group">Modo Grupo</button>
+          <button class="secondary small" type="button" data-training-view="progress">Progreso</button>
+        </div>
         <section class="training-agenda-panel" aria-labelledby="trainingAgendaTitle">
           <div class="section-title"><h2 id="trainingAgendaTitle">Sesiones de hoy</h2><span id="trainingAgendaDate" class="pill"></span></div>
           <div id="trainingAgendaToday" class="training-agenda-list"></div>
@@ -613,6 +620,7 @@
             <div id="templateList" class="training-set-list"></div>
           </div>
 
+        </details>
         </details>
       </div>
 
@@ -1243,8 +1251,9 @@
     <div class="nav-inner">
       <button type="button" data-nav="home" data-modulo-oculto><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 11.5 12 5l8 6.5V20h-5v-5h-6v5H4z"/></svg><span>Inicio</span></button>
       <button type="button" data-nav="register" data-modulo-oculto><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14"/></svg><span>Registrar</span></button>
-      <button type="button" data-nav="trainings"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 9v6M6 7v10M18 7v10M21 9v6M6 12h12"/></svg><span>Entrenamientos</span></button>
-      <button type="button" data-nav="clients"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="9" cy="8.5" r="3"/><path d="M3.5 19c.8-3 3-4.5 5.5-4.5s4.7 1.5 5.5 4.5"/><circle cx="17" cy="9.5" r="2.3"/><path d="M15.5 14.8c2.3.1 4 1.5 4.8 4.2"/></svg><span>Clientes</span></button>
+      <button type="button" data-nav="trainings" data-nav-view="today"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg><span>Hoy</span></button>
+      <button type="button" data-nav="clients"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="9" cy="8.5" r="3"/><path d="M3.5 19c.8-3 3-4.5 5.5-4.5s4.7 1.5 5.5 4.5"/><circle cx="17" cy="9.5" r="2.3"/><path d="M15.5 14.8c2.3.1 4 1.5 4.8 4.2"/></svg><span>Alumnos</span></button>
+      <button type="button" data-nav="trainings" data-nav-view="planning"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 9v6M6 7v10M18 7v10M21 9v6M6 12h12"/></svg><span>Programas</span></button>
       <button type="button" data-nav="settings"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="3"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8"/></svg><span>Ajustes</span></button>
     </div>
   </nav>
