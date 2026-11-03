@@ -3774,6 +3774,24 @@ details.group-athlete-row[open] > summary h3::before {
   margin: -6px 0 0;
 }
 
+.auth-gate--student .sv-video-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 8px 14px;
+  border: 1px solid var(--sv-accent);
+  border-radius: 12px;
+  color: var(--sv-accent);
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.auth-gate--student .sv-video-mark {
+  color: var(--sv-accent);
+  font-size: 0.75em;
+}
+
 .auth-gate--student .sv-ref {
   display: grid;
   grid-template-columns: 1fr 1fr;

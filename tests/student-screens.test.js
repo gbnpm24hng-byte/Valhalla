@@ -70,3 +70,42 @@ test('historial: el RIR que anotó el entrenador se muestra como sensación', ()
 test('fecha de hoy en hora local del teléfono (no UTC)', () => {
   assert.equal(view.localToday(new Date(2026, 9, 19, 22, 30)), '2026-10-19');
 });
+
+// ---- Video de técnica ----
+
+const VIDEO = 'https://videos.example.com/sentadilla?a=1&b=2';
+const videoCtx = { canLog: false, date: '2026-10-20', dates: ['2026-10-20'], setRows: [], outbox: [], progress: [] };
+const exerciseHtml = (exercise) => view.renderExerciseScreen(videoCtx, { program: { assignment_id: 'a-1' }, day: { id: 'd-1', name: 'Día A', exercises: [exercise] }, exercises: [exercise], exerciseIndex: 0, exercise });
+const todayHtml = (exercises) => {
+  const day = { id: 'd-1', name: 'Día A', exercises };
+  const program = { assignment_id: 'a-1', title: 'Programa falso', data: { days: [day] } };
+  return view.renderToday(videoCtx, { progress: [] }, { program, days: [day], day, exercises }, [program]);
+};
+const base = { id: 'ex-1', name: 'Sentadilla de prueba', sets: 3, repMin: 8, repMax: 10 };
+
+test('Ejercicio: con video, botón bajo el nombre que abre una pestaña nueva', () => {
+  const html = exerciseHtml({ ...base, videoUrl: VIDEO });
+  assert.match(html, /<a class="sv-video-btn" data-sv-video href="https:\/\/videos\.example\.com\/sentadilla\?a=1&amp;b=2" target="_blank" rel="noopener noreferrer">▶ Ver cómo se hace<\/a>/);
+  assert.ok(html.indexOf('sv-ex-name') < html.indexOf('data-sv-video'));
+  assert.ok(html.indexOf('data-sv-video') < html.indexOf('sv-ex-scheme'));
+});
+
+test('Hoy: ▶ pequeño solo junto a los ejercicios con video', () => {
+  const html = todayHtml([{ ...base, videoUrl: VIDEO }, { ...base, id: 'ex-2', name: 'Prensa de prueba' }]);
+  assert.equal(html.match(/data-sv-video-mark/g).length, 1);
+  assert.ok(html.indexOf('data-sv-video-mark') < html.indexOf('Prensa de prueba'));
+  assert.equal(html.includes('<a '), false, 'la tarjeta sigue siendo un solo botón, sin enlaces dentro');
+});
+
+test('programa ya publicado sin videoUrl: sin rastro de video', () => {
+  const html = exerciseHtml(base) + todayHtml([base]);
+  assert.doesNotMatch(html, /sv-video|Ver cómo se hace|href=/);
+  assert.equal(exerciseHtml({ ...base, videoUrl: '' }), exerciseHtml(base));
+});
+
+test('un enlace no seguro en lo publicado no se muestra al alumno', () => {
+  ['javascript:alert(1)', 'http://videos.example.com/a', 'texto', '"><script>1</script>', null, 7].forEach((videoUrl) => {
+    assert.equal(exerciseHtml({ ...base, videoUrl }), exerciseHtml(base));
+    assert.equal(todayHtml([{ ...base, videoUrl }]), todayHtml([base]));
+  });
+});

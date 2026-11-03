@@ -179,6 +179,11 @@
     return window.VALHALLA.publishCore?.studentNote ? window.VALHALLA.publishCore.studentNote(value) : String(value || '');
   }
 
+  // Enlace de video para el alumno: se revisa también aquí, porque viene de lo publicado.
+  function videoFor(exercise) {
+    return window.VALHALLA.publishCore?.safeVideoUrl ? window.VALHALLA.publishCore.safeVideoUrl(exercise?.videoUrl) : '';
+  }
+
   function formatNumber(value) {
     return value === null || value === undefined || value === '' ? '' : String(value).replace('.', ',');
   }
@@ -574,7 +579,7 @@
         <li class="sv-exercise${complete ? ' is-complete' : ''}">
           <button type="button" class="sv-ex-card" data-sv-open="${escapeHtml(exercise.id || '')}">
             <span class="sv-ex-card-text">
-              <strong>${escapeHtml(exercise.name || 'Ejercicio')}</strong>
+              <strong>${escapeHtml(exercise.name || 'Ejercicio')}${videoFor(exercise) ? ' <span class="sv-video-mark" data-sv-video-mark role="img" aria-label="Tiene video">▶</span>' : ''}</strong>
               <span class="sv-meta">${escapeHtml(exerciseScheme(exercise))}</span>
             </span>
             ${progress ? `<span class="sv-ex-progress${complete ? ' is-complete' : ''}" data-sv-progress>${complete ? '<span class="sv-check" aria-label="Completo">✓</span>' : `${progress.done}/${progress.planned}`}</span>` : ''}
@@ -708,6 +713,7 @@
         </div>`;
     }
     const total = exercises.length;
+    const video = videoFor(exercise);
     return `
       <section class="sv-screen sv-exercise-screen" data-student-program data-sv-screen="exercise" data-assignment-id="${escapeHtml(program.assignment_id || '')}">
         <div class="sv-ex-top">
@@ -720,6 +726,7 @@
           <button type="button" class="sv-ghost" data-sv-step="1"${exerciseIndex >= total - 1 ? ' disabled' : ''}>Siguiente ▶</button>
         </nav>
         <h2 class="sv-ex-name">${escapeHtml(exercise.name || 'Ejercicio')}</h2>
+        ${video ? `<a class="sv-video-btn" data-sv-video href="${escapeHtml(video)}" target="_blank" rel="noopener noreferrer">▶ Ver cómo se hace</a>` : ''}
         <p class="sv-meta sv-ex-scheme">${escapeHtml(exerciseScheme(exercise))}${hasValue(exercise.targetWeight) ? ` · objetivo ${escapeHtml(formatNumber(Number(exercise.targetWeight)))} kg` : ''}</p>
         ${note ? `<p class="sv-note">${escapeHtml(note)}</p>` : ''}
         ${refBox}
@@ -1306,7 +1313,7 @@
     clearCache,
     format: {
       setLine, studentSetLine, setHasData, repsRange, exerciseScheme, noteForStudent, renderProgram,
-      feelFromRir, FEEL_OPTIONS, weekStart, weekDates, weekStreak, localToday, addDays, renderExerciseScreen
+      feelFromRir, FEEL_OPTIONS, weekStart, weekDates, weekStreak, localToday, addDays, renderExerciseScreen, renderToday
     }
   };
 })();

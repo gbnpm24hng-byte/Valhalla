@@ -105,3 +105,78 @@ test('sesiones sin series publicables no generan historial', () => {
   const { progress } = publish.buildPublication(poisonedAssignment(), [{ id: 's2', date: '2026-10-02', exercises: [{ exerciseName: 'X', sets: [] }] }]);
   assert.deepEqual(progress, []);
 });
+
+// ---- Video de técnica ----
+
+const VIDEO = 'https://videos.example.com/sentadilla?t=10';
+const videoAssignment = (exercise) => ({ id: 'a', days: [{ id: 'd', exercises: [{ id: 'e', sets: 3, ...exercise }] }] });
+const publishedExercise = (exercise, library) => publish.buildPublishedProgram(videoAssignment(exercise), library).days[0].exercises[0];
+
+test('enlace de video: acepta https://', () => {
+  assert.equal(publish.safeVideoUrl(VIDEO), VIDEO);
+  assert.equal(publish.safeVideoUrl('  https://youtu.be/abc123  '), 'https://youtu.be/abc123', 'se limpian los espacios de los extremos');
+  assert.equal(publish.safeVideoUrl('HTTPS://youtu.be/abc123'), 'HTTPS://youtu.be/abc123');
+});
+
+test('enlace de video: rechaza http, javascript:, vacío, texto suelto y formas engañosas', () => {
+  [
+    'http://youtu.be/abc', 'javascript:alert(1)', 'JaVaScRiPt:alert(1)', 'data:text/html,<script>1</script>', '', '   ',
+    'ver video', 'youtu.be/abc', 'https://', 'https:youtu.be/abc', 'https:\\\\youtu.be', 'https://youtu.be/a b',
+    'ftp://youtu.be/a', ' javascript:alert(1)//https://youtu.be', 'https://usuario:clave@youtu.be/a', 'https://youtu.be@otro.example.com/a',
+    'https://localhost/a', `https://youtu.be/${'a'.repeat(500)}`, null, undefined, 42, {}, ['https://youtu.be/a']
+  ].forEach((value) => assert.equal(publish.safeVideoUrl(value), '', `debe rechazar: ${String(value).slice(0, 40)}`));
+});
+
+test('publicación: videoUrl viene del ejercicio enlazado por libraryExerciseId, aunque el nombre difiera', () => {
+  const library = [
+    { id: 'lib-1', name: 'Nombre renovado', videoUrl: VIDEO },
+    { id: 'lib-2', name: 'Sentadilla', videoUrl: 'https://videos.example.com/otro' }
+  ];
+  assert.equal(publishedExercise({ libraryExerciseId: 'lib-1', exerciseName: 'Sentadilla' }, library).videoUrl, VIDEO);
+});
+
+test('publicación: sin libraryExerciseId (o con uno que ya no existe) busca por nombre, sin tildes ni mayúsculas', () => {
+  const library = [{ id: 'lib-1', name: 'Extensión de Cuádriceps', videoUrl: VIDEO }];
+  assert.equal(publishedExercise({ exerciseName: 'extension de cuadriceps' }, library).videoUrl, VIDEO);
+  assert.equal(publishedExercise({ libraryExerciseId: 'lib-borrado', exerciseName: 'Extensión de cuádriceps' }, library).videoUrl, VIDEO);
+});
+
+test('publicación: un ejercicio enlazado sin video no toma el de otro con el mismo nombre', () => {
+  const library = [{ id: 'lib-1', name: 'Sentadilla' }, { id: 'lib-2', name: 'Sentadilla', videoUrl: VIDEO }];
+  assert.equal('videoUrl' in publishedExercise({ libraryExerciseId: 'lib-1', exerciseName: 'Sentadilla' }, library), false);
+});
+
+test('publicación: sin enlace válido no se manda la clave videoUrl', () => {
+  const exercise = { libraryExerciseId: 'lib-1', exerciseName: 'Sentadilla' };
+  [
+    [{ id: 'lib-1', name: 'Sentadilla' }],
+    [{ id: 'lib-1', name: 'Sentadilla', videoUrl: '' }],
+    [{ id: 'lib-1', name: 'Sentadilla', videoUrl: 'http://videos.example.com/a' }],
+    [{ id: 'lib-1', name: 'Sentadilla', videoUrl: 'javascript:alert(1)' }],
+    [{ id: 'lib-1', name: 'Sentadilla', videoUrl: VIDEO, active: false }],
+    [{ id: 'otro', name: 'Otro ejercicio', videoUrl: VIDEO }],
+    [], undefined
+  ].forEach((library) => assert.equal('videoUrl' in publishedExercise(exercise, library), false));
+});
+
+test('publicación: un videoUrl escrito en el programa se ignora; solo manda la galería', () => {
+  assert.equal('videoUrl' in publishedExercise({ exerciseName: 'Sentadilla', videoUrl: VIDEO }, []), false);
+});
+
+test('publicación: sin videos, el programa es idéntico al de antes (no aparece "cambios sin publicar")', () => {
+  const library = [{ id: 'lib-1', name: 'Sentadilla' }, { id: 'lib-2', name: 'Otro', videoUrl: VIDEO }];
+  assert.deepEqual(publish.buildPublishedProgram(poisonedAssignment(), library), publish.buildPublishedProgram(poisonedAssignment()));
+  assert.equal(JSON.stringify(publish.buildPublishedProgram(poisonedAssignment(), library)).includes('videoUrl'), false);
+});
+
+test('publicación: el video no agrega ningún otro dato de la galería ni claves prohibidas', () => {
+  const library = [{ ...POISON, id: 'lib-1', name: 'Sentadilla', description: 'Descripción privada', jointDemand: { knee: 2 }, videoUrl: VIDEO }];
+  const assignment = videoAssignment({ libraryExerciseId: 'lib-1', exerciseName: 'Sentadilla' });
+  const { program } = publish.buildPublication(assignment, [], library);
+  const withoutLibrary = publish.buildPublishedProgram(assignment);
+  const { videoUrl, ...rest } = program.days[0].exercises[0];
+  assert.equal(videoUrl, VIDEO);
+  assert.deepEqual(rest, withoutLibrary.days[0].exercises[0]);
+  assert.deepEqual(publish.findForbiddenKeys(program), []);
+  assert.equal(JSON.stringify(program).includes('Descripción privada'), false);
+});

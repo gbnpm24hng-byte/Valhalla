@@ -65,6 +65,40 @@
     return studentNote(comment.text).slice(0, MAX_COMMENT);
   }
 
+  // Enlace de video de técnica: solo https:// con un dominio real. Devuelve el enlace limpio
+  // o '' si no sirve. Se usa al guardar en la galería, al publicar y al mostrarlo al alumno.
+  const MAX_VIDEO_URL = 500;
+  function safeVideoUrl(value) {
+    if (typeof value !== 'string') {
+      return '';
+    }
+    const candidate = value.trim();
+    if (candidate.length > MAX_VIDEO_URL || !/^https:\/\/\S+$/i.test(candidate)) {
+      return '';
+    }
+    try {
+      const url = new URL(candidate);
+      const valid = url.protocol === 'https:' && url.hostname.includes('.') && !url.username && !url.password;
+      return valid ? candidate : '';
+    } catch (error) {
+      return '';
+    }
+  }
+
+  function foldName(value) {
+    return String(value ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+  }
+
+  // Video del ejercicio de la galería enlazado: por libraryExerciseId y, si no, por nombre.
+  // library: solo ejercicios activos (un ejercicio eliminado de la galería no aporta video).
+  function videoUrlFor(exercise, library) {
+    const libraryId = exercise?.libraryExerciseId || '';
+    const name = foldName(exercise?.exerciseName || exercise?.name);
+    const match = (libraryId && library.find((item) => item.id === libraryId))
+      || (name && library.find((item) => foldName(item.name) === name || foldName(item.normalizedName) === name));
+    return match ? safeVideoUrl(match.videoUrl) : '';
+  }
+
   function text(value, max = MAX_TEXT) {
     return value === null || value === undefined ? '' : String(value).slice(0, max);
   }
@@ -91,9 +125,11 @@
     };
   }
 
-  // Ejercicio del programa: nombre, series, repeticiones, carga objetivo y nota de técnica.
-  function pickProgramExercise(exercise) {
-    return {
+  // Ejercicio del programa: nombre, series, repeticiones, carga objetivo, nota de técnica y,
+  // solo si la galería tiene un enlace válido, videoUrl (sin video, la clave no existe y el
+  // programa queda idéntico al de antes).
+  function pickProgramExercise(exercise, library) {
+    const picked = {
       id: text(exercise?.id, 120),
       name: text(exercise?.exerciseName || exercise?.name, 120),
       sets: numberOrNull(exercise?.sets),
@@ -104,24 +140,30 @@
       approximations: list(exercise?.approximations).map(pickPrescribedSet),
       effectiveSets: list(exercise?.effectiveSets).map(pickPrescribedSet)
     };
+    const videoUrl = videoUrlFor(exercise, library);
+    if (videoUrl) {
+      picked.videoUrl = videoUrl;
+    }
+    return picked;
   }
 
-  function pickProgramDay(day, index) {
+  function pickProgramDay(day, index, library) {
     return {
       id: text(day?.id, 120),
       name: text(day?.name, 120) || `Día ${index + 1}`,
       order: numberOrNull(day?.order) ?? index + 1,
-      exercises: list(day?.exercises).map(pickProgramExercise)
+      exercises: list(day?.exercises).map((exercise) => pickProgramExercise(exercise, library))
     };
   }
 
   // Programa publicado a partir de una asignación (días, ejercicios, series, cargas).
-  function buildPublishedProgram(assignment) {
+  function buildPublishedProgram(assignment, library) {
+    const activeLibrary = list(library).filter((item) => item && item.active !== false);
     return {
       schema: 1,
       assignmentId: text(assignment?.id, 120),
       programName: text(assignment?.programName, 120) || 'Programa',
-      days: list(assignment?.days).map(pickProgramDay)
+      days: list(assignment?.days).map((day, index) => pickProgramDay(day, index, activeLibrary))
     };
   }
 
@@ -174,8 +216,8 @@
   }
 
   // Todo lo que se publica para un cliente: su programa activo y su historial.
-  function buildPublication(assignment, sessions) {
-    const program = buildPublishedProgram(assignment);
+  function buildPublication(assignment, sessions, library) {
+    const program = buildPublishedProgram(assignment, library);
     let omittedSets = 0;
     const progress = list(sessions)
       .map(buildPublishedSession)
@@ -213,6 +255,7 @@
     buildPublication,
     findForbiddenKeys,
     studentNote,
-    publishableComment
+    publishableComment,
+    safeVideoUrl
   };
 })();

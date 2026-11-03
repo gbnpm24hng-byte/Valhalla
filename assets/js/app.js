@@ -9,6 +9,7 @@
   const cloudDataApi = window.VALHALLA.cloudData;
   // Etiquetas en español para mostrar códigos de la biblioteca (labels.js).
   const labelsApi = window.VALHALLA.labels;
+  const publishCoreApi = window.VALHALLA.publishCore;
   // "Importar programa" del armador: valida el archivo y arma un programa nuevo (program-import-core.js).
   const programImportApi = window.VALHALLA.programImport;
   // Series registradas por los alumnos (student-import-core.js).
@@ -354,6 +355,7 @@
     libraryExerciseKneeDemandSelect: document.getElementById('libraryExerciseKneeDemand'),
     libraryExerciseHipDemandSelect: document.getElementById('libraryExerciseHipDemand'),
     libraryExerciseDescriptionInput: document.getElementById('libraryExerciseDescription'),
+    libraryExerciseVideoUrlInput: document.getElementById('libraryExerciseVideoUrl'),
     libraryExerciseSecondaryMusclesInput: document.getElementById('libraryExerciseSecondaryMuscles'),
     libraryExerciseEquipmentsInput: document.getElementById('libraryExerciseEquipments'),
     libraryExerciseBaseInput: document.getElementById('libraryExerciseBase'),
@@ -5419,6 +5421,10 @@
     if (els.libraryExerciseDescriptionInput) {
       els.libraryExerciseDescriptionInput.value = '';
     }
+    if (els.libraryExerciseVideoUrlInput) {
+      els.libraryExerciseVideoUrlInput.value = '';
+      els.libraryExerciseVideoUrlInput.setCustomValidity('');
+    }
     if (els.libraryExerciseSecondaryMusclesInput) {
       els.libraryExerciseSecondaryMusclesInput.value = '';
     }
@@ -5493,6 +5499,10 @@
     if (els.libraryExerciseDescriptionInput) {
       els.libraryExerciseDescriptionInput.value = exercise.description || '';
     }
+    if (els.libraryExerciseVideoUrlInput) {
+      els.libraryExerciseVideoUrlInput.value = exercise.videoUrl || '';
+      els.libraryExerciseVideoUrlInput.setCustomValidity('');
+    }
     if (els.libraryExerciseSecondaryMusclesInput) {
       els.libraryExerciseSecondaryMusclesInput.value = labelsApi.listLabel('muscle', exercise.secondaryMuscles);
     }
@@ -5523,6 +5533,19 @@
       return;
     }
 
+    // Opcional, pero si se escribe debe ser https://. El aviso sale junto al campo porque
+    // el mensaje de la biblioteca queda arriba del formulario, fuera de la vista.
+    const videoInput = els.libraryExerciseVideoUrlInput;
+    const videoText = String(videoInput?.value || '').trim();
+    const videoUrl = publishCoreApi.safeVideoUrl(videoText);
+    if (videoText && !videoUrl) {
+      const videoMessage = 'El enlace del video debe ser una dirección completa que empiece con https://';
+      setLibraryMessage(videoMessage, 'bad');
+      videoInput.setCustomValidity(videoMessage);
+      videoInput.reportValidity();
+      return;
+    }
+
     const existingId = String(els.libraryExerciseIdInput?.value || '').trim();
     const baseTarget = String(els.libraryExerciseBaseInput?.value || '').trim();
     const baseExercise = findLibraryExerciseByName(baseTarget);
@@ -5535,6 +5558,7 @@
       name,
       normalizedName: name,
       description: String(els.libraryExerciseDescriptionInput?.value || '').trim(),
+      videoUrl,
       pattern: String(els.libraryExercisePatternSelect?.value || 'other'),
       primaryMuscle: String(els.libraryExercisePrimaryMuscleSelect?.value || 'full_body'),
       secondaryMuscles: readLibraryFreeText('secondaryMuscles', 'muscle', els.libraryExerciseSecondaryMusclesInput),
@@ -11472,6 +11496,7 @@
   });
   els.exerciseCategorySelect?.addEventListener('change', renderProgramLibrary);
   els.exerciseLibrarySearch?.addEventListener('input', renderProgramLibrary);
+  els.libraryExerciseVideoUrlInput?.addEventListener('input', (event) => event.target.setCustomValidity(''));
   els.libraryImportBtn?.addEventListener('click', () => els.libraryImportFile?.click());
   els.libraryImportFile?.addEventListener('change', handleLibraryImportFile);
   els.programImportBtn?.addEventListener('click', () => els.programImportFile?.click());

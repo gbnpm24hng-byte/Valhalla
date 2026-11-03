@@ -54,3 +54,11 @@ test('usarlo dos veces no duplica', () => {
   assert.equal(second.toAdd.length, 0);
   assert.equal(second.skipped.length, 10);
 });
+
+test('el enlace de video sobrevive a recargar y a agregar desde respaldo; sin enlace no agrega la clave', () => {
+  const url = 'https://videos.example.com/sentadilla';
+  const reloaded = data.importState(JSON.stringify({ exerciseLibrary: [{ id: 'a', name: 'Con video', videoUrl: url }, { id: 'b', name: 'Sin video' }] })).exerciseLibrary;
+  assert.equal(reloaded.find((item) => item.id === 'a').videoUrl, url);
+  assert.equal('videoUrl' in reloaded.find((item) => item.id === 'b'), false);
+  assert.equal(data.planLibraryAdditions([], [{ id: 'a', name: 'Con video', videoUrl: url }]).toAdd[0].videoUrl, url);
+});

@@ -79,7 +79,7 @@
     const sessions = (v08.sessions || []).filter((session) => session.clientId === clientId);
     // Con los cambios "de aquí en adelante" de este alumno (Modo Grupo); los de "solo hoy" no se publican.
     const effective = overridesCore ? overridesCore.applyToAssignment(assignment, v08.clientOverrides) : assignment;
-    const publication = publishCore.buildPublication(effective, sessions);
+    const publication = publishCore.buildPublication(effective, sessions, state?.exerciseLibrary);
     return { assignment, ...publication, contentHash: syncCore.fingerprint({ program: publication.program, progress: publication.progress }) };
   }
 
@@ -174,7 +174,7 @@
         <li>Programa "${escapeHtml(current.program.programName)}": ${plural(current.program.days.length, 'día', 'días')}, ${plural(exercises, 'ejercicio', 'ejercicios')}.</li>
         <li>Historial: ${plural(current.progress.length, 'sesión', 'sesiones')} con series.</li>
       </ul>
-      <p class="muted">Solo se publican días, ejercicios, series, repeticiones, cargas objetivo y notas de técnica. Nunca pagos, valores, teléfono, correo, lesiones ni observaciones.</p>
+      <p class="muted">Solo se publican días, ejercicios, series, repeticiones, cargas objetivo, notas de técnica y enlaces de video. Nunca pagos, valores, teléfono, correo, lesiones ni observaciones.</p>
       ${current.omittedSets ? `<p class="notice">${plural(current.omittedSets, 'serie', 'series')} de tipo "T" no se publicarán (el alumno solo ve aproximaciones y series efectivas).</p>` : ''}
       <p class="notice auth-message hidden" data-publish-message role="alert"></p>
       <div class="inline-actions">

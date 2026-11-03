@@ -317,6 +317,7 @@
       notes: relation.notes || '',
       relatedExerciseName: relation.relatedExerciseName || relation.related_exercise_name || ''
     })) : [];
+    const videoUrl = typeof item.videoUrl === 'string' ? item.videoUrl.trim() : '';
 
     return {
       id: item.id || createId('library-exercise'),
@@ -337,7 +338,9 @@
       active: item.active !== false,
       baseExerciseId: item.baseExerciseId || item.base_exercise_id || item.baseId || '',
       alternativeGroupId: item.alternativeGroupId || item.alternative_group_id || item.alternativeGroup || '',
-      relations: existingRelations
+      relations: existingRelations,
+      // Sin enlace la clave no existe: los ejercicios de siempre quedan idénticos a los de la nube.
+      ...(videoUrl ? { videoUrl } : {})
     };
   }
 
