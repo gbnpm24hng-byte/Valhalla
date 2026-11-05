@@ -126,6 +126,21 @@
   const studentLinks = { loaded: false, ownerId: '', byClient: new Map() };
   const coachSetsUi = { flushing: false };
   const GROUP_IMPORT_OFFLINE = 'Sin conexión: no se trajeron registros de alumnos';
+  // v0.9.38: Programas en 3 pantallas. Solo estado de la pantalla (en memoria); lo que se
+  // guarda sigue siendo el programa y sus asignaciones de siempre.
+  const programsUi = {
+    view: 'list', // 'list' | 'program' | 'pick'
+    tab: 'programs', // 'programs' | 'gallery'
+    search: '',
+    programId: '',
+    dayIndex: 0,
+    pickSearch: '',
+    pickZone: 'all',
+    picked: [],
+    // Días de la semana elegidos para un programa sin alumnos (el programa no tiene ese campo:
+    // se usan al asignar y se pierden al cerrar la app).
+    weekdays: {}
+  };
   const routineBuilder = {
     screen: 'day',
     activeDayIndex: 0,
@@ -238,6 +253,10 @@
     programDaySelect: document.getElementById('programDaySelect'),
     programDayMessage: document.getElementById('programDayMessage'),
     trainingPlanningView: document.getElementById('trainingPlanningView'),
+    prProgramList: document.getElementById('prProgramList'),
+    prProgramRoot: document.getElementById('prProgramRoot'),
+    prProgramFooter: document.getElementById('prProgramFooter'),
+    prPickRoot: document.getElementById('prPickRoot'),
     trainingProgressView: document.getElementById('trainingProgressView'),
     trainingGroupView: document.getElementById('trainingGroupView'),
     groupSessionClients: document.getElementById('groupSessionClients'),
@@ -3143,13 +3162,8 @@
     });
     updateNavActive();
     if (viewName === 'planning') {
-      const currentStep = Number.isInteger(planningUi.currentStep) && planningUi.currentStep >= 1 && planningUi.currentStep <= 4
-        ? planningUi.currentStep
-        : 1;
-      planningUi.currentStep = currentStep;
-      showPlanningStep(currentStep);
-      renderPlanningClientSelection();
-      renderPlanningSavedPrograms();
+      // v0.9.38: Programas en 3 pantallas (reemplaza el asistente de 4 pasos).
+      renderProgramsScreen();
     }
     if (viewName === 'group') {
       renderTrainingGroupMode();
@@ -4345,6 +4359,14 @@
     if (!els.routineBuilderRoot) {
       return;
     }
+    // Programa abierto (v0.9.38): la lista del día es la de la pantalla nueva; el editor de
+    // ejercicio es el de siempre.
+    const programOpen = prIsOpen();
+    if (programOpen && routineBuilder.screen !== 'exerciseForm') {
+      routineBuilder.screen = 'day';
+      renderPrDayExercises();
+      return;
+    }
 
     const draft = getPlanningDraftProgram();
     const day = draft.days[routineBuilder.activeDayIndex] || draft.days[0];
@@ -4449,7 +4471,9 @@
     els.routineBuilderRoot.innerHTML = `
       <div class="planning-panel-box">
         <div class="section-title compact">
-          <button class="ghost small" type="button" data-routine-action="back-exercise-list">← ${escapeHtml((routineBuilder.category || 'PIERNAS'))}</button>
+          ${programOpen
+            ? `<button class="ghost small" type="button" data-routine-action="back-day">‹ ${escapeHtml(day?.name || 'Día')}</button>`
+            : `<button class="ghost small" type="button" data-routine-action="back-exercise-list">← ${escapeHtml((routineBuilder.category || 'PIERNAS'))}</button>`}
           <strong>${escapeHtml(String(selectedName).toUpperCase())}</strong>
         </div>
 
@@ -4550,6 +4574,10 @@
       sets: Number(routineBuilder.draft.sets || 3),
       repMin: Number(routineBuilder.draft.repMin || 8),
       repMax: Number(routineBuilder.draft.repMax || Number(routineBuilder.draft.repMin || 8)),
+      // Un ejercicio ya guardado trae repRangeMin/Max, que al normalizar mandan sobre repMin/Max:
+      // se escriben los dos para que editar las repeticiones no se pierda.
+      repRangeMin: Number(routineBuilder.draft.repMin || 8),
+      repRangeMax: Number(routineBuilder.draft.repMax || Number(routineBuilder.draft.repMin || 8)),
       targetWeight: Number(routineBuilder.draft.targetWeight || 0),
       approximations: Array.isArray(routineBuilder.draft.approximations) ? routineBuilder.draft.approximations.map((item, index) => ({
         id: dataApi.createId('program-approximation'),
@@ -4760,6 +4788,910 @@
 
       <div class="meta" style="margin-top: 10px;">Resumen total: ${totalExercises} ejercicios · ${totalSeries} series efectivas</div>
     `;
+  }
+
+  // ---- v0.9.38: Programas en 3 pantallas ----
+  // 1) lista de programas (y la galería en su pestaña), 2) programa abierto, 3) elegir
+  // ejercicios de la galería. No hay asistente: cada cambio se guarda al momento en el mismo
+  // programa (state.trainingsV08.programs) y en las asignaciones de sus alumnos, con los mismos
+  // campos de siempre. Publicar usa la publicación de la ficha (publish.js), alumno por alumno.
+
+  // Filtros por zona de la figura (muscle-map-core.js); se filtra por la zona que trabaja.
+  const PR_ZONE_FILTERS = [
+    { key: 'all', label: 'Todos', zones: null },
+    { key: 'pecho', label: 'Pecho', zones: ['pechoSup', 'pechoInf'] },
+    { key: 'espalda', label: 'Espalda', zones: ['trapecio', 'espaldaMedia', 'dorsales', 'lumbar'] },
+    { key: 'piernas', label: 'Piernas', zones: ['cuadriceps', 'isquios', 'gemelos'] },
+    { key: 'gluteos', label: 'Glúteos', zones: ['gluteoMayor', 'gluteoMedio'] },
+    { key: 'hombros', label: 'Hombros', zones: ['hombros'] },
+    { key: 'brazos', label: 'Brazos', zones: ['biceps', 'triceps'] },
+    { key: 'core', label: 'Core', zones: ['core'] }
+  ];
+  const PR_OBJECTIVES = ['Fuerza', 'Hipertrofia', 'Pérdida de grasa', 'Acondicionamiento', 'Mixto', 'Otro'];
+
+  function prMuscleMap() {
+    return window.VALHALLA.muscleMap || null;
+  }
+
+  function prIsOpen() {
+    return trainingUi.activeTrainingView === 'planning' && programsUi.view === 'program';
+  }
+
+  function prPlural(count, singular, plural) {
+    return `${count} ${count === 1 ? singular : plural}`;
+  }
+
+  // Ejercicio de la galería enlazado (por id y, si no, por nombre), como al publicar.
+  function prLibraryItem(exercise) {
+    const library = Array.isArray(state.exerciseLibrary) ? state.exerciseLibrary : [];
+    const id = String(exercise?.libraryExerciseId || '');
+    const name = labelsApi.fold(exercise?.exerciseName || exercise?.name || '');
+    return (id && library.find((item) => item.id === id))
+      || (name && library.find((item) => labelsApi.fold(item.name) === name || labelsApi.fold(item.normalizedName) === name))
+      || null;
+  }
+
+  function prZones(libraryItem, name) {
+    const map = prMuscleMap();
+    return map && libraryItem ? map.zonesFor(libraryItem.primaryMuscle, libraryItem.secondaryMuscles, name || libraryItem.name) : { main: [], sec: [] };
+  }
+
+  // "ESPALDA MEDIA" (o el músculo de la galería si no tiene zona en la figura).
+  function prZoneLabel(libraryItem, zones) {
+    const label = prMuscleMap()?.mainLabel(zones) || '';
+    if (label) {
+      return label;
+    }
+    return libraryItem?.primaryMuscle ? String(labelsApi.label('muscle', libraryItem.primaryMuscle)).toUpperCase() : 'SIN ZONA';
+  }
+
+  function prSentence(label) {
+    const text = String(label || '').toLowerCase();
+    return text.charAt(0).toUpperCase() + text.slice(1);
+  }
+
+  function prVideoUrl(libraryItem) {
+    return libraryItem && publishCoreApi?.safeVideoUrl ? publishCoreApi.safeVideoUrl(libraryItem.videoUrl) : '';
+  }
+
+  // Mini figura (54 px). Sin zonas, un hueco del mismo tamaño para que las filas queden alineadas.
+  function prFigure(zones) {
+    return prMuscleMap()?.figureHtml(zones, 'pr') || '<span class="pr-fig-empty" aria-hidden="true"></span>';
+  }
+
+  // Alumnos activos cuyo programa actual (asignación activa más reciente) es este.
+  function prAssignmentsFor(programId) {
+    return getActiveTrainingClients()
+      .map((client) => ({ client, assignment: getActiveTrainingAssignment(client.id) }))
+      .filter((item) => item.assignment && item.assignment.programId === programId);
+  }
+
+  // Estado de publicación de los alumnos del programa (publish.js). known = se pudo consultar.
+  function prPublishInfo(programId) {
+    const items = prAssignmentsFor(programId);
+    const api = window.VALHALLA.publish;
+    const statuses = items.map((item) => (api?.statusOf ? api.statusOf(item.client.id, item.assignment) : 'unknown'));
+    return {
+      items,
+      known: statuses.every((status) => status !== 'unknown'),
+      pending: statuses.filter((status) => status === 'pending' || status === 'never').length,
+      busy: Boolean(api?.isBusy?.())
+    };
+  }
+
+  // Días de la semana del programa: los de las asignaciones de sus alumnos; sin alumnos, los
+  // elegidos en esta pantalla, los del nombre de cada día ("Lunes …") o Lun/Mié/Vie.
+  function prWeekdays(program) {
+    const sortNumbers = (list) => [...new Set(list.map(Number))].filter((item) => item >= 1 && item <= 7).sort((a, b) => a - b);
+    const fromAssignment = prAssignmentsFor(program.id).map((item) => item.assignment.weeklyDays).find((list) => Array.isArray(list) && list.length);
+    if (fromAssignment) {
+      return sortNumbers(fromAssignment);
+    }
+    if (programsUi.weekdays[program.id]?.length) {
+      return sortNumbers(programsUi.weekdays[program.id]);
+    }
+    const days = program.days || [];
+    const fromNames = days.map((day) => getWeekdayFromProgramDayName(day.name)).filter((weekday) => weekday >= 0).map((weekday) => (weekday === 0 ? 7 : weekday));
+    if (days.length && fromNames.length === days.length) {
+      return sortNumbers(fromNames);
+    }
+    const frequency = Math.max(1, Math.min(Number(program.weeklyFrequency || days.length || 3), 7));
+    return sortNumbers(getDefaultPlanningWeeklyDays(frequency, Math.max(1, Math.min(days.length || frequency, 7))));
+  }
+
+  function prWeekdayShort(weekday) {
+    return prSentence(getWeekdayLabel(weekday));
+  }
+
+  function prDayLabel(day, index) {
+    return String(day?.name || `Día ${String.fromCharCode(65 + index)}`);
+  }
+
+  // Letra del cuadrito del día: "Día A" → A; si el nombre no la tiene, la letra por orden.
+  function prDayLetter(day, index) {
+    const match = /^d[ií]a\s+([a-z0-9]{1,2})\b/i.exec(String(day?.name || '').trim());
+    return (match ? match[1] : String.fromCharCode(65 + index)).toUpperCase();
+  }
+
+  function prCurrentProgram() {
+    const program = getTrainingProgramById(programsUi.programId);
+    // El editor de ejercicios (armador) trabaja sobre planningUi.draftProgram: se apunta al programa guardado.
+    if (program && planningUi.draftProgram !== program) {
+      planningUi.draftProgram = program;
+    }
+    return program;
+  }
+
+  // Lleva el programa a las asignaciones activas de sus alumnos (como al asignar): mismo id de
+  // asignación, días de la semana, inicio y estado; días y ejercicios nuevos.
+  function prSyncAssignments(program) {
+    const activeIds = new Set(prAssignmentsFor(program.id).map((item) => item.assignment.id));
+    if (!activeIds.size) {
+      return;
+    }
+    const now = new Date().toISOString();
+    state.trainingsV08.assignments = getTrainingAssignments().map((assignment) => {
+      if (!activeIds.has(assignment.id)) {
+        return assignment;
+      }
+      return dataApi.normalizeTrainingProgramAssignment({
+        ...assignment,
+        programName: program.name,
+        objective: program.objective,
+        durationWeeks: Number(program.durationWeeks || assignment.durationWeeks || 4),
+        days: JSON.parse(JSON.stringify(program.days || [])),
+        updatedAt: now
+      }, { trainingsV08: { programs: getTrainingPrograms() } });
+    });
+  }
+
+  // Guarda el programa (y sus asignaciones) en el teléfono; la nube sube sola (cloud-sync.js).
+  function prSaveProgram(program) {
+    ensureTrainingsV08State();
+    program.updatedAt = new Date().toISOString();
+    const normalized = dataApi.normalizeTrainingProgram(program);
+    const programs = getTrainingPrograms();
+    const index = programs.findIndex((item) => item.id === normalized.id);
+    if (index >= 0) {
+      programs[index] = normalized;
+    } else {
+      programs.unshift(normalized);
+    }
+    state.trainingsV08.programs = programs;
+    planningUi.draftProgram = normalized;
+    prSyncAssignments(normalized);
+    persist();
+    return normalized;
+  }
+
+  function prCreateProgram() {
+    ensureTrainingsV08State();
+    const now = new Date().toISOString();
+    const program = dataApi.normalizeTrainingProgram({
+      id: dataApi.createId('program'),
+      name: 'Programa nuevo',
+      objective: '',
+      startDate: getTodayLocalDate(),
+      durationWeeks: 9,
+      weeklyFrequency: 3,
+      assignedClientIds: [],
+      days: ['A', 'B', 'C'].map((letter, index) => ({ id: dataApi.createId('program-day'), name: `Día ${letter}`, order: index + 1, exercises: [] })),
+      createdAt: now,
+      updatedAt: now
+    });
+    state.trainingsV08.programs = [program, ...getTrainingPrograms()];
+    prOpenProgram(program.id, { render: false });
+    persist();
+  }
+
+  function prOpenProgram(programId, { render = true } = {}) {
+    if (!getTrainingProgramById(programId)) {
+      return;
+    }
+    Object.assign(programsUi, { view: 'program', programId, dayIndex: 0, picked: [], pickSearch: '', pickZone: 'all' });
+    planningUi.currentDayIndex = 0;
+    Object.assign(routineBuilder, { screen: 'day', activeDayIndex: 0, editingIndex: null, exerciseId: null, search: '' });
+    prCurrentProgram();
+    if (render) {
+      renderProgramsScreen();
+    }
+    window.scrollTo(0, 0);
+  }
+
+  function prSetDay(index) {
+    programsUi.dayIndex = index;
+    planningUi.currentDayIndex = index;
+    Object.assign(routineBuilder, { screen: 'day', activeDayIndex: index, editingIndex: null, exerciseId: null });
+  }
+
+  function renderProgramsScreen() {
+    const root = els.trainingPlanningView;
+    if (!root) {
+      return;
+    }
+    if (programsUi.view !== 'list' && !prCurrentProgram()) {
+      programsUi.view = 'list';
+    }
+    root.querySelectorAll('[data-pr-view]').forEach((element) => {
+      element.hidden = element.getAttribute('data-pr-view') !== programsUi.view;
+    });
+    if (programsUi.view === 'program') {
+      renderPrProgram();
+    } else if (programsUi.view === 'pick') {
+      renderPrPick();
+    } else {
+      renderPrList();
+    }
+  }
+
+  // Al cambiar lo publicado o el estado: solo lo que muestra la publicación (no redibuja el
+  // editor abierto ni los buscadores).
+  function refreshProgramsPublishState() {
+    if (trainingUi.activeTrainingView !== 'planning') {
+      return;
+    }
+    if (programsUi.view === 'program') {
+      renderPrFooter();
+    } else if (programsUi.view === 'list') {
+      renderPrCards();
+    }
+  }
+
+  // ---- Pantalla 1: lista ----
+  function renderPrList() {
+    const root = els.trainingPlanningView;
+    const onGallery = programsUi.tab === 'gallery';
+    root.querySelectorAll('[data-pr-tab]').forEach((tab) => {
+      const active = tab.getAttribute('data-pr-tab') === programsUi.tab;
+      tab.classList.toggle('is-active', active);
+      tab.setAttribute('aria-selected', String(active));
+    });
+    root.querySelectorAll('[data-pr-pane]').forEach((pane) => {
+      pane.hidden = (pane.getAttribute('data-pr-pane') === 'gallery') !== onGallery;
+    });
+    const count = root.querySelector('[data-pr-count]');
+    if (count) {
+      count.textContent = String(getTrainingPrograms().length);
+    }
+    const search = root.querySelector('[data-pr-search]');
+    if (search && search.value !== programsUi.search) {
+      search.value = programsUi.search;
+    }
+    renderPrCards();
+  }
+
+  function renderPrCards() {
+    if (!els.prProgramList) {
+      return;
+    }
+    const query = labelsApi.fold(programsUi.search);
+    const programs = getTrainingPrograms().filter((program) => !query || labelsApi.fold(program.name).includes(query));
+    if (!programs.length) {
+      els.prProgramList.innerHTML = `<p class="pr-empty">${getTrainingPrograms().length ? 'Ningún programa con ese nombre.' : 'Todavía no hay programas. Toca "+ Nuevo" para crear el primero.'}</p>`;
+      return;
+    }
+    els.prProgramList.innerHTML = programs.map((program) => {
+      const info = prPublishInfo(program.id);
+      const students = info.items.length;
+      let tag = '';
+      if (!students) {
+        tag = '<span class="pr-tag">Plantilla</span>';
+      } else if (info.known && info.pending) {
+        tag = `<span class="pr-tag pr-tag--warn">${info.pending} sin publicar</span>`;
+      } else if (info.known) {
+        tag = '<span class="pr-tag pr-tag--ok">Publicado</span>';
+      }
+      const days = program.days || [];
+      return `
+        <button class="pr-card" type="button" data-pr-card="${escapeHtml(program.id)}">
+          <span class="pr-card-top"><strong class="pr-card-name">${escapeHtml(program.name || 'Programa')}</strong>${tag}</span>
+          <span class="pr-card-meta">${escapeHtml(program.objective || 'Sin objetivo')} · ${prPlural(Number(program.durationWeeks || 0), 'semana', 'semanas')}</span>
+          <span class="pr-card-foot">
+            <span class="pr-card-days" aria-label="${prPlural(days.length, 'día', 'días')}">${days.map((day, index) => `<span class="pr-daybox">${escapeHtml(prDayLetter(day, index))}</span>`).join('')}</span>
+            <span class="pr-card-students${students ? '' : ' is-muted'}">${students ? prPlural(students, 'alumno', 'alumnos') : 'Sin alumnos'}</span>
+          </span>
+        </button>`;
+    }).join('');
+  }
+
+  // ---- Pantalla 2: programa abierto ----
+  function renderPrProgram() {
+    const program = prCurrentProgram();
+    if (!program || !els.prProgramRoot) {
+      return;
+    }
+    const days = program.days || [];
+    if (programsUi.dayIndex >= days.length) {
+      prSetDay(Math.max(0, days.length - 1));
+    }
+    planningUi.currentDayIndex = programsUi.dayIndex;
+    routineBuilder.activeDayIndex = programsUi.dayIndex;
+    const weekdays = prWeekdays(program);
+    const assigned = prAssignmentsFor(program.id);
+    const shown = assigned.slice(0, 5);
+    els.prProgramRoot.innerHTML = `
+      <div class="pr-program" data-pr-program="${escapeHtml(program.id)}">
+        <button class="pr-back" type="button" data-pr-back>‹ Programas</button>
+        <h2 class="pr-name"><button class="pr-name-btn" type="button" data-pr-edit-info aria-label="Editar nombre y datos del programa">${escapeHtml(program.name || 'Programa')}</button></h2>
+        <div class="pr-chips">
+          <button class="pr-chip" type="button" data-pr-edit-info>${escapeHtml(program.objective || '+ Objetivo')}</button>
+          <button class="pr-chip" type="button" data-pr-edit-info>${prPlural(Number(program.durationWeeks || 0), 'semana', 'semanas')}</button>
+          <button class="pr-chip" type="button" data-pr-edit-info>${escapeHtml(weekdays.map(prWeekdayShort).join(' · ') || 'Días de la semana')}</button>
+        </div>
+        <div class="pr-students">
+          <span class="pr-avatars" aria-hidden="true">${shown.map((item) => `<span class="pr-avatar" title="${escapeHtml(getClientDisplayName(item.client))}">${escapeHtml(getInitials(getClientDisplayName(item.client)))}</span>`).join('')}${assigned.length > shown.length ? `<span class="pr-avatar pr-avatar--more">+${assigned.length - shown.length}</span>` : ''}</span>
+          <span class="pr-students-count${assigned.length ? '' : ' is-muted'}">${assigned.length ? prPlural(assigned.length, 'alumno', 'alumnos') : 'Sin alumnos'}</span>
+          <button class="pr-link" type="button" data-pr-assign>Asignar</button>
+        </div>
+        <div class="pr-days" role="tablist" aria-label="Días del programa">
+          ${days.map((day, index) => `
+            <button class="pr-day${index === programsUi.dayIndex ? ' is-active' : ''}" type="button" role="tab" aria-selected="${index === programsUi.dayIndex}" data-pr-day="${index}">
+              <strong>${escapeHtml(prDayLabel(day, index).toUpperCase())}</strong>
+              <small>${weekdays[index] ? `${escapeHtml(prWeekdayShort(weekdays[index]))} · ` : ''}${prPlural((day.exercises || []).length, 'ejercicio', 'ejercicios')}</small>
+            </button>`).join('')}
+        </div>
+      </div>`;
+    renderRoutineBuilder();
+    renderPrFooter();
+  }
+
+  // Ejercicios del día (dentro de #routineBuilderRoot: así Editar, ↑, ↓ y Eliminar usan las
+  // acciones del armador de siempre).
+  function renderPrDayExercises() {
+    const program = prCurrentProgram();
+    const day = program?.days?.[programsUi.dayIndex];
+    if (!day || !els.routineBuilderRoot) {
+      if (els.routineBuilderRoot) {
+        els.routineBuilderRoot.innerHTML = '<p class="pr-empty">Este programa no tiene días.</p>';
+      }
+      return;
+    }
+    const items = Array.isArray(day.exercises) ? day.exercises : [];
+    els.routineBuilderRoot.innerHTML = `
+      <div class="pr-exercises">
+        ${items.length ? items.map((exercise, index) => {
+          const libraryItem = prLibraryItem(exercise);
+          const zones = prZones(libraryItem, exercise.exerciseName);
+          const rirs = (exercise.effectiveSets || []).map((entry) => entry?.rir).filter((rir) => rir !== null && rir !== undefined && rir !== '').map(Number);
+          const rir = rirs.length ? ` · RIR ${Math.min(...rirs) === Math.max(...rirs) ? Math.min(...rirs) : `${Math.min(...rirs)}-${Math.max(...rirs)}`}` : '';
+          const name = exercise.exerciseName || 'Ejercicio';
+          return `
+          <div class="pr-ex" data-pr-exercise="${escapeHtml(exercise.id || '')}">
+            <button class="pr-ex-main" type="button" data-routine-action="edit-exercise" data-exercise-index="${index}" aria-label="Editar ${escapeHtml(name)}">
+              ${prFigure(zones)}
+              <span class="pr-ex-text">
+                <strong>${escapeHtml(name)}</strong>
+                <span class="pr-ex-plan">${Number(exercise.sets || exercise.plannedSets || 0)} × ${escapeHtml(formatPlanningReps(exercise))}${rir}</span>
+                <span class="pr-ex-tags"><span class="pr-zone">${escapeHtml(prZoneLabel(libraryItem, zones))}</span><span class="pr-video${prVideoUrl(libraryItem) ? ' has-video' : ''}">${prVideoUrl(libraryItem) ? '▶ video' : 'sin video'}</span></span>
+              </span>
+            </button>
+            <div class="pr-ex-tools">
+              <button class="pr-tool" type="button" data-routine-action="move-up" data-exercise-index="${index}" aria-label="Subir" ${index === 0 ? 'disabled' : ''}>↑</button>
+              <button class="pr-tool" type="button" data-routine-action="move-down" data-exercise-index="${index}" aria-label="Bajar" ${index === items.length - 1 ? 'disabled' : ''}>↓</button>
+              <button class="pr-tool pr-tool--danger" type="button" data-routine-action="delete-exercise" data-exercise-index="${index}" aria-label="Eliminar ${escapeHtml(name)}">✕</button>
+            </div>
+          </div>`;
+        }).join('') : '<p class="pr-empty">Este día no tiene ejercicios todavía.</p>'}
+        <button class="pr-add" type="button" data-pr-add>+ Agregar ejercicio de la galería</button>
+      </div>`;
+  }
+
+  function renderPrFooter() {
+    const footer = els.prProgramFooter;
+    const program = prCurrentProgram();
+    if (!footer || !program) {
+      return;
+    }
+    // Mientras se edita un ejercicio el pie se oculta (el editor tiene su botón Guardar).
+    footer.hidden = routineBuilder.screen !== 'day';
+    const info = prPublishInfo(program.id);
+    const total = info.items.length;
+    let status;
+    let label = `Publicar a ${prPlural(total, 'alumno', 'alumnos')}`;
+    let enabled = false;
+    if (!total) {
+      status = 'Asigna alumnos para publicar.';
+      label = 'Publicar';
+    } else if (!window.VALHALLA.publish) {
+      status = 'Para publicar, inicia sesión con conexión.';
+    } else if (info.busy) {
+      status = 'Publicando…';
+    } else if (!info.known) {
+      status = 'Para publicar, inicia sesión con conexión.';
+    } else if (info.pending) {
+      status = prPlural(info.pending, 'cambio sin publicar', 'cambios sin publicar');
+      enabled = true;
+    } else {
+      status = 'Los alumnos ven la última versión.';
+      label = 'Todo publicado';
+    }
+    footer.innerHTML = `
+      <span class="pr-footer-status${info.pending && enabled ? ' is-warn' : ''}">${escapeHtml(status)}</span>
+      <button class="pr-cta" type="button" data-pr-publish ${enabled ? '' : 'disabled'}>${escapeHtml(label)}</button>`;
+  }
+
+  function prCloseModal(id) {
+    document.getElementById(id)?.remove();
+  }
+
+  function prOpenModal(id, html) {
+    prCloseModal(id);
+    const overlay = document.createElement('div');
+    overlay.id = id;
+    overlay.className = 'sync-modal pr-modal';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.innerHTML = `<div class="sync-modal-card card pr-sheet">${html}</div>`;
+    document.body.appendChild(overlay);
+    return overlay;
+  }
+
+  // Chips del programa: los mismos campos del paso 2 del asistente anterior (nombre, objetivo,
+  // duración, frecuencia, fecha de inicio) y los días de la semana del paso Revisar.
+  function prOpenInfoSheet() {
+    const program = prCurrentProgram();
+    if (!program) {
+      return;
+    }
+    const draft = {
+      objective: program.objective || '',
+      weeks: Number(program.durationWeeks || 4),
+      frequency: Math.max(1, Number(program.weeklyFrequency || (program.days || []).length || 3)),
+      weekdays: prWeekdays(program)
+    };
+    const presets = [4, 6, 8];
+    const modal = prOpenModal('prInfoModal', `
+      <h2>Datos del programa</h2>
+      <div class="planning-field-block"><label for="prInfoName">NOMBRE</label><input id="prInfoName" type="text" value="${escapeHtml(program.name || '')}" placeholder="Ej: Hipertrofia inicial"></div>
+      <div class="planning-field-block"><label>OBJETIVO</label><div class="planning-chip-grid" data-pr-group="objective">${PR_OBJECTIVES.map((item) => `<button class="planning-option-btn" type="button" data-pr-objective="${escapeHtml(item)}">${escapeHtml(item)}</button>`).join('')}</div></div>
+      <div class="planning-field-block"><label>DURACIÓN</label><div class="planning-chip-grid">${presets.map((weeks) => `<button class="planning-duration-btn" type="button" data-pr-weeks="${weeks}">${weeks} semanas</button>`).join('')}<button class="planning-duration-btn" type="button" data-pr-weeks="custom">Otra</button></div>
+        <input id="prInfoWeeks" type="number" min="1" placeholder="Otra duración"></div>
+      <div class="planning-field-block"><label>FRECUENCIA</label><div class="planning-chip-grid">${[2, 3, 4, 5].map((days) => `<button class="planning-frequency-btn" type="button" data-pr-frequency="${days}">${days} días</button>`).join('')}</div></div>
+      <div class="planning-field-block"><label>DÍAS DE LA SEMANA</label><div class="planning-chip-grid">${getPlanningWeeklyDayOptions().map((option) => `<button class="planning-option-btn" type="button" data-pr-weekday="${option.value}">${option.label}</button>`).join('')}</div><div class="meta" data-pr-weekday-hint></div></div>
+      <div class="planning-field-block"><label for="prInfoStart">FECHA DE INICIO</label><input id="prInfoStart" type="date" value="${escapeHtml(program.startDate || '')}"></div>
+      <p class="notice bad hidden" data-pr-info-message role="alert"></p>
+      <div class="inline-actions"><button class="secondary" type="button" data-pr-info-cancel>Cancelar</button><button class="primary" type="button" data-pr-info-save>Guardar</button></div>`);
+    const weeksInput = modal.querySelector('#prInfoWeeks');
+    const paint = () => {
+      modal.querySelectorAll('[data-pr-objective]').forEach((button) => button.classList.toggle('active', button.getAttribute('data-pr-objective') === draft.objective));
+      const preset = presets.includes(draft.weeks);
+      modal.querySelectorAll('[data-pr-weeks]').forEach((button) => {
+        const value = button.getAttribute('data-pr-weeks');
+        button.classList.toggle('active', preset ? value === String(draft.weeks) : value === 'custom');
+      });
+      weeksInput.classList.toggle('hidden', preset);
+      if (!preset && document.activeElement !== weeksInput) {
+        weeksInput.value = String(draft.weeks || '');
+      }
+      modal.querySelectorAll('[data-pr-frequency]').forEach((button) => button.classList.toggle('active', button.getAttribute('data-pr-frequency') === String(draft.frequency)));
+      modal.querySelectorAll('[data-pr-weekday]').forEach((button) => button.classList.toggle('active', draft.weekdays.includes(Number(button.getAttribute('data-pr-weekday')))));
+      modal.querySelector('[data-pr-weekday-hint]').textContent = `Elegidos ${draft.weekdays.length} de ${draft.frequency}.`;
+    };
+    paint();
+    const close = () => prCloseModal('prInfoModal');
+    modal.addEventListener('click', (event) => {
+      const target = event.target;
+      if (target.closest('[data-pr-info-cancel]')) {
+        close();
+        return;
+      }
+      const objective = target.closest('[data-pr-objective]')?.getAttribute('data-pr-objective');
+      if (objective) {
+        draft.objective = objective;
+      }
+      const weeks = target.closest('[data-pr-weeks]')?.getAttribute('data-pr-weeks');
+      if (weeks) {
+        draft.weeks = weeks === 'custom' ? (presets.includes(draft.weeks) ? 0 : draft.weeks) : Number(weeks);
+        if (weeks === 'custom') {
+          weeksInput.classList.remove('hidden');
+          weeksInput.focus();
+        }
+      }
+      const frequency = target.closest('[data-pr-frequency]')?.getAttribute('data-pr-frequency');
+      if (frequency) {
+        draft.frequency = Number(frequency);
+        draft.weekdays = draft.weekdays.slice(0, draft.frequency);
+      }
+      const weekday = Number(target.closest('[data-pr-weekday]')?.getAttribute('data-pr-weekday') || 0);
+      if (weekday) {
+        if (draft.weekdays.includes(weekday)) {
+          draft.weekdays = draft.weekdays.filter((item) => item !== weekday);
+        } else if (draft.weekdays.length < draft.frequency) {
+          draft.weekdays = [...draft.weekdays, weekday].sort((a, b) => a - b);
+        }
+      }
+      if (target.closest('[data-pr-info-save]')) {
+        const message = modal.querySelector('[data-pr-info-message]');
+        const name = String(modal.querySelector('#prInfoName').value || '').trim();
+        const error = !name ? 'El programa necesita un nombre.'
+          : !(draft.weeks >= 1) ? 'La duración debe ser de al menos 1 semana.'
+            : draft.weekdays.length !== draft.frequency ? `Elige ${prPlural(draft.frequency, 'día', 'días')} de la semana.` : '';
+        if (error) {
+          message.textContent = error;
+          message.classList.remove('hidden');
+          return;
+        }
+        prApplyInfo(program, { ...draft, name, startDate: String(modal.querySelector('#prInfoStart').value || '') });
+        close();
+        return;
+      }
+      paint();
+    });
+    weeksInput.addEventListener('input', () => {
+      draft.weeks = Math.max(0, Math.floor(Number(weeksInput.value || 0)));
+    });
+    modal.querySelector('#prInfoName').focus();
+  }
+
+  // Igual que el paso 2 anterior: la frecuencia agrega días vacíos y solo quita días vacíos del final.
+  function prApplyInfo(program, info) {
+    program.name = info.name;
+    program.objective = info.objective;
+    program.durationWeeks = info.weeks;
+    program.weeklyFrequency = info.frequency;
+    program.startDate = info.startDate || program.startDate || getTodayLocalDate();
+    const expected = Math.max(1, Math.min(info.frequency, 7));
+    program.days = Array.isArray(program.days) ? program.days : [];
+    while (program.days.length < expected) {
+      const index = program.days.length;
+      program.days.push({ id: dataApi.createId('program-day'), name: `Día ${String.fromCharCode(65 + index)}`, order: index + 1, exercises: [] });
+    }
+    while (program.days.length > expected && !(program.days[program.days.length - 1].exercises || []).length) {
+      program.days.pop();
+    }
+    // Días de la semana: en las asignaciones de sus alumnos (campo weeklyDays de siempre); sin
+    // alumnos quedan en esta pantalla para cuando se asigne.
+    const activeIds = new Set(prAssignmentsFor(program.id).map((item) => item.assignment.id));
+    if (activeIds.size) {
+      state.trainingsV08.assignments = getTrainingAssignments().map((assignment) => (activeIds.has(assignment.id)
+        ? { ...assignment, weeklyDays: info.weekdays.slice(), weeklyFrequency: info.weekdays.length }
+        : assignment));
+    } else {
+      programsUi.weekdays[program.id] = info.weekdays.slice();
+    }
+    prSaveProgram(program);
+  }
+
+  // "Asignar": casillas con los mismos alumnos que elegía el paso 1 (alumnos activos).
+  function prOpenAssignSheet() {
+    const program = prCurrentProgram();
+    if (!program) {
+      return;
+    }
+    const current = new Set(prAssignmentsFor(program.id).map((item) => item.client.id));
+    const clients = getActiveTrainingClients();
+    const modal = prOpenModal('prAssignModal', `
+      <h2>Asignar "${escapeHtml(program.name || 'Programa')}"</h2>
+      ${clients.length ? `<div class="pr-assign-list">${clients.map((client) => {
+        const other = getActiveTrainingAssignment(client.id);
+        const note = other && other.programId !== program.id ? `<small>Ahora: ${escapeHtml(other.programName || 'otro programa')}</small>` : '';
+        return `<label class="pr-check-row"><input type="checkbox" data-pr-assign-client="${escapeHtml(client.id)}" ${current.has(client.id) ? 'checked' : ''}><span>${escapeHtml(getClientDisplayName(client))}${note}</span></label>`;
+      }).join('')}</div>` : '<p class="muted">No hay alumnos activos. Crea primero un alumno en Alumnos.</p>'}
+      <p class="muted">Quien ya tiene otro programa pasa a este. Los cambios llegan a los alumnos al publicar.</p>
+      <div class="inline-actions"><button class="secondary" type="button" data-pr-assign-cancel>Cancelar</button><button class="primary" type="button" data-pr-assign-save>Guardar</button></div>`);
+    modal.querySelector('[data-pr-assign-cancel]').addEventListener('click', () => prCloseModal('prAssignModal'));
+    modal.querySelector('[data-pr-assign-save]').addEventListener('click', () => {
+      const selected = [...modal.querySelectorAll('[data-pr-assign-client]')].filter((input) => input.checked).map((input) => input.getAttribute('data-pr-assign-client'));
+      const removed = [...current].filter((clientId) => !selected.includes(clientId));
+      if (removed.length) {
+        // Al quitar a un alumno vuelve a su programa anterior si tiene otra asignación activa.
+        const lines = removed.map((clientId) => {
+          const client = getClientById(clientId);
+          const previous = getTrainingAssignmentsForClient(clientId)
+            .filter((assignment) => assignment.programId !== program.id && assignment.status !== 'cancelled' && assignment.status !== 'completed')
+            .sort((first, second) => String(second.updatedAt || '').localeCompare(String(first.updatedAt || '')))[0];
+          const name = client ? getClientDisplayName(client) : 'este alumno';
+          return previous ? `A ${name} le volverá a aparecer ${previous.programName || getTrainingProgramById(previous.programId)?.name || 'su programa anterior'}.` : `${name} quedará sin programa.`;
+        });
+        if (!window.confirm(`¿Quitar ${prPlural(removed.length, 'alumno', 'alumnos')} de "${program.name || 'este programa'}"?\n\n${lines.join('\n')}`)) {
+          return;
+        }
+      }
+      prCloseModal('prAssignModal');
+      prSaveAssignments(program, selected);
+    });
+  }
+
+  // Asignaciones nuevas con los mismos datos que guardaba "Guardar y finalizar"; quitar un
+  // alumno deja su asignación de este programa como 'cancelled' (no se borra).
+  function prSaveAssignments(program, selectedIds) {
+    ensureTrainingsV08State();
+    const current = new Set(prAssignmentsFor(program.id).map((item) => item.client.id));
+    const selected = new Set(selectedIds);
+    const toAdd = selectedIds.filter((clientId) => !current.has(clientId));
+    const toRemove = [...current].filter((clientId) => !selected.has(clientId));
+    const weekdays = prWeekdays(program);
+    const now = new Date().toISOString();
+    const programs = { trainingsV08: { programs: getTrainingPrograms() } };
+    const added = toAdd.map((clientId) => {
+      const client = getClientById(clientId);
+      return dataApi.normalizeTrainingProgramAssignment({
+        id: dataApi.createId('program-assignment'),
+        programId: program.id,
+        clientId,
+        clientName: client ? getClientDisplayName(client) : '',
+        programName: program.name,
+        objective: program.objective,
+        startDate: program.startDate || getTodayLocalDate(),
+        durationWeeks: Number(program.durationWeeks || 4),
+        weeklyDays: weekdays.slice(),
+        weeklyFrequency: weekdays.length || (program.days || []).length || 3,
+        status: 'active',
+        createdAt: now,
+        updatedAt: now
+      }, programs);
+    });
+    state.trainingsV08.assignments = [
+      ...getTrainingAssignments()
+        .filter((assignment) => !(toAdd.includes(assignment.clientId) && assignment.programId === program.id))
+        .map((assignment) => (toRemove.includes(assignment.clientId) && assignment.programId === program.id && assignment.status !== 'cancelled'
+          ? { ...assignment, status: 'cancelled', updatedAt: now }
+          : assignment)),
+      ...added
+    ];
+    program.assignedClientIds = [...selectedIds];
+    if (added.length) {
+      delete programsUi.weekdays[program.id];
+    }
+    prSaveProgram(program);
+  }
+
+  // Motivo corto de una falla de publicar (los mensajes completos son los de publish.js).
+  function prFailReason(result) {
+    const message = String(result?.message || '');
+    if (result?.locked) return 'versión nueva de la app';
+    if (/no respondió|conexión/i.test(message)) return 'sin conexión';
+    if (/permiso/i.test(message)) return 'sin permiso';
+    if (/no permitidos/i.test(message)) return 'datos no permitidos';
+    if (/No se encontró/i.test(message)) return 'sin programa';
+    return 'rechazado';
+  }
+
+  function prAskPublish() {
+    const program = prCurrentProgram();
+    const api = window.VALHALLA.publish;
+    const info = program ? prPublishInfo(program.id) : null;
+    if (!program || !api || !info.items.length) {
+      return;
+    }
+    const names = info.items.map((item) => getClientDisplayName(item.client));
+    const modal = prOpenModal('prPublishModal', `
+      <h2>Publicar a ${prPlural(names.length, 'alumno', 'alumnos')}</h2>
+      <p>Se publicará "${escapeHtml(program.name || 'Programa')}" a:</p>
+      <ul class="pr-publish-list">${names.map((name) => `<li>${escapeHtml(name)}</li>`).join('')}</ul>
+      <p class="muted">Solo se publican días, ejercicios, series, repeticiones, cargas objetivo, notas de técnica, enlaces de video y los músculos que trabaja cada ejercicio. Nunca pagos, valores, teléfono, correo, lesiones ni observaciones.</p>
+      <div class="inline-actions" data-pr-publish-actions><button class="secondary" type="button" data-pr-publish-cancel>Cancelar</button><button class="primary" type="button" data-pr-publish-confirm>Publicar</button></div>`);
+    modal.querySelector('[data-pr-publish-cancel]').focus();
+    modal.querySelector('[data-pr-publish-cancel]').addEventListener('click', () => prCloseModal('prPublishModal'));
+    modal.querySelector('[data-pr-publish-confirm]').addEventListener('click', async (event) => {
+      const button = event.currentTarget;
+      button.disabled = true;
+      button.textContent = 'Publicando…';
+      modal.querySelector('[data-pr-publish-cancel]').disabled = true;
+      const results = [];
+      for (const item of info.items) {
+        // Se vuelve a leer la asignación: pudo cambiar mientras la ventana estaba abierta.
+        const assignment = getActiveTrainingAssignment(item.client.id);
+        const result = assignment && assignment.programId === program.id
+          ? await api.publish(item.client.id, assignment.id)
+          : { ok: false, message: 'No se encontró el programa asignado.' };
+        results.push({ name: getClientDisplayName(item.client), ...result });
+        if (result.locked) {
+          break;
+        }
+      }
+      const ok = results.filter((result) => result.ok).length;
+      const failed = results.filter((result) => !result.ok);
+      const locked = results.some((result) => result.locked);
+      const summary = `Publicado a ${ok} de ${info.items.length}.${failed.length ? ` Falló: ${failed.map((result) => `${result.name} (${prFailReason(result)})`).join(', ')}.` : ''}`;
+      modal.querySelector('.pr-sheet').innerHTML = `
+        <h2>${failed.length ? 'Publicación incompleta' : 'Publicado'}</h2>
+        <p class="notice ${failed.length ? 'warn' : 'ok'}" role="status" data-pr-publish-result>${escapeHtml(summary)}</p>
+        ${locked ? '<p class="muted">Hay una versión nueva de la app. Ciérrala y vuelve a abrirla antes de publicar a los demás.</p>' : ''}
+        ${failed.length && !locked ? '<p class="muted">Puedes volver a intentarlo: "Publicar" vuelve a publicar a todos.</p>' : ''}
+        <div class="inline-actions"><button class="primary" type="button" data-pr-publish-close>Listo</button></div>`;
+      modal.querySelector('[data-pr-publish-close]').addEventListener('click', () => {
+        prCloseModal('prPublishModal');
+        renderPrFooter();
+      });
+      modal.querySelector('[data-pr-publish-close]').focus();
+      renderPrFooter();
+    });
+  }
+
+  // ---- Pantalla 3: elegir ejercicios ----
+  function prGalleryEntries() {
+    return (Array.isArray(state.exerciseLibrary) ? state.exerciseLibrary : [])
+      .filter((item) => item && item.active !== false)
+      .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'es', { sensitivity: 'base' }))
+      .map((item) => {
+        const zones = prZones(item, item.name);
+        return {
+          item,
+          zones,
+          searchText: labelsApi.fold([item.name, item.normalizedName, labelsApi.label('muscle', item.primaryMuscle), labelsApi.listLabel('muscle', item.secondaryMuscles), labelsApi.listLabel('equipment', item.equipments)].join(' '))
+        };
+      });
+  }
+
+  function renderPrPick() {
+    const program = prCurrentProgram();
+    const root = els.prPickRoot;
+    if (!program || !root) {
+      return;
+    }
+    const day = program.days?.[programsUi.dayIndex];
+    root.innerHTML = `
+      <div class="pr-pick-head">
+        <button class="pr-back" type="button" data-pr-pick-back>‹ ${escapeHtml(prDayLabel(day, programsUi.dayIndex))}</button>
+        <h2 class="pr-title">ELIGE EJERCICIOS</h2>
+      </div>
+      <input class="pr-search" type="search" data-pr-pick-search value="${escapeHtml(programsUi.pickSearch)}" placeholder="Buscar en la galería" autocomplete="off" aria-label="Buscar en la galería">
+      <div class="pr-zones" role="group" aria-label="Filtrar por zona">${PR_ZONE_FILTERS.map((filter) => `<button class="pr-zone-chip" type="button" data-pr-zone="${filter.key}">${escapeHtml(filter.label)}</button>`).join('')}</div>
+      <div class="pr-pick-list" data-pr-pick></div>
+      <div class="pr-footer"><button class="pr-cta" type="button" data-pr-pick-confirm disabled>Agregar ejercicios</button></div>`;
+    renderPrPickList();
+  }
+
+  function renderPrPickList() {
+    const root = els.prPickRoot;
+    const list = root?.querySelector('[data-pr-pick]');
+    if (!list) {
+      return;
+    }
+    root.querySelectorAll('[data-pr-zone]').forEach((chip) => {
+      const active = chip.getAttribute('data-pr-zone') === programsUi.pickZone;
+      chip.classList.toggle('is-active', active);
+      chip.setAttribute('aria-pressed', String(active));
+    });
+    const query = labelsApi.fold(programsUi.pickSearch);
+    const filter = PR_ZONE_FILTERS.find((item) => item.key === programsUi.pickZone) || PR_ZONE_FILTERS[0];
+    const entries = prGalleryEntries()
+      .filter((entry) => !query || entry.searchText.includes(query))
+      .filter((entry) => !filter.zones || entry.zones.main.some((zone) => filter.zones.includes(zone)));
+    const picked = new Set(programsUi.picked);
+    list.innerHTML = entries.length ? entries.map((entry) => {
+      const on = picked.has(entry.item.id);
+      const video = prVideoUrl(entry.item);
+      return `
+        <button class="pr-pick-item${on ? ' is-picked' : ''}" type="button" data-pr-pick-item="${escapeHtml(entry.item.id)}" aria-pressed="${on}">
+          ${prFigure(entry.zones)}
+          <span class="pr-ex-text">
+            <strong>${escapeHtml(entry.item.name || 'Ejercicio')}</strong>
+            <span class="pr-pick-meta">${escapeHtml(prSentence(prZoneLabel(entry.item, entry.zones)))} · ${video ? '<span class="pr-video has-video">▶ video</span>' : 'sin video'}</span>
+          </span>
+          <span class="pr-check" aria-hidden="true">${on ? '✓' : ''}</span>
+        </button>`;
+    }).join('') : `<p class="pr-empty">${(state.exerciseLibrary || []).length ? 'Ningún ejercicio de la galería con ese filtro.' : 'La galería está vacía. Agrega ejercicios en la pestaña Galería.'}</p>`;
+    const confirm = root.querySelector('[data-pr-pick-confirm]');
+    if (confirm) {
+      const count = programsUi.picked.length;
+      confirm.disabled = !count;
+      confirm.textContent = count ? `Agregar ${prPlural(count, 'ejercicio', 'ejercicios')}` : 'Agregar ejercicios';
+    }
+  }
+
+  // Agrega lo marcado al día con las series y repeticiones por defecto de "Agregar ejercicio"
+  // (3 series de 8 a 12, descanso 90 s), en el orden en que se marcó.
+  function prAddPicked() {
+    const program = prCurrentProgram();
+    const day = program?.days?.[programsUi.dayIndex];
+    if (!day || !programsUi.picked.length) {
+      return;
+    }
+    const library = Array.isArray(state.exerciseLibrary) ? state.exerciseLibrary : [];
+    day.exercises = Array.isArray(day.exercises) ? day.exercises : [];
+    programsUi.picked.forEach((libraryId) => {
+      const item = library.find((entry) => entry.id === libraryId);
+      if (!item) {
+        return;
+      }
+      day.exercises.push({
+        id: dataApi.createId('program-exercise'),
+        libraryExerciseId: item.id,
+        exerciseName: item.name || 'Ejercicio',
+        sets: 3,
+        repMin: 8,
+        repMax: 12,
+        targetWeight: 0,
+        approximations: [],
+        zone: '',
+        restSeconds: 90,
+        notes: '',
+        order: day.exercises.length + 1,
+        category: getVisualExerciseCategory(item)
+      });
+    });
+    day.exercises = day.exercises.map((exercise, index) => ({ ...exercise, order: index + 1 }));
+    Object.assign(programsUi, { view: 'program', picked: [], pickSearch: '', pickZone: 'all' });
+    prSaveProgram(program);
+    window.scrollTo(0, 0);
+  }
+
+  function handleProgramsClick(event) {
+    const target = event.target;
+    if (target.closest('[data-routine-action]')) {
+      return; // lo maneja el armador (handleRoutineBuilderRootClick)
+    }
+    const tab = target.closest('[data-pr-tab]')?.getAttribute('data-pr-tab');
+    if (tab) {
+      programsUi.tab = tab;
+      renderPrList();
+      return;
+    }
+    if (target.closest('[data-pr-new]')) {
+      prCreateProgram();
+      return;
+    }
+    const cardId = target.closest('[data-pr-card]')?.getAttribute('data-pr-card');
+    if (cardId) {
+      prOpenProgram(cardId);
+      return;
+    }
+    if (target.closest('[data-pr-back]')) {
+      Object.assign(programsUi, { view: 'list', programId: '' });
+      Object.assign(routineBuilder, { screen: 'day', editingIndex: null, exerciseId: null });
+      planningUi.draftProgram = null;
+      renderProgramsScreen();
+      window.scrollTo(0, 0);
+      return;
+    }
+    if (target.closest('[data-pr-edit-info]')) {
+      prOpenInfoSheet();
+      return;
+    }
+    if (target.closest('[data-pr-assign]')) {
+      prOpenAssignSheet();
+      return;
+    }
+    const dayIndex = target.closest('[data-pr-day]')?.getAttribute('data-pr-day');
+    if (dayIndex !== undefined && dayIndex !== null) {
+      prSetDay(Number(dayIndex));
+      renderPrProgram();
+      return;
+    }
+    if (target.closest('[data-pr-add]')) {
+      Object.assign(programsUi, { view: 'pick', picked: [], pickSearch: '', pickZone: 'all' });
+      renderProgramsScreen();
+      window.scrollTo(0, 0);
+      return;
+    }
+    if (target.closest('[data-pr-publish]')) {
+      prAskPublish();
+      return;
+    }
+    if (target.closest('[data-pr-pick-back]')) {
+      Object.assign(programsUi, { view: 'program', picked: [] });
+      renderProgramsScreen();
+      return;
+    }
+    const zone = target.closest('[data-pr-zone]')?.getAttribute('data-pr-zone');
+    if (zone) {
+      programsUi.pickZone = zone;
+      renderPrPickList();
+      return;
+    }
+    const pickId = target.closest('[data-pr-pick-item]')?.getAttribute('data-pr-pick-item');
+    if (pickId) {
+      programsUi.picked = programsUi.picked.includes(pickId) ? programsUi.picked.filter((id) => id !== pickId) : [...programsUi.picked, pickId];
+      renderPrPickList();
+      return;
+    }
+    if (target.closest('[data-pr-pick-confirm]')) {
+      prAddPicked();
+    }
+  }
+
+  function handleProgramsInput(event) {
+    if (event.target.matches('[data-pr-search]')) {
+      programsUi.search = event.target.value || '';
+      renderPrCards();
+      return;
+    }
+    if (event.target.matches('[data-pr-pick-search]')) {
+      programsUi.pickSearch = event.target.value || '';
+      renderPrPickList();
+    }
   }
 
   function persistPrograms() {
@@ -5756,7 +6688,7 @@
       }
       renderPlanningSavedPrograms();
       renderProgramsList();
-      setProgramImportMessage(`Programa "${plan.program.name}" agregado sin alumnos. Para asignarlo, usa "Usar como base" en Programaciones guardadas.`, 'ok');
+      setProgramImportMessage(`Programa "${plan.program.name}" agregado sin alumnos. Ábrelo y toca "Asignar" para asignarlo.`, 'ok');
     });
   }
 
@@ -11518,7 +12450,41 @@
     }
   }
 
+  // Programa abierto (v0.9.38): las acciones del armador de siempre, y después se guarda el
+  // programa al momento (ya no hay "Guardar y finalizar").
   function handleRoutineBuilderRootClick(event) {
+    const action = event.target.closest?.('[data-routine-action]')?.getAttribute('data-routine-action') || '';
+    if (!prIsOpen() || !action) {
+      handleRoutineBuilderRootClickCore(event);
+      return;
+    }
+    if (action === 'delete-exercise') {
+      const index = Number(event.target.closest('[data-routine-action]').getAttribute('data-exercise-index') || -1);
+      const name = prCurrentProgram()?.days?.[programsUi.dayIndex]?.exercises?.[index]?.exerciseName || 'este ejercicio';
+      if (!window.confirm(`¿Quitar "${name}" de este día?`)) {
+        return;
+      }
+    }
+    if (action === 'back-day') {
+      Object.assign(routineBuilder, { screen: 'day', editingIndex: null, exerciseId: null });
+      resetRoutineBuilderDraft();
+    }
+    prCurrentProgram();
+    handleRoutineBuilderRootClickCore(event);
+    if (['save-exercise', 'delete-exercise', 'move-up', 'move-down'].includes(action)) {
+      const program = prCurrentProgram();
+      if (program) {
+        prSaveProgram(program);
+      }
+      return;
+    }
+    renderPrFooter();
+    if (action === 'edit-exercise' || action === 'back-day') {
+      window.scrollTo(0, action === 'edit-exercise' ? (els.routineBuilderRoot?.getBoundingClientRect().top || 0) + window.scrollY - 70 : 0);
+    }
+  }
+
+  function handleRoutineBuilderRootClickCore(event) {
     const actionTarget = event.target.closest('[data-routine-action]');
     if (!actionTarget || !els.routineBuilderRoot || !event.target.closest('#routineBuilderRoot')) {
       return;
@@ -11762,6 +12728,8 @@
     els.routineBuilderRoot.addEventListener('click', handleRoutineBuilderRootClick);
     els.routineBuilderRoot.addEventListener('input', handleRoutineBuilderRootInput);
   }
+  els.trainingPlanningView?.addEventListener('click', handleProgramsClick);
+  els.trainingPlanningView?.addEventListener('input', handleProgramsInput);
   els.trainingGroupView?.addEventListener('input', handleGroupSessionInput);
   els.trainingGroupView?.addEventListener('change', handleGroupSessionChange);
   els.form.addEventListener('submit', handleMovementSubmit);
@@ -11967,7 +12935,10 @@
   window.addEventListener('online', () => flushCoachSets());
   document.getElementById('importStudentSetsBtn')?.addEventListener('click', () => importStudentSets({ manual: true }));
   // Indicador "Publicar al alumno" por cliente (publish.js).
-  window.addEventListener('valhalla:publish-changed', () => renderClients());
+  window.addEventListener('valhalla:publish-changed', () => {
+    renderClients();
+    refreshProgramsPublishState();
+  });
 
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' && trainingUi.activeTrainingView === 'group') {

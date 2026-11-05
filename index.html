@@ -9,9 +9,9 @@
   <link rel="manifest" href="./manifest.json">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Bebas+Neue&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <title>VALHALLA</title>
-  <link rel="stylesheet" href="./assets/css/styles.css?v=0.9.37">
+  <link rel="stylesheet" href="./assets/css/styles.css?v=0.9.38">
 </head>
 <!-- Clase "solo-entrenamientos": oculta Inicio, Registrar (finanzas) y Nutrición sin borrarlos. Quitarla los vuelve a mostrar. -->
 <body class="solo-entrenamientos">
@@ -31,7 +31,7 @@
       <div class="header-actions">
         <span class="user-pill">Usuario</span>
         <span class="badge" id="cloudModeBadge">Modo Local</span>
-        <span class="badge">v0.9.37</span>
+        <span class="badge">v0.9.38</span>
       </div>
     </header>
 
@@ -639,140 +639,191 @@
         </details>
       </div>
 
-      <div id="trainingPlanningView" class="card hidden">
-        <div class="section-title">
-          <h2>PLANIFICACIÓN</h2>
-          <button class="secondary small" id="newProgramBtn" type="button">Nuevo programa</button>
+      <!-- v0.9.38: Programas en 3 pantallas (se dibujan desde el código de la app): lista, programa abierto y elegir ejercicios. -->
+      <div id="trainingPlanningView" class="pr-screen hidden">
+        <div data-pr-view="list">
+          <header class="pr-head">
+            <h2 class="pr-title">PROGRAMAS</h2>
+            <button class="pr-new" type="button" data-pr-new>+ Nuevo</button>
+          </header>
+          <div class="pr-tabs" role="tablist">
+            <button class="pr-tab is-active" type="button" role="tab" data-pr-tab="programs">Programas · <span data-pr-count>0</span></button>
+            <button class="pr-tab" type="button" role="tab" data-pr-tab="gallery">Galería · <span id="libraryExerciseCount">0</span></button>
+          </div>
+          <div data-pr-pane="programs">
+            <input class="pr-search" type="search" data-pr-search placeholder="Buscar programa" autocomplete="off" aria-label="Buscar programa por nombre">
+            <div id="prProgramList" class="pr-cards"></div>
+            <p class="pr-import">¿Tienes un programa en archivo? <button class="pr-link" id="programImportBtn" type="button">Importar</button></p>
+            <input id="programImportFile" class="hidden" type="file" accept=".json,application/json">
+            <div id="programImportMessage" class="notice" role="status" aria-live="polite"></div>
+          </div>
+          <div data-pr-pane="gallery" hidden>
+            <section id="libraryPanel" class="library-panel" aria-label="Galería de ejercicios">
+        <div class="inline-actions library-panel-actions">
+          <button class="secondary small" id="newLibraryExerciseBtn" type="button">+ Nuevo ejercicio</button>
+          <button class="ghost small" id="libraryImportBtn" type="button">Agregar desde respaldo</button>
+          <input id="libraryImportFile" class="hidden" type="file" accept=".json,application/json">
+        </div>
+        <form id="librarySearchForm" class="form-grid library-filters" autocomplete="off">
+          <div class="row">
+            <div>
+              <label for="librarySearch">Buscar</label>
+              <input id="librarySearch" type="search" placeholder="Buscar ejercicio" autocomplete="off">
+            </div>
+            <div>
+              <label for="libraryPatternFilter">Filtrar por patrón</label>
+              <select id="libraryPatternFilter" autocomplete="off">
+                <option value="">Todos</option>
+              </select>
+            </div>
+          </div>
+          <div class="row">
+            <div>
+              <label for="libraryMuscleFilter">Filtrar por músculo</label>
+              <select id="libraryMuscleFilter" autocomplete="off">
+                <option value="">Todos</option>
+              </select>
+            </div>
+            <div>
+              <label for="libraryTechnicalLevelFilter">Filtrar por nivel</label>
+              <select id="libraryTechnicalLevelFilter" autocomplete="off">
+                <option value="">Todos</option>
+              </select>
+            </div>
+          </div>
+        </form>
+        <div id="libraryMessage" class="notice"></div>
+        <form id="libraryExerciseForm" class="form-grid library-exercise-form hidden">
+          <h3 id="libraryExerciseFormTitle" class="library-form-title">Nuevo ejercicio</h3>
+          <input id="libraryExerciseId" type="hidden" value="">
+          <div class="row">
+            <div>
+              <label for="libraryExerciseName">Nombre</label>
+              <input id="libraryExerciseName" type="text" required>
+            </div>
+            <div>
+              <label for="libraryExercisePattern">Patrón</label>
+              <select id="libraryExercisePattern"></select>
+            </div>
+          </div>
+          <div class="row">
+            <div>
+              <label for="libraryExercisePrimaryMuscle">Músculo principal</label>
+              <select id="libraryExercisePrimaryMuscle"></select>
+            </div>
+            <div>
+              <label for="libraryExerciseTechnicalLevel">Nivel técnico</label>
+              <select id="libraryExerciseTechnicalLevel"></select>
+            </div>
+          </div>
+          <div class="row">
+            <div>
+              <label for="libraryExerciseLoadType">Tipo de carga</label>
+              <select id="libraryExerciseLoadType"></select>
+            </div>
+            <div>
+              <label for="libraryExerciseActive">Estado</label>
+              <select id="libraryExerciseActive">
+                <option value="true">Activo</option>
+                <option value="false">Inactivo</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label for="libraryExerciseDescription">Descripción</label>
+            <textarea id="libraryExerciseDescription"></textarea>
+          </div>
+          <div>
+            <label for="libraryExerciseVideoUrl">Video (enlace)</label>
+            <input id="libraryExerciseVideoUrl" type="url" inputmode="url" autocomplete="off" placeholder="https://…">
+          </div>
+          <div>
+            <label>Demanda articular (0 = baja / 1 = media / 2 = alta)</label>
+            <div class="library-demand-grid">
+              <div>
+                <label for="libraryExerciseBackDemand">Espalda</label>
+                <select id="libraryExerciseBackDemand">
+                  <option value="0">0</option>
+                  <option value="1">1</option>
+                  <option value="2">2</option>
+                </select>
+              </div>
+              <div>
+                <label for="libraryExerciseShoulderDemand">Hombro</label>
+                <select id="libraryExerciseShoulderDemand">
+                  <option value="0">0</option>
+                  <option value="1">1</option>
+                  <option value="2">2</option>
+                </select>
+              </div>
+              <div>
+                <label for="libraryExerciseKneeDemand">Rodilla</label>
+                <select id="libraryExerciseKneeDemand">
+                  <option value="0">0</option>
+                  <option value="1">1</option>
+                  <option value="2">2</option>
+                </select>
+              </div>
+              <div>
+                <label for="libraryExerciseHipDemand">Cadera</label>
+                <select id="libraryExerciseHipDemand">
+                  <option value="0">0</option>
+                  <option value="1">1</option>
+                  <option value="2">2</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          <div>
+            <label for="libraryExerciseSecondaryMuscles">Músculos secundarios</label>
+            <input id="libraryExerciseSecondaryMuscles" type="text" placeholder="Ej: glúteos, femorales">
+          </div>
+          <div>
+            <label for="libraryExerciseEquipments">Equipamiento</label>
+            <input id="libraryExerciseEquipments" type="text" placeholder="Ej: barra, rack">
+          </div>
+          <div class="row">
+            <div>
+              <label for="libraryExerciseBase">Base / ejercicio principal</label>
+              <input id="libraryExerciseBase" type="text" list="exerciseLibraryOptions" placeholder="Ej: Sentadilla">
+            </div>
+            <div>
+              <label for="libraryExerciseAlternativeGroup">Grupo de alternativas</label>
+              <input id="libraryExerciseAlternativeGroup" type="text" placeholder="Ej: sentadilla-principal">
+            </div>
+          </div>
+          <div class="row">
+            <div>
+              <label for="libraryRelationTarget">Relación con otro ejercicio</label>
+              <input id="libraryRelationTarget" type="text" list="exerciseLibraryOptions" placeholder="Ejercicio relacionado">
+              <input id="libraryRelationTargetId" type="hidden" value="">
+            </div>
+            <div>
+              <label for="libraryRelationType">Tipo de relación</label>
+              <select id="libraryRelationType">
+                <option value="">Sin relación</option>
+                <option value="variant_of">Variante de</option>
+                <option value="alternative_to">Alternativa a</option>
+                <option value="regression_of">Regresión de</option>
+                <option value="progression_of">Progresión de</option>
+              </select>
+            </div>
+          </div>
+          <button class="primary" id="saveLibraryExerciseBtn" type="button">Guardar ejercicio</button>
+        </form>
+        <div id="libraryExerciseList" class="training-set-list"></div>
+            </section>
+          </div>
         </div>
 
-        <div id="planningWizard" class="planning-wizard">
-          <div class="planning-wizard-bar">
-            <div id="planningWizardMessage" class="notice hidden" role="status" aria-live="polite"></div>
-            <button class="ghost small" id="planningRestartBtn" type="button">Empezar de nuevo</button>
-          </div>
-          <div class="planning-stepper" aria-label="Progreso del plan">
-            <span class="planning-step completed"><span class="step-mark">✓</span> Alumnos</span>
-            <span class="planning-step completed"><span class="step-mark">✓</span> Programa</span>
-            <span class="planning-step active"><span class="step-mark">●</span> Rutina</span>
-            <span class="planning-step pending"><span class="step-mark">○</span> Revisar</span>
-          </div>
+        <div data-pr-view="program" hidden>
+          <div id="prProgramRoot"></div>
+          <div id="routineBuilderRoot"></div>
+          <div id="prProgramFooter" class="pr-footer"></div>
+        </div>
 
-          <div id="planningStep1" class="planning-step-panel">
-            <h3>NUEVA PROGRAMACIÓN</h3>
-            <div class="muted">Paso 1 de 4</div>
-            <h4>¿PARA QUIÉN ES?</h4>
-            <div id="planningClientGrid" class="planning-client-grid"></div>
-            <div id="planningClientSelectionSummary" class="planning-summary-inline">0 alumnos seleccionados</div>
-            <div class="planning-panel-box">
-              <div class="section-title compact">
-                <strong>USAR PROGRAMACIÓN GUARDADA COMO BASE</strong>
-              </div>
-              <select id="planningBaseProgramSelect">
-                <option value="">Selecciona un programa guardado...</option>
-              </select>
-              <div class="inline-actions">
-                <button class="secondary small" id="planningLoadBaseProgramBtn" type="button">CARGAR COMO BASE</button>
-              </div>
-            </div>
-            <div class="inline-actions">
-              <button class="primary" id="planningContinueStep1" type="button">CONTINUAR</button>
-            </div>
-            <div class="planning-panel-box">
-              <div class="section-title compact">
-                <strong>IMPORTAR PROGRAMA DESDE ARCHIVO</strong>
-              </div>
-              <p class="muted">Agrega un programa nuevo, sin alumnos, desde un archivo JSON. No cambia nada de lo que ya tienes.</p>
-              <div class="inline-actions">
-                <button class="secondary small" id="programImportBtn" type="button">Importar programa</button>
-                <input id="programImportFile" class="hidden" type="file" accept=".json,application/json">
-              </div>
-              <div id="programImportMessage" class="notice" role="status" aria-live="polite"></div>
-            </div>
-            <div class="planning-panel-box">
-              <div class="section-title compact">
-                <strong>PROGRAMACIONES GUARDADAS</strong>
-              </div>
-              <div id="planningSavedPrograms" class="planning-program-list"></div>
-            </div>
-          </div>
-
-          <div id="planningStep2" class="planning-step-panel hidden">
-            <h3>CONFIGURA EL PROGRAMA</h3>
-            <div class="planning-field-block">
-              <label for="planningProgramName">NOMBRE</label>
-              <input id="planningProgramName" type="text" placeholder="Ej: Hipertrofia inicial">
-            </div>
-            <div class="planning-field-block">
-              <label>OBJETIVO</label>
-              <div id="planningObjectiveOptions" class="planning-chip-grid">
-                <button class="planning-option-btn active" type="button" data-program-objective="Fuerza">Fuerza</button>
-                <button class="planning-option-btn" type="button" data-program-objective="Hipertrofia">Hipertrofia</button>
-                <button class="planning-option-btn" type="button" data-program-objective="Pérdida de grasa">Pérdida de grasa</button>
-                <button class="planning-option-btn" type="button" data-program-objective="Acondicionamiento">Acondicionamiento</button>
-                <button class="planning-option-btn" type="button" data-program-objective="Mixto">Mixto</button>
-                <button class="planning-option-btn" type="button" data-program-objective="Otro">Otro</button>
-              </div>
-            </div>
-            <div class="planning-field-block">
-              <label>DURACIÓN</label>
-              <div class="planning-chip-grid">
-                <button class="planning-duration-btn active" type="button" data-program-duration="4">4 semanas</button>
-                <button class="planning-duration-btn" type="button" data-program-duration="6">6 semanas</button>
-                <button class="planning-duration-btn" type="button" data-program-duration="8">8 semanas</button>
-                <button class="planning-duration-btn" type="button" data-program-duration="custom">Otra</button>
-              </div>
-              <input id="planningCustomDuration" class="hidden" type="number" min="1" placeholder="Otra duración">
-            </div>
-            <div class="planning-field-block">
-              <label>FRECUENCIA</label>
-              <div class="planning-chip-grid">
-                <button class="planning-frequency-btn active" type="button" data-program-frequency="2">2 días</button>
-                <button class="planning-frequency-btn" type="button" data-program-frequency="3">3 días</button>
-                <button class="planning-frequency-btn" type="button" data-program-frequency="4">4 días</button>
-                <button class="planning-frequency-btn" type="button" data-program-frequency="5">5 días</button>
-              </div>
-            </div>
-            <div class="planning-field-block">
-              <label for="planningProgramStartDate">FECHA DE INICIO</label>
-              <input id="planningProgramStartDate" type="date">
-            </div>
-            <div class="inline-actions">
-              <button class="secondary" id="planningBackToStep1" type="button">← ATRÁS</button>
-              <button class="primary" id="planningContinueStep2" type="button">CONTINUAR →</button>
-            </div>
-          </div>
-
-          <div id="planningStep3" class="planning-step-panel hidden">
-            <h3>ARMA LA RUTINA</h3>
-            <div id="planningDayTabs" class="planning-day-tabs"></div>
-            <div class="planning-day-header">
-              <h4 id="planningCurrentDayLabel">DÍA A</h4>
-            </div>
-            <div id="planningExerciseList" class="planning-exercise-list"></div>
-            <div id="planningExerciseEmptyState" class="planning-empty-state hidden">
-              <div class="muted">Todavía no agregaste ejercicios.</div>
-              <button class="primary" id="planningAddFirstExercise" type="button">+ AGREGAR PRIMER EJERCICIO</button>
-            </div>
-
-            <div id="routineBuilderRoot"></div>
-
-            <div class="planning-cta-block">
-              <div id="planningStep3Message" class="planning-inline-message hidden">Agrega al menos un ejercicio para continuar.</div>
-              <div class="inline-actions">
-                <button class="secondary" id="planningBackToStep2" type="button">← ATRÁS</button>
-                <button class="primary" id="planningContinueStep3" type="button" disabled>CONTINUAR A REVISIÓN →</button>
-              </div>
-            </div>
-          </div>
-
-          <div id="planningStep4" class="planning-step-panel hidden">
-            <h3>REVISAR</h3>
-            <div id="planningReviewSummary" class="planning-review-summary"></div>
-            <div class="inline-actions">
-              <button class="secondary" id="planningBackToStep3" type="button">← EDITAR</button>
-              <button class="primary" id="planningSaveProgramWizardBtn" type="button">Guardar y finalizar</button>
-            </div>
-          </div>
+        <div data-pr-view="pick" hidden>
+          <div id="prPickRoot"></div>
         </div>
 
         <div id="planningLegacyWrapper" class="hidden">
@@ -965,163 +1016,6 @@
         <div id="trainingsStudents"></div>
       </div>
 
-      <!-- Solo en Planificación (styles.css). Cerrada al abrir la app; <details> recuerda abierta/cerrada mientras la app siga abierta. -->
-      <details id="libraryPanel" class="card library-panel">
-        <summary class="library-panel-summary"><h2>Biblioteca de ejercicios (<span id="libraryExerciseCount">0</span>)</h2></summary>
-        <div class="inline-actions library-panel-actions">
-          <button class="secondary small" id="newLibraryExerciseBtn" type="button">+ Nuevo ejercicio</button>
-          <button class="ghost small" id="libraryImportBtn" type="button">Agregar desde respaldo</button>
-          <input id="libraryImportFile" class="hidden" type="file" accept=".json,application/json">
-        </div>
-        <form id="librarySearchForm" class="form-grid library-filters" autocomplete="off">
-          <div class="row">
-            <div>
-              <label for="librarySearch">Buscar</label>
-              <input id="librarySearch" type="search" placeholder="Buscar ejercicio" autocomplete="off">
-            </div>
-            <div>
-              <label for="libraryPatternFilter">Filtrar por patrón</label>
-              <select id="libraryPatternFilter" autocomplete="off">
-                <option value="">Todos</option>
-              </select>
-            </div>
-          </div>
-          <div class="row">
-            <div>
-              <label for="libraryMuscleFilter">Filtrar por músculo</label>
-              <select id="libraryMuscleFilter" autocomplete="off">
-                <option value="">Todos</option>
-              </select>
-            </div>
-            <div>
-              <label for="libraryTechnicalLevelFilter">Filtrar por nivel</label>
-              <select id="libraryTechnicalLevelFilter" autocomplete="off">
-                <option value="">Todos</option>
-              </select>
-            </div>
-          </div>
-        </form>
-        <div id="libraryMessage" class="notice"></div>
-        <form id="libraryExerciseForm" class="form-grid library-exercise-form hidden">
-          <h3 id="libraryExerciseFormTitle" class="library-form-title">Nuevo ejercicio</h3>
-          <input id="libraryExerciseId" type="hidden" value="">
-          <div class="row">
-            <div>
-              <label for="libraryExerciseName">Nombre</label>
-              <input id="libraryExerciseName" type="text" required>
-            </div>
-            <div>
-              <label for="libraryExercisePattern">Patrón</label>
-              <select id="libraryExercisePattern"></select>
-            </div>
-          </div>
-          <div class="row">
-            <div>
-              <label for="libraryExercisePrimaryMuscle">Músculo principal</label>
-              <select id="libraryExercisePrimaryMuscle"></select>
-            </div>
-            <div>
-              <label for="libraryExerciseTechnicalLevel">Nivel técnico</label>
-              <select id="libraryExerciseTechnicalLevel"></select>
-            </div>
-          </div>
-          <div class="row">
-            <div>
-              <label for="libraryExerciseLoadType">Tipo de carga</label>
-              <select id="libraryExerciseLoadType"></select>
-            </div>
-            <div>
-              <label for="libraryExerciseActive">Estado</label>
-              <select id="libraryExerciseActive">
-                <option value="true">Activo</option>
-                <option value="false">Inactivo</option>
-              </select>
-            </div>
-          </div>
-          <div>
-            <label for="libraryExerciseDescription">Descripción</label>
-            <textarea id="libraryExerciseDescription"></textarea>
-          </div>
-          <div>
-            <label for="libraryExerciseVideoUrl">Video (enlace)</label>
-            <input id="libraryExerciseVideoUrl" type="url" inputmode="url" autocomplete="off" placeholder="https://…">
-          </div>
-          <div>
-            <label>Demanda articular (0 = baja / 1 = media / 2 = alta)</label>
-            <div class="library-demand-grid">
-              <div>
-                <label for="libraryExerciseBackDemand">Espalda</label>
-                <select id="libraryExerciseBackDemand">
-                  <option value="0">0</option>
-                  <option value="1">1</option>
-                  <option value="2">2</option>
-                </select>
-              </div>
-              <div>
-                <label for="libraryExerciseShoulderDemand">Hombro</label>
-                <select id="libraryExerciseShoulderDemand">
-                  <option value="0">0</option>
-                  <option value="1">1</option>
-                  <option value="2">2</option>
-                </select>
-              </div>
-              <div>
-                <label for="libraryExerciseKneeDemand">Rodilla</label>
-                <select id="libraryExerciseKneeDemand">
-                  <option value="0">0</option>
-                  <option value="1">1</option>
-                  <option value="2">2</option>
-                </select>
-              </div>
-              <div>
-                <label for="libraryExerciseHipDemand">Cadera</label>
-                <select id="libraryExerciseHipDemand">
-                  <option value="0">0</option>
-                  <option value="1">1</option>
-                  <option value="2">2</option>
-                </select>
-              </div>
-            </div>
-          </div>
-          <div>
-            <label for="libraryExerciseSecondaryMuscles">Músculos secundarios</label>
-            <input id="libraryExerciseSecondaryMuscles" type="text" placeholder="Ej: glúteos, femorales">
-          </div>
-          <div>
-            <label for="libraryExerciseEquipments">Equipamiento</label>
-            <input id="libraryExerciseEquipments" type="text" placeholder="Ej: barra, rack">
-          </div>
-          <div class="row">
-            <div>
-              <label for="libraryExerciseBase">Base / ejercicio principal</label>
-              <input id="libraryExerciseBase" type="text" list="exerciseLibraryOptions" placeholder="Ej: Sentadilla">
-            </div>
-            <div>
-              <label for="libraryExerciseAlternativeGroup">Grupo de alternativas</label>
-              <input id="libraryExerciseAlternativeGroup" type="text" placeholder="Ej: sentadilla-principal">
-            </div>
-          </div>
-          <div class="row">
-            <div>
-              <label for="libraryRelationTarget">Relación con otro ejercicio</label>
-              <input id="libraryRelationTarget" type="text" list="exerciseLibraryOptions" placeholder="Ejercicio relacionado">
-              <input id="libraryRelationTargetId" type="hidden" value="">
-            </div>
-            <div>
-              <label for="libraryRelationType">Tipo de relación</label>
-              <select id="libraryRelationType">
-                <option value="">Sin relación</option>
-                <option value="variant_of">Variante de</option>
-                <option value="alternative_to">Alternativa a</option>
-                <option value="regression_of">Regresión de</option>
-                <option value="progression_of">Progresión de</option>
-              </select>
-            </div>
-          </div>
-          <button class="primary" id="saveLibraryExerciseBtn" type="button">Guardar ejercicio</button>
-        </form>
-        <div id="libraryExerciseList" class="training-set-list"></div>
-      </details>
     </section>
 
     <section id="studentTraining" class="hidden">

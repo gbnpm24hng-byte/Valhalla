@@ -349,5 +349,24 @@
     return ctx.online && ctx.loaded ? ctx.published.has(clientId) : null;
   }
 
-  window.VALHALLA.publish = { renderStatus, publish, isPublished };
+  // v0.9.38 (Programas): estado de un alumno con su asignación, con la misma regla del
+  // indicador de la ficha. 'published' (al día), 'pending' (cambios sin publicar), 'never'
+  // (aún no publicado) o 'unknown' (sin sesión con conexión o sin consultar todavía).
+  function statusOf(clientId, assignment) {
+    if (!assignment || !ctx.online || !ctx.loaded) {
+      return 'unknown';
+    }
+    const published = ctx.published.get(clientId);
+    if (!published) {
+      return 'never';
+    }
+    const current = currentPublication(clientId, assignment.id);
+    return !current || published.assignmentId !== assignment.id || published.contentHash !== current.contentHash ? 'pending' : 'published';
+  }
+
+  function isBusy() {
+    return Boolean(ctx.busyClientId);
+  }
+
+  window.VALHALLA.publish = { renderStatus, publish, isPublished, statusOf, isBusy };
 })();
