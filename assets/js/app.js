@@ -7588,7 +7588,7 @@
         <div class="client-folds">
           ${fold('program', 'data-client-fold="program"', 'Programa actual', renderClientProgramFold(client, assignment), folds.program)}
           ${fold('sports', `data-client-sports="${id}"`, 'Ficha deportiva', renderSportsProfilePanel(client), folds.sports)}
-          ${fold('data', 'data-client-fold="data"', 'Datos y pagos', renderClientDetailFields(client), folds.data)}
+          ${fold('data', 'data-client-fold="data"', 'Datos y pagos', renderClientDetailFields(client) + renderClientPayToggle(client), folds.data)}
           ${fold('edit', `data-client-edit="${id}"`, 'Editar', '<div data-client-edit-slot></div>', editing)}
         </div>
       </section>`;
@@ -7957,6 +7957,7 @@
               <span class="client-row-sub">${escapeHtml(getClientGroupLabel(client))}</span>
             </span>
           </button>
+          ${renderClientPayToggle(client, 'row')}
           <button class="client-wa" type="button" data-client-whatsapp="${id}" aria-label="WhatsApp de ${name}" title="WhatsApp" ${whatsappPhone ? '' : 'disabled'}>${WHATSAPP_ICON}</button>
         </article>`;
     }).join('') : emptyMessage;
@@ -8138,28 +8139,7 @@
 
     try {
       const nextClient = buildClientRecord(payload, existingClient);
-      let savedClient = nextClient;
-
-      if (isCloudSessionActive()) {
-        if (!cloudDataApi || typeof cloudDataApi.createClient !== 'function' || typeof cloudDataApi.updateClient !== 'function') {
-          throw new Error('La integración Cloud no está disponible');
-        }
-        const cloudPayload = getCloudClientPayload(nextClient);
-        const response = existingClient
-          ? await cloudDataApi.updateClient(existingClient.id, cloudPayload)
-          : await cloudDataApi.createClient(cloudPayload);
-
-        if (response.error) {
-          throw new Error(response.error.message || response.error || 'No se pudo guardar el cliente en Cloud');
-        }
-        savedClient = normalizeClientRecord(response.data || nextClient);
-      }
-
-      const normalizedSavedClient = normalizeClientRecord(savedClient);
-      const nextRecords = (clientUi.records || []).filter((client) => client.id !== normalizedSavedClient.id);
-      nextRecords.unshift(normalizedSavedClient);
-      clientUi.records = nextRecords;
-      state.clients = nextRecords.map((client) => normalizeClientRecord(client));
+      const normalizedSavedClient = await storeClientRecord(nextClient, existingClient);
       clientUi.detailId = normalizedSavedClient.id;
       clientUi.detailType = clientUi.detailType || 'details';
       clientUi.formOpen = false;
@@ -8169,12 +8149,7 @@
         els.clientFormPanel.classList.add('hidden');
       }
       setClientNotice(existingClient ? 'Cliente actualizado correctamente.' : 'Cliente guardado correctamente.', 'ok');
-      if (!isCloudSessionActive()) {
-        persist();
-      } else {
-        render();
-      }
-      renderClients();
+      finishClientStore();
     } catch (error) {
       setClientNotice(error.message || 'No se pudo guardar el cliente.', 'bad');
     } finally {
@@ -8187,6 +8162,121 @@
       }
       renderClients();
     }
+  }
+
+  // Guardado de un alumno, el mismo para Editar y para "Marcar pagado": (capa antigua de tablas
+  // si estuviera activa) → clientUi.records y state.clients. keepOrder deja la fila en su lugar
+  // (Editar la sube al principio, como siempre).
+  async function storeClientRecord(nextClient, existingClient, { keepOrder = false } = {}) {
+    let savedClient = nextClient;
+    if (isCloudSessionActive()) {
+      if (!cloudDataApi || typeof cloudDataApi.createClient !== 'function' || typeof cloudDataApi.updateClient !== 'function') {
+        throw new Error('La integración Cloud no está disponible');
+      }
+      const cloudPayload = getCloudClientPayload(nextClient);
+      const response = existingClient
+        ? await cloudDataApi.updateClient(existingClient.id, cloudPayload)
+        : await cloudDataApi.createClient(cloudPayload);
+
+      if (response.error) {
+        throw new Error(response.error.message || response.error || 'No se pudo guardar el cliente en Cloud');
+      }
+      savedClient = normalizeClientRecord(response.data || nextClient);
+    }
+
+    const normalizedSavedClient = normalizeClientRecord(savedClient);
+    const records = clientUi.records || [];
+    let nextRecords;
+    if (keepOrder && records.some((client) => client.id === normalizedSavedClient.id)) {
+      nextRecords = records.map((client) => (client.id === normalizedSavedClient.id ? normalizedSavedClient : client));
+    } else {
+      nextRecords = records.filter((client) => client.id !== normalizedSavedClient.id);
+      nextRecords.unshift(normalizedSavedClient);
+    }
+    clientUi.records = nextRecords;
+    state.clients = nextRecords.map((client) => normalizeClientRecord(client));
+    return normalizedSavedClient;
+  }
+
+  function finishClientStore() {
+    if (!isCloudSessionActive()) {
+      persist();
+    } else {
+      render();
+    }
+    renderClients();
+  }
+
+  // "Marcar pagado" (Pendiente, En duda, Atrasado) / "Volver a pendiente" (solo en la ficha): solo cambia payment_status (status lo copia
+  // normalizeClient, igual que al guardar desde Editar). Pide confirmación antes.
+  const PAY_TOGGLE_FROM = { pending: 'paid', uncertain: 'paid', overdue: 'paid', paid: 'pending' };
+
+  function renderClientPayToggle(client, variant = 'ficha') {
+    const next = PAY_TOGGLE_FROM[client.payment_status];
+    // En la lista solo "Marcar pagado"; "Volver a pendiente" vive en la ficha.
+    if (!next || (variant === 'row' && next !== 'paid')) {
+      return '';
+    }
+    const label = next === 'paid' ? 'Marcar pagado' : 'Volver a pendiente';
+    const cls = variant === 'row' ? 'client-pay-btn client-pay-btn--row' : 'client-pay-btn';
+    const tone = next === 'paid' ? 'primary' : 'secondary';
+    return `<button class="${tone} ${cls}" type="button" data-client-pay="${escapeHtml(client.id)}" data-pay-to="${next}">${label}</button>`;
+  }
+
+  async function toggleClientPayment(clientId, nextStatus) {
+    if (clientUi.saving) {
+      return;
+    }
+    const existingClient = (clientUi.records || []).find((client) => client.id === clientId);
+    if (!existingClient || PAY_TOGGLE_FROM[existingClient.payment_status] !== nextStatus) {
+      return;
+    }
+    const name = getClientDisplayName(existingClient);
+    const question = nextStatus === 'paid' ? `¿Marcar pagado a ${name}?` : `¿Volver a pendiente a ${name}?`;
+    if (!window.confirm(question)) {
+      return;
+    }
+    clientUi.saving = true;
+    try {
+      const nextClient = normalizeClientRecord({ ...existingClient, payment_status: nextStatus });
+      await storeClientRecord(nextClient, existingClient, { keepOrder: true });
+      // Si el formulario de Editar está abierto para este alumno, que no devuelva el estado anterior.
+      if (clientUi.formOpen && clientUi.editingId === clientId) {
+        const select = document.getElementById('clientPaymentStatus');
+        if (select) {
+          select.value = nextStatus;
+        }
+      }
+      const message = nextStatus === 'paid' ? 'Pago registrado' : 'Pago vuelto a pendiente';
+      setClientNotice(message, 'ok');
+      showClientToast(message);
+      finishClientStore();
+    } catch (error) {
+      setClientNotice(error.message || 'No se pudo guardar el pago.', 'bad');
+      showClientToast(error.message || 'No se pudo guardar el pago.', 'bad');
+    } finally {
+      clientUi.saving = false;
+      renderClients();
+    }
+  }
+
+  // Aviso breve visible tanto en la lista como en la ficha (el aviso de la lista queda oculto en la ficha).
+  let clientToastTimer = null;
+  function showClientToast(message, tone = 'ok') {
+    let toast = document.getElementById('clientToast');
+    if (!toast) {
+      toast = document.createElement('div');
+      toast.id = 'clientToast';
+      toast.className = 'client-toast';
+      toast.setAttribute('role', 'status');
+      toast.setAttribute('aria-live', 'polite');
+      document.body.appendChild(toast);
+    }
+    toast.textContent = message;
+    toast.classList.toggle('bad', tone === 'bad');
+    toast.classList.add('show');
+    clearTimeout(clientToastTimer);
+    clientToastTimer = setTimeout(() => toast.classList.remove('show'), 2600);
   }
 
   async function saveSportsProfileForm(form) {
@@ -10212,6 +10302,12 @@
 
     // Ficha del alumno: "◀ Alumnos" y los plegables (Programa actual, Ficha deportiva,
     // Datos y pagos, Editar). El botón "Cerrar ficha deportiva" del panel también la pliega.
+    const clientPayButton = target.closest('[data-client-pay]');
+    if (clientPayButton) {
+      event.preventDefault();
+      toggleClientPayment(clientPayButton.getAttribute('data-client-pay'), clientPayButton.getAttribute('data-pay-to'));
+      return;
+    }
     if (target.closest('[data-client-back]')) {
       closeClientFicha();
       window.scrollTo(0, 0);
