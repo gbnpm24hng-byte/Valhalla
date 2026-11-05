@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <title>VALHALLA</title>
-  <link rel="stylesheet" href="./assets/css/styles.css?v=0.9.34">
+  <link rel="stylesheet" href="./assets/css/styles.css?v=0.9.35">
 </head>
 <!-- Clase "solo-entrenamientos": oculta Inicio, Registrar (finanzas) y Nutrición sin borrarlos. Quitarla los vuelve a mostrar. -->
 <body class="solo-entrenamientos">
@@ -31,7 +31,7 @@
       <div class="header-actions">
         <span class="user-pill">Usuario</span>
         <span class="badge" id="cloudModeBadge">Modo Local</span>
-        <span class="badge">v0.9.34</span>
+        <span class="badge">v0.9.35</span>
       </div>
     </header>
 
@@ -163,6 +163,9 @@
     </section>
 
     <section id="clients" class="hidden">
+      <!-- v0.9.35: lista (buscador, filtros y una fila por alumno) y ficha en pantalla propia
+           (#clientDetailView, se arma al abrirla). Solo presentación: los datos no cambian. -->
+      <div id="clientListView">
       <div class="card">
         <div class="section-title client-section-head">
           <div>
@@ -171,33 +174,42 @@
           </div>
           <button class="primary client-new-button" id="newClientBtn" type="button">Nuevo cliente</button>
         </div>
-        <div id="authPanel" class="notice"></div>
         <div class="client-toolbar">
           <div class="client-search-wrap">
-            <label for="clientSearch">Buscador por nombre o teléfono</label>
-            <input id="clientSearch" type="search" placeholder="Buscar cliente">
+            <label class="sr-only" for="clientSearch">Buscar por nombre o teléfono</label>
+            <input id="clientSearch" type="search" placeholder="Buscar por nombre o teléfono">
           </div>
-          <div class="client-filter-group" role="tablist" aria-label="Filtros de clientes">
+          <div class="client-filter-group" role="tablist" aria-label="Filtros de alumnos">
             <button class="secondary active" type="button" data-client-filter="all">Todos</button>
             <button class="secondary" type="button" data-client-filter="active">Activos</button>
-            <button class="secondary" type="button" data-client-filter="pending">Pendientes</button>
-            <button class="secondary" type="button" data-client-filter="uncertain">En duda</button>
             <button class="secondary" type="button" data-client-filter="inactive">Inactivos</button>
           </div>
         </div>
-          <button class="secondary" id="importWhatsAppBtn" type="button">Importar desde WhatsApp</button>
-          <div id="whatsAppImportPanel" class="whatsapp-import-panel hidden">
-            <label for="whatsAppImportText">Pega el mensaje de ingreso</label>
-            <textarea id="whatsAppImportText" rows="8" placeholder="INGRESO NUEVO ALUMNO&#10;Nombre completo: ..."></textarea>
-            <div class="inline-actions">
-              <button class="primary" id="parseWhatsAppImportBtn" type="button">Pre-llenar nuevo cliente</button>
-              <button class="ghost" id="cancelWhatsAppImportBtn" type="button">Cerrar</button>
+        <details class="client-more" id="clientMoreDetails">
+          <summary>Más</summary>
+          <div class="client-more-body">
+            <div class="client-filter-group client-filter-group--more" aria-label="Más filtros">
+              <button class="secondary" type="button" data-client-filter="pending">Pendientes</button>
+              <button class="secondary" type="button" data-client-filter="uncertain">En duda</button>
             </div>
-            <div id="whatsAppImportMessage" class="notice"></div>
+            <button class="secondary" id="importWhatsAppBtn" type="button">Importar desde WhatsApp</button>
+            <div id="whatsAppImportPanel" class="whatsapp-import-panel hidden">
+              <label for="whatsAppImportText">Pega el mensaje de ingreso</label>
+              <textarea id="whatsAppImportText" rows="8" placeholder="INGRESO NUEVO ALUMNO&#10;Nombre completo: ..."></textarea>
+              <div class="inline-actions">
+                <button class="primary" id="parseWhatsAppImportBtn" type="button">Pre-llenar nuevo cliente</button>
+                <button class="ghost" id="cancelWhatsAppImportBtn" type="button">Cerrar</button>
+              </div>
+              <div id="whatsAppImportMessage" class="notice"></div>
+            </div>
           </div>
-        <div id="clientMessage" class="notice"></div>
+        </details>
+      </div>
       </div>
 
+      <div id="clientMessage" class="notice client-message"></div>
+
+      <div id="clientFormHome">
       <div class="card hidden" id="clientFormPanel">
         <div class="section-title">
           <div>
@@ -360,14 +372,17 @@
           <div id="clientFormMessage" class="notice"></div>
         </form>
       </div>
+      </div>
 
-      <div class="card">
+      <div class="card" id="clientListCard">
         <div class="section-title">
           <h2>Listado</h2>
-          <span class="pill" id="clientCount">0 clientes</span>
+          <span class="pill" id="clientCount">0 alumnos</span>
         </div>
         <div id="clientList" class="client-list"></div>
       </div>
+
+      <div id="clientDetailView" class="client-detail-view hidden"></div>
 
       <datalist id="exerciseLibraryOptions"></datalist>
     </section>
@@ -1197,6 +1212,8 @@
     </section>
 
     <section id="settings" class="hidden">
+      <!-- Cuenta (sesión, estado de la nube, Cerrar sesión): desde v0.9.35 vive aquí. -->
+      <div id="authPanel" class="settings-account"></div>
       <div class="card">
         <h2>Ajustes</h2>
         <form id="settingsForm" class="form-grid">

@@ -162,6 +162,7 @@
     editingId: null,
     detailId: '',
     detailType: '',
+    folds: {},
     formOpen: false,
     saving: false,
     notice: '',
@@ -210,6 +211,10 @@
     accountSettings: document.getElementById('accountSettings'),
     accountSettingsMessage: document.getElementById('accountSettingsMessage'),
     clientList: document.getElementById('clientList'),
+    clientListView: document.getElementById('clientListView'),
+    clientListCard: document.getElementById('clientListCard'),
+    clientDetailView: document.getElementById('clientDetailView'),
+    clientFormHome: document.getElementById('clientFormHome'),
     clientFormPanel: document.getElementById('clientFormPanel'),
     clientForm: document.getElementById('clientForm'),
     clientFormTitle: document.getElementById('clientFormTitle'),
@@ -7326,15 +7331,15 @@
     const monthly = Number(client.monthly_value ?? client.amount ?? 0);
     const sessionsTotal = Number(client.sessions_total || 0);
     const fields = [
-      ['Teléfono', text(client.phone)],
       ['Servicio', text(client.service)],
-      ['Horario', text(client.schedule_notes)],
-      ['Días de entrenamiento', text(client.training_days)],
-      ['Estado de pago', text(getClientStatusLabel(client))],
-      ['Estado del cliente', text(getClientPresenceLabel(client))],
       ['Valor mensual', monthly > 0 ? financeApi.formatCurrency(monthly) : ''],
       ['Fecha de renovación', client.renewal_date || client.renewal_day ? getClientRenewalLabel(client) : ''],
+      ['Estado de pago', text(getClientStatusLabel(client))],
       ['Sesiones disponibles', sessionsTotal > 0 ? `${Math.max(0, sessionsTotal - Number(client.sessions_used || 0))}/${sessionsTotal}` : ''],
+      ['Estado del cliente', text(getClientPresenceLabel(client))],
+      ['Teléfono', text(client.phone)],
+      ['Horario', text(client.schedule_notes)],
+      ['Días de entrenamiento', text(client.training_days)],
       ['Modalidad', client.training_modality === 'group' ? `Grupo (${Number(client.training_group_size || 2)})` : 'Personalizado'],
       ['Correo', text(client.email)],
       ['Objetivo', text(client.objective)],
@@ -7353,43 +7358,287 @@
         ${missing.length ? `<p class="meta client-detail-missing">Datos por completar: ${escapeHtml(missing.join(', '))}.</p>` : ''}`;
   }
 
-  function renderClientDetail(client) {
-    if (!client) {
-      return '';
+  // v0.9.35: Alumnos muestra primero el progreso. Todo lo de abajo es presentación: se calcula
+  // con lo que ya existe (sesiones, asistencia marcada, programa asignado) y no escribe datos.
+  const FICHA_WEEKDAYS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+  const FICHA_MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+  const WHATSAPP_ICON = '<svg class="client-wa-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4.5 19.5l1.2-3.6A8 8 0 1 1 8.3 18.4z"/><path d="M9.2 8.6c.2-.5.6-.5.9-.5h.4c.2 0 .4.1.5.4l.6 1.5c.1.2 0 .4-.1.6l-.5.6c.6 1.1 1.5 2 2.6 2.6l.6-.5c.2-.1.4-.2.6-.1l1.5.6c.3.1.4.3.4.5v.4c0 .3 0 .7-.5.9-.5.3-1.4.5-2.6-.1a9 9 0 0 1-3.8-3.8c-.6-1.2-.4-2.1-.1-2.6z"/></svg>';
+
+  function formatFichaDate(value) {
+    const date = new Date(`${value}T00:00:00`);
+    if (!value || Number.isNaN(date.getTime())) {
+      return '—';
     }
-    const assignment = getActiveTrainingAssignment(client.id);
+    return `${FICHA_WEEKDAYS[date.getDay()]} ${date.getDate()} ${FICHA_MONTHS[date.getMonth()]}`;
+  }
+
+  function shiftLocalDate(value, days) {
+    const date = new Date(`${value}T00:00:00`);
+    date.setDate(date.getDate() + days);
+    return getAgendaDateValue(date);
+  }
+
+  // "Grupo 10:00" / "Personalizado 18:00": modalidad (o servicio) y la primera hora del horario.
+  function getClientGroupLabel(client) {
+    const kind = client.training_modality === 'group' ? 'Grupo' : (String(client.service || '').trim() || 'Personalizado');
+    const schedule = String(client.schedule_notes || '').trim();
+    const time = (schedule.match(/\b\d{1,2}[:.]\d{2}\b/) || [''])[0].replace('.', ':');
+    return [kind, time || schedule].filter(Boolean).join(' ');
+  }
+
+  // Punto de color: verde activo, amarillo pago pendiente o en duda, gris inactivo o pausado.
+  function getClientDotTone(client) {
+    if (client.client_status === 'inactive' || client.client_status === 'paused' || client.active === false) {
+      return { tone: 'muted', label: client.client_status === 'paused' ? 'Pausado' : 'Inactivo' };
+    }
+    if (client.client_status === 'uncertain' || client.payment_status === 'uncertain') {
+      return { tone: 'warn', label: 'En duda' };
+    }
+    if (client.payment_status === 'pending' || client.payment_status === 'overdue') {
+      return { tone: 'warn', label: 'Pago pendiente' };
+    }
+    return { tone: 'ok', label: 'Activo' };
+  }
+
+  function sessionHasWork(session) {
+    return session.status === 'completed'
+      || getSessionExercises(session).some((exercise) => getExerciseSets(exercise).some((setEntry) => setEntry.completed !== false));
+  }
+
+  // Asistencia: días con sesión registrada o asistencia marcada en los últimos 28 días, contra
+  // los días que le tocaban según sus días de entrenamiento (hoy cuenta solo si ya entrenó).
+  // Récords: fechas de este mes en que la carga máxima de un ejercicio superó todo lo anterior.
+  function getClientFichaStats(client) {
+    const today = getTodayLocalDate();
+    const start = shiftLocalDate(today, -27);
+    const sessions = getTrainingSessionsByClient(client.id).filter((session) => session.date && session.date <= today && sessionHasWork(session));
+    const attended = (client.training_attendance || []).filter((entry) => entry && entry.status === 'attended' && entry.date && entry.date <= today);
+    const allDates = new Set([...sessions.map((session) => session.date), ...attended.map((entry) => entry.date)]);
+
+    let attendance = '—';
+    if (allDates.size) {
+      const done = [...allDates].filter((date) => date >= start).length;
+      const weekdays = getClientAgendaWeekdays(client);
+      let expected = 0;
+      if (weekdays.length) {
+        for (let offset = 0; offset < 28; offset += 1) {
+          const date = shiftLocalDate(start, offset);
+          const weekday = new Date(`${date}T00:00:00`).getDay() || 7;
+          if (weekdays.includes(weekday) && (date < today || allDates.has(date))) {
+            expected += 1;
+          }
+        }
+      } else {
+        const perWeek = Number(getSportsProfile(client.id)?.sessionsPerWeek || 0);
+        expected = perWeek > 0 ? perWeek * 4 : 0;
+      }
+      attendance = expected > 0 ? `${done} de ${expected}` : String(done);
+    }
+
+    const month = today.slice(0, 7);
+    const byExercise = new Map();
+    sessions.forEach((session) => getSessionExercises(session).forEach((exercise) => {
+      const key = String(exercise.exerciseName || '').trim().toLowerCase();
+      const top = getExerciseSets(exercise).reduce((max, setEntry) => {
+        const weight = Number(setEntry.weight);
+        return setEntry.completed !== false && Number.isFinite(weight) && weight > 0 ? Math.max(max, weight) : max;
+      }, 0);
+      if (!key || !top) {
+        return;
+      }
+      const perDate = byExercise.get(key) || new Map();
+      perDate.set(session.date, Math.max(perDate.get(session.date) || 0, top));
+      byExercise.set(key, perDate);
+    }));
+    let records = 0;
+    byExercise.forEach((perDate) => {
+      let best = 0;
+      [...perDate.keys()].sort().forEach((date) => {
+        const top = perDate.get(date);
+        if (best > 0 && top > best && date.startsWith(month)) {
+          records += 1;
+        }
+        best = Math.max(best, top);
+      });
+    });
+
+    const lastDate = [...allDates].sort().pop() || '';
+    return {
+      attendance,
+      records: byExercise.size ? String(records) : '—',
+      lastSession: lastDate ? formatFichaDate(lastDate) : '—'
+    };
+  }
+
+  // Frases que empiezan con "Interno:" (la convención que nunca se publica al alumno), de lo
+  // más reciente a lo más antiguo. Solo se muestran en la ficha del entrenador.
+  const INTERNAL_NOTE_PREFIX = /^\s*\(?\s*interno\s*:/i;
+  function getClientInternalNotes(client) {
+    const notes = [];
+    const seen = new Set();
+    const add = (value, meta) => String(value || '')
+      .split(/\n+|(?<=[.!?;])\s+/)
+      .map((sentence) => sentence.trim())
+      .filter((sentence) => INTERNAL_NOTE_PREFIX.test(sentence))
+      .forEach((text) => {
+        const key = text.toLowerCase();
+        if (!seen.has(key)) {
+          seen.add(key);
+          notes.push({ text, meta });
+        }
+      });
+    sortSessionsByDateAsc(getTrainingSessionsByClient(client.id)).reverse().forEach((session) => {
+      add(session.notes, formatFichaDate(session.date));
+      getSessionExercises(session).forEach((exercise) => {
+        const meta = `${formatFichaDate(session.date)} · ${exercise.exerciseName || 'Ejercicio'}`;
+        add(exercise.comment?.text, meta);
+        add(exercise.coachNotes, meta);
+      });
+    });
+    (getActiveTrainingAssignment(client.id)?.days || []).forEach((day) => (day.exercises || []).forEach((exercise) => add(exercise.notes, `Programa · ${exercise.exerciseName || 'Ejercicio'}`)));
+    const profile = getSportsProfile(client.id);
+    add(profile?.coachNotes, 'Ficha deportiva');
+    add(profile?.goalNotes, 'Ficha deportiva');
+    add(client.observations, 'Observaciones');
+    add(client.intake_comment, 'Comentario de ingreso');
+    return notes;
+  }
+
+  // "Programa actual" sin líneas vacías: aproximaciones y series solo si están definidas.
+  function renderClientProgramFold(client, assignment) {
+    if (!assignment) {
+      return '<div class="meta">No hay programa activo asignado.</div>';
+    }
     const formatProgramEntry = (entry) => {
       const load = entry.weight === null || entry.weight === undefined ? 'Peso por completar' : `${Number(entry.weight)} kg`;
       const reps = entry.reps === null || entry.reps === undefined ? 'reps por completar' : `${Number(entry.reps)} reps`;
       const rir = entry.rir === null || entry.rir === undefined ? 'RIR por completar' : `RIR ${Number(entry.rir)}`;
       return `${escapeHtml(entry.label)}: ${load} × ${reps} · ${rir}`;
     };
+    return `
+      <div class="client-program-detail">
+        <div class="section-title compact"><strong>${escapeHtml(assignment.programName || 'Programa')}</strong><span class="pill">${Number(assignment.durationWeeks || 4)} semanas</span></div>
+        ${(assignment.days || []).map((day) => `
+          <div class="client-program-day">
+            <strong>${escapeHtml(day.name)}</strong>
+            <ul>${(day.exercises || []).map((exercise) => {
+              const details = [
+                Number(exercise.sets || 0) > 0 ? `${Number(exercise.sets)} series` : '',
+                exercise.targetWeight === null || exercise.targetWeight === undefined ? '' : `${Number(exercise.targetWeight)} kg objetivo`
+              ].filter(Boolean);
+              return `
+              <li>
+                <strong>${escapeHtml(exercise.exerciseName)}</strong>${details.length ? ` · ${details.join(' · ')}` : ''}
+                ${(exercise.approximations || []).length ? `<div class="meta">Aproximaciones: ${exercise.approximations.map(formatProgramEntry).join(' · ')}</div>` : ''}
+                ${(exercise.effectiveSets || []).length ? `<div class="meta">Series efectivas: ${exercise.effectiveSets.map(formatProgramEntry).join(' · ')}</div>` : ''}
+                ${exercise.notes ? `<div class="meta">${escapeHtml(exercise.notes)}</div>` : ''}
+              </li>`;
+            }).join('')}</ul>
+          </div>`).join('')}
+        ${client.last_training_day_id ? `<div class="meta">Última sesión elegida: ${escapeHtml(assignment.days?.find((day) => day.id === client.last_training_day_id)?.name || '')}</div>` : ''}
+      </div>`;
+  }
+
+  function renderClientFicha(client) {
+    const id = escapeHtml(client.id);
+    const name = escapeHtml(getClientDisplayName(client));
+    const assignment = getActiveTrainingAssignment(client.id);
+    const stats = getClientFichaStats(client);
+    const notes = getClientInternalNotes(client);
+    const dot = getClientDotTone(client);
+    const folds = clientUi.folds || {};
+    const editing = clientUi.formOpen && clientUi.editingId === client.id;
+    const canProgress = getActiveTrainingClients().some((item) => item.id === client.id);
+    const canStudentView = client.client_status === 'active' && client.active !== false;
+    const fold = (key, summaryAttrs, title, body, open) => `
+        <details class="client-fold" data-fold="${key}" ${open ? 'open' : ''}>
+          <summary ${summaryAttrs}>${title}</summary>
+          ${open ? `<div class="client-fold-body">${body}</div>` : ''}
+        </details>`;
+    const shownNotes = notes.slice(0, 5);
 
     return `
-      <section class="client-detail-inline" data-client-detail-panel="${escapeHtml(client.id)}" data-client-panel-type="details" aria-label="Ficha de ${escapeHtml(getClientDisplayName(client))}">
-        ${renderClientDetailFields(client)}
-        <section class="client-program-detail">
-          <div class="section-title compact"><h3>Programa actual</h3>${assignment ? `<span class="pill">${Number(assignment.durationWeeks || 4)} semanas</span>` : ''}</div>
-          ${assignment ? `<strong>${escapeHtml(assignment.programName || 'Programa')}</strong>
-            ${(assignment.days || []).map((day) => `
-              <div class="client-program-day">
-                <strong>${escapeHtml(day.name)}</strong>
-                <ul>${(day.exercises || []).map((exercise) => `
-                  <li>
-                    <strong>${escapeHtml(exercise.exerciseName)}</strong> · ${Number(exercise.sets || 0)} series${exercise.targetWeight === null || exercise.targetWeight === undefined ? '' : ` · ${Number(exercise.targetWeight)} kg objetivo`}
-                    <div class="meta">Aproximaciones: ${(exercise.approximations || []).length ? exercise.approximations.map(formatProgramEntry).join(' · ') : 'Sin aproximaciones'}</div>
-                    <div class="meta">Series efectivas: ${(exercise.effectiveSets || []).length ? exercise.effectiveSets.map(formatProgramEntry).join(' · ') : 'Sin series definidas'}</div>
-                    ${exercise.notes ? `<div class="meta">${escapeHtml(exercise.notes)}</div>` : ''}
-                  </li>`).join('')}</ul>
-              </div>`).join('')}` : '<div class="meta">No hay programa activo asignado.</div>'}
-          ${assignment && window.VALHALLA.publish ? window.VALHALLA.publish.renderStatus(client.id, assignment) : ''}
-          ${client.last_training_day_id ? `<div class="meta">Última sesión elegida: ${escapeHtml(assignment?.days?.find((day) => day.id === client.last_training_day_id)?.name || '')}</div>` : ''}
-        </section>
-        <div class="inline-actions">
-          <button class="secondary" type="button" data-client-sports="${client.id}">Ficha deportiva</button>
-          ${client.client_status === 'active' && client.active !== false ? `<button class="primary" type="button" data-client-student-view="${client.id}">Vista alumno</button>` : '<span class="muted">Vista alumno disponible para clientes activos</span>'}
+      <section class="client-ficha" data-client-detail-panel="${id}" data-client-panel-type="details" aria-label="Ficha de ${name}">
+        <button class="ghost client-back" type="button" data-client-back>◀ Alumnos</button>
+        <header class="client-ficha-head">
+          <p class="client-ficha-state"><span class="client-dot ${dot.tone}" aria-hidden="true"></span>${escapeHtml(dot.label)}</p>
+          <h2 class="client-ficha-name">${name}</h2>
+          <div class="client-ficha-sub">${escapeHtml(getClientGroupLabel(client))}</div>
+          <p class="client-ficha-program">${assignment ? `<span class="meta">Programa actual</span> <strong>${escapeHtml(assignment.programName || 'Programa')}</strong>` : '<span class="meta">Sin programa asignado</span>'}</p>
+        </header>
+        <div class="client-ficha-stats">
+          <div class="client-stat"><small>Asistencia últimas 4 semanas</small><strong>${escapeHtml(stats.attendance)}</strong></div>
+          <div class="client-stat"><small>Récords este mes</small><strong>${escapeHtml(stats.records)}</strong></div>
+        </div>
+        <p class="client-ficha-last">Última sesión: <strong>${escapeHtml(stats.lastSession)}</strong></p>
+        ${shownNotes.length ? `
+        <div class="client-ficha-internal">
+          <h3>Notas internas</h3>
+          <ul>${shownNotes.map((note) => `<li>${escapeHtml(note.text)}<span class="meta">${escapeHtml(note.meta)}</span></li>`).join('')}</ul>
+          ${notes.length > shownNotes.length ? `<p class="meta">y ${notes.length - shownNotes.length} más.</p>` : ''}
+        </div>` : ''}
+        <div class="client-ficha-actions">
+          ${assignment && window.VALHALLA.publish ? window.VALHALLA.publish.renderStatus(client.id, assignment) : '<p class="meta">Para publicar al alumno, primero asígnale un programa.</p>'}
+          <div class="client-ficha-buttons">
+            <button class="secondary" type="button" data-client-progress="${id}" ${canProgress ? '' : 'disabled'}>Ver progreso</button>
+            <button class="secondary" type="button" data-client-student-view="${id}" ${canStudentView ? '' : 'disabled'}>Vista alumno</button>
+          </div>
+          ${canStudentView ? '' : '<p class="meta">Vista alumno y Progreso: disponibles para alumnos activos.</p>'}
+        </div>
+        <div class="client-folds">
+          ${fold('program', 'data-client-fold="program"', 'Programa actual', renderClientProgramFold(client, assignment), folds.program)}
+          ${fold('sports', `data-client-sports="${id}"`, 'Ficha deportiva', renderSportsProfilePanel(client), folds.sports)}
+          ${fold('data', 'data-client-fold="data"', 'Datos y pagos', renderClientDetailFields(client), folds.data)}
+          ${fold('edit', `data-client-edit="${id}"`, 'Editar', '<div data-client-edit-slot></div>', editing)}
         </div>
       </section>`;
+  }
+
+  function closeClientForm() {
+    clientUi.formOpen = false;
+    clientUi.editingId = null;
+    clearClientForm();
+    els.clientFormPanel?.classList.add('hidden');
+  }
+
+  function openClientFicha(clientId, foldKey = '') {
+    if (!(clientUi.records || []).some((item) => item.id === clientId)) {
+      return;
+    }
+    if (clientUi.editingId && clientUi.editingId !== clientId) {
+      closeClientForm();
+    }
+    clientUi.detailId = clientId;
+    clientUi.folds = foldKey ? { [foldKey]: true } : {};
+    renderClients();
+    window.scrollTo(0, 0);
+  }
+
+  function closeClientFicha() {
+    if (clientUi.editingId) {
+      closeClientForm();
+    }
+    clientUi.detailId = '';
+    clientUi.folds = {};
+    renderClients();
+  }
+
+  // Plegables de la ficha: el estado vive en clientUi para que sobrevivan a cada re-dibujo.
+  function toggleClientFichaFold(element) {
+    if (element.hasAttribute('data-client-edit')) {
+      const clientId = element.getAttribute('data-client-edit');
+      if (clientUi.formOpen && clientUi.editingId === clientId) {
+        closeClientForm();
+        setClientNotice('', 'neutral');
+        renderClients();
+      } else {
+        editClientById(clientId);
+      }
+      return;
+    }
+    const key = element.hasAttribute('data-client-sports') ? 'sports' : element.getAttribute('data-client-fold');
+    clientUi.folds = { ...(clientUi.folds || {}), [key]: !(clientUi.folds || {})[key] };
+    renderClients();
   }
 
   function renderAuthPanel() {
@@ -7412,7 +7661,7 @@
       return;
     }
 
-    els.authPanel.innerHTML = '<div class="notice">Modo Local activo. Los datos siguen guardándose en localStorage.</div>';
+    els.authPanel.innerHTML = '<div class="card"><h3>Cuenta</h3><div class="notice">Modo Local activo. Los datos siguen guardándose en localStorage.</div></div>';
   }
 
   // Barra inferior: Hoy · Alumnos · Programas · Ajustes. Hoy y Programas son vistas de
@@ -7665,10 +7914,9 @@
     }
 
     const visibleClients = getVisibleClients();
-    const selectedClient = clientUi.detailId ? (visibleClients.find((client) => client.id === clientUi.detailId) || clientUi.records.find((client) => client.id === clientUi.detailId)) : null;
 
     if (els.clientCount) {
-      els.clientCount.textContent = `${visibleClients.length} cliente${visibleClients.length === 1 ? '' : 's'}`;
+      els.clientCount.textContent = `${visibleClients.length} alumno${visibleClients.length === 1 ? '' : 's'}`;
     }
     if (els.clientSearch && els.clientSearch.value !== clientUi.search) {
       els.clientSearch.value = clientUi.search;
@@ -7694,35 +7942,51 @@
       ? '<div class="muted">Cargando clientes...</div>'
       : '<div class="muted">No hay clientes para mostrar.</div>';
 
+    // Una fila por alumno: punto de color, nombre, grupo y hora, y WhatsApp. Tocar la fila abre la ficha.
     els.clientList.innerHTML = visibleClients.length ? visibleClients.map((client) => {
-      const tone = getClientStatusTone(client);
-      const serviceLabel = escapeHtml(client.service || 'Sin servicio');
-      const scheduleLabel = escapeHtml(client.schedule_notes || 'Sin horario');
+      const id = escapeHtml(client.id);
+      const name = escapeHtml(getClientDisplayName(client));
+      const dot = getClientDotTone(client);
       const whatsappPhone = normalizeChileanPhoneForWhatsApp(client.phone);
       return `
-        <article class="client-card" data-client-card="${escapeHtml(client.id)}">
-          <div class="client-card-head">
-            <div>
-              <h3>${escapeHtml(getClientDisplayName(client))}</h3>
-              <div class="meta">${serviceLabel} · ${scheduleLabel}</div>
-            </div>
-            <span class="client-badge ${tone}">${escapeHtml(getClientStatusLabel(client))}</span>
-          </div>
-          <div class="client-card-body">
-            <div><strong>Valor mensual</strong><div class="meta">${financeApi.formatCurrency(Number(client.monthly_value ?? client.amount ?? 0))}</div></div>
-            <div><strong>Renovación</strong><div class="meta">${escapeHtml(getClientRenewalLabel(client))}</div></div>
-            <div><strong>Estado del cliente</strong><div class="meta">${escapeHtml(getClientPresenceLabel(client))}</div></div>
-          </div>
-          <div class="inline-actions client-actions">
-            <button class="ghost small" type="button" data-client-view="${client.id}" aria-expanded="${clientUi.detailId === client.id && clientUi.detailType === 'details'}">${clientUi.detailId === client.id && clientUi.detailType === 'details' ? 'Cerrar ficha' : 'Ver ficha'}</button>
-            <button class="ghost small" type="button" data-client-sports="${client.id}" aria-expanded="${clientUi.detailId === client.id && clientUi.detailType === 'sports'}">${clientUi.detailId === client.id && clientUi.detailType === 'sports' ? 'Cerrar ficha deportiva' : 'Ficha deportiva'}</button>
-            <button class="secondary small" type="button" data-client-edit="${client.id}">Editar</button>
-            <button class="secondary small" type="button" data-client-whatsapp="${client.id}" ${whatsappPhone ? '' : 'disabled'}>WhatsApp</button>
-            ${getActiveTrainingClients().some((item) => item.id === client.id) ? `<button class="secondary small" type="button" data-client-progress="${client.id}">Progreso</button>` : ''}
-          </div>
-          ${clientUi.detailId === client.id ? (clientUi.detailType === 'sports' ? renderSportsProfilePanel(client) : renderClientDetail(client)) : ''}
+        <article class="client-row" data-client-row="${id}" data-client-card="${id}">
+          <button class="client-row-main" type="button" data-client-view="${id}">
+            <span class="client-dot ${dot.tone}" role="img" aria-label="${escapeHtml(dot.label)}" title="${escapeHtml(dot.label)}"></span>
+            <span class="client-row-text">
+              <span class="client-row-name">${name}</span>
+              <span class="client-row-sub">${escapeHtml(getClientGroupLabel(client))}</span>
+            </span>
+          </button>
+          <button class="client-wa" type="button" data-client-whatsapp="${id}" aria-label="WhatsApp de ${name}" title="WhatsApp" ${whatsappPhone ? '' : 'disabled'}>${WHATSAPP_ICON}</button>
         </article>`;
     }).join('') : emptyMessage;
+
+    // Lista o ficha (pantalla propia). El formulario de edición se muda dentro de "Editar".
+    const fichaClient = clientUi.detailId ? (clientUi.records || []).find((client) => client.id === clientUi.detailId) || null : null;
+    els.clientListView?.classList.toggle('hidden', Boolean(fichaClient));
+    els.clientListCard?.classList.toggle('hidden', Boolean(fichaClient));
+    if (els.clientDetailView) {
+      const focused = els.clientFormPanel?.contains(document.activeElement) ? document.activeElement : null;
+      const selection = focused && typeof focused.selectionStart === 'number' ? [focused.selectionStart, focused.selectionEnd] : null;
+      if (els.clientFormPanel && els.clientFormHome && els.clientDetailView.contains(els.clientFormPanel)) {
+        els.clientFormHome.appendChild(els.clientFormPanel);
+      }
+      els.clientDetailView.classList.toggle('hidden', !fichaClient);
+      els.clientDetailView.innerHTML = fichaClient ? renderClientFicha(fichaClient) : '';
+      const slot = fichaClient && clientUi.formOpen && clientUi.editingId === fichaClient.id
+        ? els.clientDetailView.querySelector('[data-client-edit-slot]')
+        : null;
+      const home = slot || els.clientFormHome;
+      if (els.clientFormPanel && home && els.clientFormPanel.parentElement !== home) {
+        home.appendChild(els.clientFormPanel);
+      }
+      if (focused && document.activeElement !== focused && focused.isConnected) {
+        focused.focus({ preventScroll: true });
+        if (selection) {
+          try { focused.setSelectionRange(selection[0], selection[1]); } catch (_) { /* tipos sin selección */ }
+        }
+      }
+    }
 
     if (clientUi.notice && els.clientMessage) {
       els.clientMessage.textContent = clientUi.notice;
@@ -8101,39 +8365,10 @@
       return;
     }
     toggleClientForm(true, client);
+    // "Editar" vive dentro de la ficha: el formulario se abre en su plegable.
     clientUi.detailId = client.id;
-    clientUi.detailType = clientUi.detailType || 'details';
     renderClients();
-  }
-
-  function selectClientDetail(clientId, type = 'details') {
-    const client = (clientUi.records || []).find((item) => item.id === clientId);
-    if (!client) {
-      return;
-    }
-    const panelType = type === 'sports' ? 'sports' : 'details';
-    const isOpen = clientUi.detailId === client.id && (clientUi.detailType || 'details') === panelType;
-    document.querySelector('[data-client-detail-panel]')?.remove();
-    clientUi.detailId = isOpen ? '' : client.id;
-    clientUi.detailType = isOpen ? '' : panelType;
-
-    document.querySelectorAll('[data-client-view]').forEach((button) => {
-      const expanded = !isOpen && panelType === 'details' && button.getAttribute('data-client-view') === client.id;
-      button.textContent = expanded ? 'Cerrar ficha' : 'Ver ficha';
-      button.setAttribute('aria-expanded', String(expanded));
-    });
-    document.querySelectorAll('[data-client-sports]').forEach((button) => {
-      const expanded = !isOpen && panelType === 'sports' && button.getAttribute('data-client-sports') === client.id;
-      button.textContent = expanded ? 'Cerrar ficha deportiva' : 'Ficha deportiva';
-      button.setAttribute('aria-expanded', String(expanded));
-    });
-    if (isOpen) {
-      return;
-    }
-
-    const card = [...document.querySelectorAll('[data-client-card]')]
-      .find((element) => element.getAttribute('data-client-card') === client.id);
-    card?.querySelector('.client-actions')?.insertAdjacentHTML('afterend', panelType === 'sports' ? renderSportsProfilePanel(client) : renderClientDetail(client));
+    els.clientFormPanel?.scrollIntoView?.({ block: 'start' });
   }
 
   function getClientAgendaWeekdays(client) {
@@ -9936,6 +10171,11 @@
     const target = event.target;
     const navButton = target.closest('[data-nav]');
     if (navButton) {
+      // "Alumnos" en la barra siempre lleva a la lista.
+      if (navButton.getAttribute('data-nav') === 'clients' && clientUi.detailId) {
+        closeClientFicha();
+        window.scrollTo(0, 0);
+      }
       show(navButton.getAttribute('data-nav'));
       if (navButton.hasAttribute('data-nav-view')) {
         setTrainingView(navButton.getAttribute('data-nav-view'));
@@ -9970,15 +10210,29 @@
       return;
     }
 
-    const clientViewId = target.getAttribute('data-client-view');
-    if (clientViewId) {
-      selectClientDetail(clientViewId);
+    // Ficha del alumno: "◀ Alumnos" y los plegables (Programa actual, Ficha deportiva,
+    // Datos y pagos, Editar). El botón "Cerrar ficha deportiva" del panel también la pliega.
+    if (target.closest('[data-client-back]')) {
+      closeClientFicha();
+      window.scrollTo(0, 0);
+      return;
+    }
+    const fichaToggle = target.closest('#clientDetailView [data-client-fold], #clientDetailView [data-client-sports], #clientDetailView [data-client-edit]');
+    if (fichaToggle) {
+      event.preventDefault();
+      toggleClientFichaFold(fichaToggle);
+      return;
+    }
+
+    const clientViewButton = target.closest('[data-client-view]');
+    if (clientViewButton) {
+      openClientFicha(clientViewButton.getAttribute('data-client-view'));
       return;
     }
 
     const clientSportsId = target.getAttribute('data-client-sports');
     if (clientSportsId) {
-      selectClientDetail(clientSportsId, 'sports');
+      openClientFicha(clientSportsId, 'sports');
       return;
     }
 
@@ -9988,7 +10242,7 @@
       return;
     }
 
-    const clientWhatsAppId = target.getAttribute('data-client-whatsapp');
+    const clientWhatsAppId = target.closest('[data-client-whatsapp]')?.getAttribute('data-client-whatsapp');
     if (clientWhatsAppId) {
       const client = (clientUi.records || []).find((item) => item.id === clientWhatsAppId);
       if (client) {

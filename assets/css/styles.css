@@ -4365,3 +4365,285 @@ button.today-outline {
 .today-more-links {
   margin: 6px 0 12px;
 }
+
+/* ---------------------------------------------------------------------------
+   v0.9.35 · Alumnos: lista de una fila por alumno y ficha en pantalla propia.
+   Marca: negro, carbón, amarillo y hueso; verde solo en el punto de "activo". Sin rojo.
+   --------------------------------------------------------------------------- */
+#clients .bad,
+#clients .warn { color: var(--accent); }
+#clients button.danger {
+  background: transparent;
+  border: 1px solid var(--sv-line);
+  color: var(--sv-text);
+}
+
+.client-message:empty { display: none; }
+.client-message { margin: 0 0 12px; }
+.settings-account:empty { display: none; }
+
+.client-section-head .client-new-button { min-width: 0; }
+
+.client-filter-group {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.client-filter-group--more { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.client-filter-group button:last-child { grid-column: auto; }
+
+.client-more {
+  margin-top: 12px;
+  border-top: 1px solid var(--border);
+  padding-top: 4px;
+}
+.client-more > summary,
+.client-fold > summary {
+  cursor: pointer;
+  list-style: none;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-weight: 700;
+  color: var(--sv-text);
+}
+.client-more > summary { color: var(--muted); }
+.client-more > summary::-webkit-details-marker,
+.client-fold > summary::-webkit-details-marker { display: none; }
+.client-more > summary::after,
+.client-fold > summary::after {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg);
+  margin-right: 6px;
+  transition: transform 0.15s;
+}
+.client-more[open] > summary::after,
+.client-fold[open] > summary::after { transform: rotate(-135deg); }
+.client-more-body {
+  display: grid;
+  gap: 10px;
+  padding-bottom: 6px;
+}
+
+/* Lista */
+.client-list { gap: 0; }
+.client-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.client-row:last-child { border-bottom: 0; }
+.client-row-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 64px;
+  padding: 8px 4px;
+  background: transparent;
+  border: 0;
+  border-radius: 12px;
+  color: var(--sv-text);
+  text-align: left;
+  cursor: pointer;
+}
+.client-row-main:hover,
+.client-row-main:focus-visible { background: var(--surface-2); }
+.client-row-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.client-row-name {
+  font-weight: 700;
+  font-size: 1rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.client-row-sub {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+.client-dot {
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--muted);
+  display: inline-block;
+}
+.client-dot.ok { background: var(--sv-green); }
+.client-dot.warn { background: var(--sv-accent); }
+.client-dot.muted { background: #6E6A60; }
+
+.client-wa {
+  flex: 0 0 auto;
+  width: 48px;
+  height: 48px;
+  min-height: 48px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: transparent;
+  border: 1px solid var(--sv-line);
+  color: var(--sv-accent);
+  cursor: pointer;
+}
+.client-wa:disabled { color: var(--muted); opacity: 0.45; cursor: default; }
+.client-wa-icon {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linejoin: round;
+}
+
+/* Ficha */
+.client-detail-view { display: grid; gap: 12px; }
+.client-ficha {
+  display: grid;
+  gap: 14px;
+}
+button.client-back {
+  justify-self: start;
+  min-height: 44px;
+  padding: 0 12px 0 4px;
+  background: transparent;
+  border: 0;
+  color: var(--sv-accent);
+  font-weight: 700;
+}
+.client-ficha-head {
+  display: grid;
+  gap: 4px;
+}
+.client-ficha-state {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.client-ficha-state .client-dot { width: 10px; height: 10px; }
+.client-ficha-name {
+  margin: 0;
+  font-size: 2.4rem;
+  line-height: 1;
+  color: var(--sv-text);
+  overflow-wrap: anywhere;
+}
+.client-ficha-sub {
+  color: var(--sv-accent);
+  font-weight: 700;
+}
+.client-ficha-program {
+  margin: 4px 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: baseline;
+}
+.client-ficha-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.client-stat {
+  display: grid;
+  gap: 6px;
+  align-content: space-between;
+  padding: 14px;
+  border-radius: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.client-stat small {
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.25;
+}
+.client-stat strong {
+  font-weight: 800;
+  font-size: 1.9rem;
+  line-height: 1.05;
+  color: var(--sv-accent);
+}
+.client-ficha-last { margin: 0; color: var(--muted); }
+.client-ficha-last strong { color: var(--sv-text); }
+.client-ficha-internal {
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--surface-2);
+  border-left: 3px solid var(--sv-accent);
+}
+.client-ficha-internal h3 { margin: 0 0 6px; font-size: 1.05rem; }
+.client-ficha-internal ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+.client-ficha-internal li { display: grid; gap: 2px; }
+.client-ficha-internal li .meta { font-size: 0.78rem; }
+.client-ficha-actions {
+  display: grid;
+  gap: 10px;
+}
+.client-ficha-actions .client-publish {
+  margin-top: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+}
+.client-ficha-actions .client-publish button {
+  background: var(--sv-accent);
+  color: var(--sv-ink);
+  border-color: var(--sv-accent);
+  font-weight: 700;
+}
+.client-ficha-actions .client-publish button:disabled { opacity: 0.55; }
+.client-ficha-actions p { margin: 0; }
+.client-ficha-buttons {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.client-ficha-buttons button:disabled { opacity: 0.45; }
+.client-folds {
+  display: grid;
+  border-top: 1px solid var(--border);
+}
+.client-fold { border-bottom: 1px solid var(--border); }
+.client-fold-body {
+  display: grid;
+  gap: 12px;
+  padding-bottom: 14px;
+}
+.client-fold-body .client-program-detail { border-top: 0; padding-top: 0; }
+.client-fold-body .sports-profile-inline { border-top: 0; padding-top: 0; }
+.client-fold-body .sports-profile-inline > .client-detail-card > .section-title > button[data-client-sports] { display: none; }
+.client-fold-body #clientFormPanel { margin: 0; }
+
+@media (max-width: 640px) {
+  .client-section-head { flex-direction: row; align-items: flex-end; }
+  .client-section-head .client-new-button { width: auto; min-height: 48px; padding: 0 16px; }
+  .client-filter-group { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .client-filter-group--more { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .client-filter-group button:last-child { grid-column: auto; }
+  .client-detail-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
