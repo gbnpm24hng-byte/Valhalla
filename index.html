@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Bebas+Neue&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <title>VALHALLA</title>
-  <link rel="stylesheet" href="./assets/css/styles.css?v=0.9.38">
+  <link rel="stylesheet" href="./assets/css/styles.css?v=0.9.39">
 </head>
 <!-- Clase "solo-entrenamientos": oculta Inicio, Registrar (finanzas) y Nutrición sin borrarlos. Quitarla los vuelve a mostrar. -->
 <body class="solo-entrenamientos">
@@ -31,7 +31,7 @@
       <div class="header-actions">
         <span class="user-pill">Usuario</span>
         <span class="badge" id="cloudModeBadge">Modo Local</span>
-        <span class="badge">v0.9.38</span>
+        <span class="badge">v0.9.39</span>
       </div>
     </header>
 
@@ -417,6 +417,7 @@
 
         <details id="trainingAdvancedEditor" class="training-advanced-editor">
           <summary>Edición avanzada de sesiones</summary>
+          <div id="sessionStatusActions" class="inline-actions session-status-actions hidden"></div>
           <form id="routineForm" class="form-grid">
             <div class="row">
               <div>
@@ -979,21 +980,11 @@
         </div>
       </div>
 
-      <div id="trainingProgressView" class="card hidden">
-        <div class="section-title">
-          <h2>PROGRESO</h2>
-        </div>
-        <div class="row">
-          <div>
-            <label for="historyClientId">Cliente</label>
-            <select id="historyClientId"></select>
-          </div>
-          <div>
-            <label for="historyExercise">Ejercicio</label>
-            <input id="historyExercise" type="text" placeholder="Ej: Sentadilla">
-          </div>
-        </div>
-        <div id="trainingProgressSummary" class="notice"></div>
+      <!-- v0.9.39: Progreso del alumno (se dibuja desde el código de la app; se llega desde la ficha). -->
+      <div id="trainingProgressView" class="pg-screen hidden">
+        <div id="progressScreen"></div>
+        <p class="pg-import"><button class="pg-link" id="importStudentSetsBtn" type="button">Traer registros de alumnos</button></p>
+        <div id="importStudentSetsMessage" class="notice hidden" role="status"></div>
       </div>
 
       <div id="trainingGroupView" class="card hidden group-mode-view">
@@ -1005,15 +996,6 @@
         <div id="groupSessionClients" class="group-session-clients"></div>
         <div id="groupSessionMessage" class="notice"></div>
         <div id="groupSessionRows" class="group-session-rows"></div>
-      </div>
-
-      <div id="trainingsStudentsPanel" class="card training-execution-panel">
-        <div class="section-title">
-          <h2>Sesiones del cliente</h2>
-          <button class="secondary small" id="importStudentSetsBtn" type="button">Traer registros de alumnos</button>
-        </div>
-        <div id="importStudentSetsMessage" class="notice hidden" role="status"></div>
-        <div id="trainingsStudents"></div>
       </div>
 
     </section>

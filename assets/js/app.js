@@ -240,7 +240,6 @@
     clientCancelBtn: document.getElementById('clientCancelBtn'),
     clientSubmitBtn: document.getElementById('clientSubmitBtn'),
     clientCount: document.getElementById('clientCount'),
-    trainingsStudents: document.getElementById('trainingsStudents'),
     routineForm: document.getElementById('routineForm'),
     routineMessage: document.getElementById('routineMessage'),
     trainingClientNotice: document.getElementById('trainingClientNotice'),
@@ -296,7 +295,6 @@
     techniqueNotesInput: document.getElementById('techniqueNotes'),
     historyClientId: document.getElementById('historyClientId'),
     historyExercise: document.getElementById('historyExercise'),
-    trainingProgressSummary: document.getElementById('trainingProgressSummary'),
     currentExerciseTitle: document.getElementById('currentExerciseTitle'),
     trainingLastRecord: document.getElementById('trainingLastRecord'),
     setProgressLabel: document.getElementById('setProgressLabel'),
@@ -3256,36 +3254,6 @@
     exercises.forEach((exercise, index) => {
       exercise.order = index + 1;
     });
-  }
-
-  function getSessionBuckets(clientId) {
-    const today = getTodayLocalDate();
-    const sessions = sortSessionsByDateAsc(getTrainingSessionsByClient(clientId));
-    const buckets = {
-      today: [],
-      upcoming: [],
-      completed: []
-    };
-
-    sessions.forEach((session) => {
-      const date = session.date || '';
-      if (session.status === 'completed') {
-        buckets.completed.push(session);
-        return;
-      }
-      if (date === today) {
-        buckets.today.push(session);
-        return;
-      }
-      if (date && date > today) {
-        buckets.upcoming.push(session);
-        return;
-      }
-      buckets.today.push(session);
-    });
-
-    buckets.completed.reverse();
-    return buckets;
   }
 
   function setActiveSessionForClient(clientId, preferredSessionId = '') {
@@ -7439,35 +7407,6 @@
     return `Última: ${weightLabel} · ${repsLabel}`;
   }
 
-  function buildProgressSummary(clientId, exerciseName) {
-    if (!clientId || !exerciseName) {
-      return '<div class="muted">Sin registro anterior</div>';
-    }
-    const matches = getTrainingExercisesByClientExercise(clientId, exerciseName);
-    if (!matches.length) {
-      return '<div class="muted">Sin registro anterior</div>';
-    }
-
-    const last = matches[matches.length - 1];
-    const first = matches[0];
-    const lastSet = getExerciseSets(last.exercise)[getExerciseSets(last.exercise).length - 1] || null;
-    const firstSet = getExerciseSets(first.exercise)[0] || null;
-    const bestWeight = getBestWeightForExercise(clientId, exerciseName);
-    const completedSets = countExerciseSets(last.exercise);
-    const plannedSets = Number(last.exercise.plannedSets || 0);
-    const commented = matches.slice().reverse().find((match) => match.exercise.comment?.text);
-
-    return `
-      <div class="training-progress-grid">
-        <div><strong>Último registro</strong><div class="meta">${lastSet ? `${Number(lastSet.weight || 0)} kg${lastSet.reps === null || lastSet.reps === undefined ? '' : ` × ${Number(lastSet.reps)}`}` : 'Sin registro'}</div>${studentImportApi?.isStudentSet(lastSet) ? '<span class="student-logged-tag" data-student-logged>Registrado por el alumno</span>' : ''}</div>
-        <div><strong>Mejor peso histórico</strong><div class="meta">${bestWeight > 0 ? `${bestWeight} kg` : 'Sin registro'}</div></div>
-        <div><strong>Primer registro</strong><div class="meta">${firstSet ? `${Number(firstSet.weight || 0)} kg${firstSet.reps === null || firstSet.reps === undefined ? '' : ` × ${Number(firstSet.reps)}`}` : 'Sin registro'}</div></div>
-        <div><strong>Fecha última sesión</strong><div class="meta">${last.session.date ? escapeHtml(formatClientDate(last.session.date)) : 'Sin fecha'}</div></div>
-        <div><strong>Series completadas</strong><div class="meta">${completedSets}${plannedSets ? ` de ${plannedSets}` : ''}</div></div>
-        ${commented ? `<div data-progress-comment><strong>Último comentario</strong><div class="meta">💬 ${escapeHtml(commented.exercise.comment.text)} · ${escapeHtml(formatClientDate(commented.session.date))}</div></div>` : ''}
-      </div>`;
-  }
-
   function findSessionById(sessionId) {
     ensureTrainingsV08State();
     return (state.trainingsV08.sessions || []).find((session) => session.id === sessionId) || null;
@@ -8398,7 +8337,8 @@
     return {
       attendance,
       records: byExercise.size ? String(records) : '—',
-      lastSession: lastDate ? formatFichaDate(lastDate) : '—'
+      lastSession: lastDate ? formatFichaDate(lastDate) : '—',
+      dates: allDates
     };
   }
 
@@ -8617,10 +8557,287 @@
       els.historyExercise.value = '';
     }
     setActiveSessionForClient(clientId);
+    progressUi.clientId = '';
+    trainingUi.returnToProgress = false;
     trainingUi.activeTrainingView = 'progress';
     show('trainings');
     renderTrainings();
-    els.trainingProgressView?.scrollIntoView({ block: 'start' });
+    window.scrollTo(0, 0);
+  }
+
+  // "‹ Ficha": vuelve a la ficha del mismo alumno.
+  function closeClientProgress(clientId) {
+    clientUi.detailId = clientId || '';
+    clientUi.folds = {};
+    show('clients');
+    renderClients();
+    window.scrollTo(0, 0);
+  }
+
+  // v0.9.39: Progreso del alumno (se llega desde su ficha). Solo presentación: usa las sesiones
+  // guardadas y los mismos cálculos de la ficha (asistencia, récords) y de la vista del alumno
+  // (racha). No escribe datos; tocar una sesión la abre en el editor como el antiguo "Abrir".
+  const progressUi = { clientId: '', exercise: '', showAll: false };
+  const PG_WEEKDAYS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+
+  const pgNumber = (value) => String(Math.round(Number(value || 0) * 100) / 100).replace('.', ',');
+
+  // Por ejercicio con registros: una entrada por sesión con su mejor serie. Con kilos manda el
+  // peso máximo (empate: más reps); sin kilos, las repeticiones máximas.
+  function getProgressExercises(clientId) {
+    const byKey = new Map();
+    let seq = 0;
+    sortSessionsByDateAsc(getTrainingSessionsByClient(clientId)).forEach((session) => {
+      getSessionExercises(session).forEach((exercise) => {
+        seq += 1;
+        const name = String(exercise.exerciseName || '').trim();
+        const key = name.toLowerCase();
+        const sets = getExerciseSets(exercise)
+          .filter((setEntry) => setEntry.completed !== false)
+          .map((setEntry) => ({ weight: Number(setEntry.weight) || 0, reps: Number(setEntry.reps) || 0 }))
+          .filter((setEntry) => setEntry.weight > 0 || setEntry.reps > 0);
+        if (!key || !sets.length) {
+          return;
+        }
+        const item = byKey.get(key) || { name, entries: [] };
+        const previous = item.entries[item.entries.length - 1];
+        if (previous && previous.sessionId === session.id) {
+          previous.sets.push(...sets);
+        } else {
+          item.entries.push({ sessionId: session.id, date: session.date || '', sets });
+        }
+        item.name = name;
+        item.lastDate = session.date || '';
+        item.lastSeq = seq;
+        byKey.set(key, item);
+      });
+    });
+    const list = [...byKey.values()];
+    list.forEach((item) => {
+      item.usesWeight = item.entries.some((entry) => entry.sets.some((setEntry) => setEntry.weight > 0));
+      item.entries.forEach((entry) => {
+        entry.top = entry.sets.reduce((best, setEntry) => {
+          if (!best) return setEntry;
+          if (item.usesWeight) {
+            return setEntry.weight > best.weight || (setEntry.weight === best.weight && setEntry.reps > best.reps) ? setEntry : best;
+          }
+          return setEntry.reps > best.reps ? setEntry : best;
+        }, null);
+        entry.value = item.usesWeight ? entry.top.weight : entry.top.reps;
+      });
+    });
+    return list.sort((a, b) => String(b.lastDate).localeCompare(String(a.lastDate)) || (a.lastSeq - b.lastSeq));
+  }
+
+  function formatProgressSet(item, setEntry) {
+    if (!setEntry) return '—';
+    if (!item.usesWeight) return `${setEntry.reps} reps`;
+    return setEntry.reps ? `${pgNumber(setEntry.weight)} × ${setEntry.reps}` : `${pgNumber(setEntry.weight)} kg`;
+  }
+
+  // Gráfico de línea propio (SVG): hasta 12 sesiones, de la más antigua a la más reciente.
+  function renderProgressChart(item) {
+    const values = item.entries.slice(-12).map((entry) => entry.value);
+    const width = 320;
+    const height = 132;
+    const pad = { left: 14, right: 14, top: 32, bottom: 14 };
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const span = max - min || 1;
+    const points = values.map((value, index) => ({
+      x: pad.left + (index * (width - pad.left - pad.right)) / Math.max(1, values.length - 1),
+      y: max === min ? (height + pad.top - pad.bottom) / 2 : pad.top + ((max - value) * (height - pad.top - pad.bottom)) / span,
+      value
+    }));
+    const line = points.map((point, index) => `${index ? 'L' : 'M'}${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(' ');
+    const last = points[points.length - 1];
+    const area = `${line} L${last.x.toFixed(1)} ${height} L${points[0].x.toFixed(1)} ${height} Z`;
+    const label = `${item.usesWeight ? 'Peso máximo' : 'Repeticiones máximas'} por sesión, de ${pgNumber(values[0])} a ${pgNumber(last.value)}`;
+    return `
+          <svg class="pg-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(label)}">
+            <defs><linearGradient id="pgChartFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFCC1A" stop-opacity="0.28"/><stop offset="1" stop-color="#FFCC1A" stop-opacity="0"/></linearGradient></defs>
+            <path class="pg-chart-area" d="${area}" fill="url(#pgChartFill)"/>
+            <path class="pg-chart-line" d="${line}" fill="none" stroke="#FFCC1A" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+            <text class="pg-chart-value" x="${(last.x + 4).toFixed(1)}" y="${(last.y - 13).toFixed(1)}" text-anchor="end">${escapeHtml(pgNumber(last.value))}</text>
+            ${points.map((point, index) => `<circle data-pg-point cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="${index === points.length - 1 ? 6 : 3.5}" fill="${index === points.length - 1 ? '#FFCC1A' : '#1C1B17'}" stroke="#FFCC1A" stroke-width="2"/>`).join('')}
+          </svg>`;
+  }
+
+  function renderProgressExercise(item) {
+    const entries = item.entries;
+    const first = entries[0];
+    const last = entries[entries.length - 1];
+    const record = entries.reduce((best, entry) => (!best || entry.value > best.value || (entry.value === best.value && entry.top.reps > best.top.reps) ? entry : best), null);
+    const diff = Math.round((last.value - first.value) * 100) / 100;
+    const unit = item.usesWeight ? 'kg' : 'reps';
+    const up = entries.length > 1 && diff > 0;
+    const deltaText = entries.length < 2
+      ? 'Una sola sesión registrada'
+      : up
+        ? `▲ +${pgNumber(diff)} ${unit} desde el inicio`
+        : diff < 0 ? `${pgNumber(diff).replace('-', '−')} ${unit} desde el inicio` : 'Igual que al inicio';
+    const map = prMuscleMap();
+    const figure = map ? map.figureHtml(prZones(prLibraryItem({ exerciseName: item.name }), item.name), 'pg') : '';
+    return `
+        <article class="pg-ex" aria-label="Progreso en ${escapeHtml(item.name)}">
+          <div class="pg-ex-head">
+            ${figure ? `<div class="pg-ex-fig">${figure}</div>` : ''}
+            <div class="pg-ex-text">
+              <h3 class="pg-ex-name">${escapeHtml(item.name)}</h3>
+              <p class="pg-delta${up ? ' is-up' : ''}">${escapeHtml(deltaText)}</p>
+            </div>
+          </div>
+          ${entries.length < 2 ? '<p class="pg-few">Aún hay pocas sesiones para ver la curva</p>' : renderProgressChart(item)}
+          <div class="pg-boxes">
+            <div class="pg-box pg-box--record" data-pg-box="record"><small>RÉCORD</small><strong>${escapeHtml(formatProgressSet(item, record.top))}</strong></div>
+            <div class="pg-box" data-pg-box="last"><small>ÚLTIMA VEZ</small><strong>${escapeHtml(formatProgressSet(item, last.top))}</strong></div>
+            <div class="pg-box" data-pg-box="first"><small>PRIMERA</small><strong>${escapeHtml(formatProgressSet(item, first.top))}</strong></div>
+          </div>
+        </article>`;
+  }
+
+  // Sesiones en que la carga máxima de algún ejercicio superó todo lo anterior (como en la ficha).
+  function getProgressRecordSessionIds(sessions) {
+    const best = new Map();
+    const ids = new Set();
+    sortSessionsByDateAsc(sessions).forEach((session) => {
+      getSessionExercises(session).forEach((exercise) => {
+        const key = String(exercise.exerciseName || '').trim().toLowerCase();
+        const top = getExerciseSets(exercise).reduce((max, setEntry) => {
+          const weight = Number(setEntry.weight);
+          return setEntry.completed !== false && Number.isFinite(weight) && weight > 0 ? Math.max(max, weight) : max;
+        }, 0);
+        if (!key || !top) return;
+        const previous = best.get(key) || 0;
+        if (previous > 0 && top > previous) ids.add(session.id);
+        best.set(key, Math.max(previous, top));
+      });
+    });
+    return ids;
+  }
+
+  function renderProgressSession(session, recordIds) {
+    const date = new Date(`${session.date}T00:00:00`);
+    const valid = Boolean(session.date) && !Number.isNaN(date.getTime());
+    const exercises = getSessionExercises(session);
+    const done = exercises.reduce((sum, exercise) => sum + countExerciseSets(exercise, { type: 'S' }), 0);
+    const planned = exercises.reduce((sum, exercise) => sum + Number(exercise.plannedSets || 0), 0);
+    const tag = recordIds.has(session.id)
+      ? ['record', 'Récord']
+      : session.status === 'completed' || (planned > 0 && done >= planned) ? ['done', 'Completa'] : ['partial', 'Incompleta'];
+    const studentSets = studentImportApi ? studentImportApi.countStudentSets(session) : 0;
+    return `
+          <button class="pg-session" type="button" data-training-open-session="${escapeHtml(session.id)}">
+            <span class="pg-session-date"><span class="pg-session-day">${valid ? date.getDate() : '—'}</span><span class="pg-session-month">${valid ? FICHA_MONTHS[date.getMonth()].toUpperCase() : ''}</span></span>
+            <span class="pg-session-body">
+              <span class="pg-session-title">${escapeHtml(session.title || 'Sesión')}${valid ? ` · ${PG_WEEKDAYS[date.getDay()]}` : ''}</span>
+              <span class="pg-session-meta">${prPlural(exercises.length, 'ejercicio', 'ejercicios')} · ${done}/${planned} series</span>
+              ${studentSets ? `<span class="pg-session-student" data-student-logged>Registrado por el alumno · ${prPlural(studentSets, 'serie', 'series')}</span>` : ''}
+            </span>
+            <span class="pg-tag pg-tag--${tag[0]}">${tag[1]}</span>
+          </button>`;
+  }
+
+  // "Programa · semana X de Y" desde la fecha de inicio de la asignación (si se puede calcular).
+  function getProgressProgramLine(assignment) {
+    if (!assignment) return 'Sin programa asignado';
+    const name = assignment.programName || 'Programa';
+    const weeks = Number(assignment.durationWeeks || 0);
+    const start = new Date(`${assignment.startDate || ''}T00:00:00`);
+    const today = new Date(`${getTodayLocalDate()}T00:00:00`);
+    if (!weeks || Number.isNaN(start.getTime())) return name;
+    const week = Math.floor(Math.round((today - start) / 86400000) / 7) + 1;
+    return week >= 1 && week <= weeks ? `${name} · semana ${week} de ${weeks}` : name;
+  }
+
+  function renderProgressScreen(clientId) {
+    const container = document.getElementById('progressScreen');
+    if (!container) return;
+    if (progressUi.clientId !== clientId) {
+      progressUi.clientId = clientId;
+      progressUi.exercise = '';
+      progressUi.showAll = false;
+    }
+    const client = getClientById(clientId);
+    if (!client) {
+      container.innerHTML = '<p class="pg-empty">Elige un alumno en Alumnos para ver su progreso.</p>';
+      return;
+    }
+    const today = getTodayLocalDate();
+    const stats = getClientFichaStats(client);
+    const streakFn = window.VALHALLA.studentView?.format?.weekStreak;
+    const streak = streakFn ? streakFn(stats.dates, today) : 0;
+    const exercises = getProgressExercises(clientId);
+    const current = exercises.find((item) => item.name === progressUi.exercise) || exercises[0] || null;
+    progressUi.exercise = current ? current.name : '';
+    const all = getTrainingSessionsByClient(clientId);
+    const recordIds = getProgressRecordSessionIds(all.filter((session) => session.date && session.date <= today && sessionHasWork(session)));
+    const sessions = sortSessionsByDateAsc(all.filter((session) => (session.date && session.date <= today) || sessionHasWork(session))).reverse();
+    const shown = progressUi.showAll ? sessions : sessions.slice(0, 4);
+    const id = escapeHtml(client.id);
+    container.innerHTML = `
+        <button class="pg-back" type="button" data-progress-back="${id}">‹ Ficha</button>
+        <header class="pg-head" data-progress-client="${id}">
+          <p class="pg-kicker">PROGRESO</p>
+          <h2 class="pg-name">${escapeHtml(getClientDisplayName(client))}</h2>
+          <p class="pg-sub">${escapeHtml(getProgressProgramLine(getActiveTrainingAssignment(client.id)))}</p>
+        </header>
+        <div class="pg-stats">
+          <div class="pg-stat" data-pg-stat="attendance"><strong>${escapeHtml(stats.attendance.replace(' de ', '/'))}</strong><small>Asistencia, últimas 4 sem.</small></div>
+          <div class="pg-stat" data-pg-stat="records"><strong>${escapeHtml(stats.records)}</strong><small>Récords este mes</small></div>
+          <div class="pg-stat" data-pg-stat="streak"><strong>${streak}</strong><small>Racha, semanas</small></div>
+        </div>
+        ${current ? `
+        <h3 class="pg-label">Ejercicio</h3>
+        <div class="pg-chips" role="group" aria-label="Ejercicio">
+          ${exercises.map((item) => `<button class="pg-chip${item === current ? ' is-active' : ''}" type="button" data-progress-exercise="${escapeHtml(item.name)}" aria-pressed="${item === current}">${escapeHtml(item.name)}</button>`).join('')}
+        </div>
+        ${renderProgressExercise(current)}` : '<p class="pg-empty">Aún no hay series registradas.</p>'}
+        <h3 class="pg-label">Sesiones</h3>
+        <div class="pg-sessions">
+          ${shown.length ? shown.map((session) => renderProgressSession(session, recordIds)).join('') : '<p class="pg-empty">Sin sesiones registradas.</p>'}
+        </div>
+        ${sessions.length > shown.length ? `<button class="pg-link pg-all" type="button" data-progress-all>Ver todas (${sessions.length})</button>` : ''}`;
+  }
+
+  // Abrir una sesión: Hoy con "Edición avanzada de sesiones" abierta y la sesión cargada.
+  function openTrainingSession(sessionId, fromProgress = false) {
+    const openedSession = findSessionById(sessionId);
+    if (openedSession?.clientId) {
+      trainingUi.selectedClientId = openedSession.clientId;
+    }
+    trainingUi.returnToProgress = fromProgress;
+    setActiveSessionForClient(trainingUi.selectedClientId, sessionId);
+    setTrainingView('today');
+    // El editor vive dentro del plegable "Más" de Hoy: se abren los dos para que se vea.
+    const moreFold = document.getElementById('trainingTodayMore');
+    if (moreFold) {
+      moreFold.open = true;
+    }
+    const advancedEditor = document.getElementById('trainingAdvancedEditor');
+    if (advancedEditor) {
+      advancedEditor.open = true;
+    }
+    renderTrainings();
+    advancedEditor?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  // "En progreso" / "Completar" dentro de la sesión abierta (antes estaban en la lista).
+  function renderSessionStatusActions(session) {
+    const box = document.getElementById('sessionStatusActions');
+    if (!box) return;
+    if (!session) {
+      box.innerHTML = '';
+      box.classList.add('hidden');
+      return;
+    }
+    const id = escapeHtml(session.id);
+    box.classList.remove('hidden');
+    box.innerHTML = `
+      ${trainingUi.returnToProgress ? '<button class="ghost small" type="button" data-progress-return>‹ Progreso</button>' : ''}
+      <span class="tag ${getSessionStatusTone(session.status)}">${escapeHtml(getSessionStatusLabel(session.status))}</span>
+      <button class="ghost small" type="button" data-training-status="${id}" data-next-status="in_progress" ${session.status === 'in_progress' ? 'disabled' : ''}>En progreso</button>
+      <button class="secondary small" type="button" data-training-status="${id}" data-next-status="completed" ${session.status === 'completed' ? 'disabled' : ''}>Completar</button>`;
   }
 
   function show(section) {
@@ -9825,9 +10042,8 @@
       trainingUi.selectedExercise = els.historyExercise.value || trainingUi.selectedExercise || '';
     }
 
-    if (els.trainingProgressSummary) {
-      els.trainingProgressSummary.innerHTML = buildProgressSummary(selectedClientId, trainingUi.selectedExercise);
-    }
+    renderProgressScreen(selectedClientId);
+    renderSessionStatusActions(selectedSession);
 
     const activeExercises = getSessionExercises(selectedSession);
     if (selectedSession) {
@@ -9896,38 +10112,6 @@
         : '<div class="muted">Aún no hay series registradas para este ejercicio.</div>';
     }
 
-    const buckets = getSessionBuckets(selectedClientId);
-    const renderBucket = (title, list) => `
-      <div class="student-card training-summary-grid">
-        <strong>${title}</strong>
-        <div class="routine-list">
-          ${list.length ? list.map((session) => {
-      // Series efectivas (S) hechas contra las planificadas; aproximaciones (A) aparte. Las "T" no cuentan.
-      const countDoneSets = (type) => getSessionExercises(session).reduce((sum, exercise) => sum + countExerciseSets(exercise, { type }), 0);
-      const doneSets = countDoneSets('S');
-      const doneApproximations = countDoneSets('A');
-      const plannedSetsForSession = getSessionExercises(session).reduce((sum, exercise) => sum + Number(exercise.plannedSets || 0), 0);
-      const studentSets = studentImportApi ? studentImportApi.countStudentSets(session) : 0;
-      return `<div class="routine-pill${studentSets ? ' routine-pill--student' : ''}">
-                <div class="section-title">
-                  <strong>${escapeHtml(session.title || 'Sesión')}</strong>
-                  <span class="tag ${getSessionStatusTone(session.status)}">${escapeHtml(getSessionStatusLabel(session.status))}</span>
-                </div>
-                ${studentSets ? `<span class="student-logged-tag" data-student-logged>Registrado por el alumno · ${studentSets} ${studentSets === 1 ? 'serie' : 'series'}</span>` : ''}
-                <div class="meta">${escapeHtml(formatClientDate(session.date || getTodayLocalDate()))} · ${getSessionExercises(session).length} ejercicios · ${doneSets}/${plannedSetsForSession || 0} series${doneApproximations ? ` · ${doneApproximations} aprox.` : ''}</div>
-                <div class="inline-actions">
-                  <button class="secondary small" type="button" data-training-open-session="${session.id}">Abrir</button>
-                  <button class="ghost small" type="button" data-training-status="${session.id}" data-next-status="in_progress" ${session.status === 'in_progress' ? 'disabled' : ''}>En progreso</button>
-                  <button class="ghost small" type="button" data-training-status="${session.id}" data-next-status="completed" ${session.status === 'completed' ? 'disabled' : ''}>Completar</button>
-                </div>
-              </div>`;
-    }).join('') : '<div class="muted">Sin sesiones.</div>'}
-        </div>
-      </div>`;
-
-    els.trainingsStudents.innerHTML = activeClients.length
-      ? `${renderBucket('HOY', buckets.today)}${renderBucket('PRÓXIMAS', buckets.upcoming)}${renderBucket('COMPLETADAS', buckets.completed)}`
-      : '<div class="notice">Primero debes crear un cliente</div>';
     renderStudentImportMessage();
 
     ensureDateValue(els.routineDate);
@@ -11219,6 +11403,36 @@
       return;
     }
 
+    // Progreso (v0.9.39): volver a la ficha, elegir ejercicio, ver todas y abrir una sesión.
+    const progressBack = target.closest('[data-progress-back]');
+    if (progressBack) {
+      closeClientProgress(progressBack.getAttribute('data-progress-back'));
+      return;
+    }
+    const progressExercise = target.closest('[data-progress-exercise]');
+    if (progressExercise) {
+      progressUi.exercise = progressExercise.getAttribute('data-progress-exercise') || '';
+      renderProgressScreen(progressUi.clientId);
+      return;
+    }
+    if (target.closest('[data-progress-all]')) {
+      progressUi.showAll = true;
+      renderProgressScreen(progressUi.clientId);
+      return;
+    }
+    const progressSession = target.closest('.pg-session[data-training-open-session]');
+    if (progressSession) {
+      openTrainingSession(progressSession.getAttribute('data-training-open-session'), true);
+      return;
+    }
+    if (target.closest('[data-progress-return]')) {
+      trainingUi.returnToProgress = false;
+      setTrainingView('progress');
+      renderTrainings();
+      window.scrollTo(0, 0);
+      return;
+    }
+
     const clientProgressButton = target.closest('[data-client-progress]');
     if (clientProgressButton) {
       openClientProgress(clientProgressButton.getAttribute('data-client-progress'));
@@ -12124,19 +12338,7 @@
 
     const openSessionId = target.getAttribute('data-training-open-session');
     if (openSessionId) {
-      // "Abrir" (en Progreso) lleva a Hoy con "Edición avanzada de sesiones" abierta y la sesión cargada.
-      const openedSession = findSessionById(openSessionId);
-      if (openedSession?.clientId) {
-        trainingUi.selectedClientId = openedSession.clientId;
-      }
-      setActiveSessionForClient(trainingUi.selectedClientId, openSessionId);
-      setTrainingView('today');
-      const advancedEditor = document.getElementById('trainingAdvancedEditor');
-      if (advancedEditor) {
-        advancedEditor.open = true;
-      }
-      renderTrainings();
-      advancedEditor?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      openTrainingSession(openSessionId);
       return;
     }
 
