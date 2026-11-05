@@ -217,7 +217,8 @@ test('index.html carga el núcleo de importación antes de app.js y el service w
   assert.ok(html.indexOf('program-import-core.js') > 0 && html.indexOf('program-import-core.js') < html.indexOf('assets/js/app.js'));
   assert.match(html, /id="programImportBtn"/);
   const sw = fs.readFileSync(path.join(__dirname, '..', 'service-worker.js'), 'utf8');
-  assert.match(sw, /'\.\/assets\/js\/program-import-core\.js'/);
+  // Desde v0.9.40 cada script va con ?v=<versión> (ver version-lock.test.js).
+  assert.match(sw, /'\.\/assets\/js\/program-import-core\.js(\?v=[\d.]+)?'/);
 });
 
 test('"Usar como base" sobre un programa importado: la copia conserva nombre, semanas, días, notas y repeticiones vacías', () => {

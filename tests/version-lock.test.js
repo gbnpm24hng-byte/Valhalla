@@ -19,6 +19,23 @@ test('la versión del candado es la misma del encabezado y de la caché', () => 
   assert.match(read('service-worker.js'), new RegExp(`const CACHE='valhalla-v${version.replace(/\./g, '\\.')}-`), 'caché del service worker');
 });
 
+// v0.9.40: con la dirección sin versión, el navegador podía entregar un app.js viejo de su caché
+// junto al index.html nuevo (la lista de Programas quedaba en "Programas · 0"). Cada script de la
+// app se pide con ?v=<versión>, y el service worker guarda esas mismas direcciones.
+test('index.html pide cada script de la app con ?v=<versión> y el service worker guarda los mismos', () => {
+  const version = sync.APP_VERSION;
+  const html = read('index.html');
+  const scripts = [...html.matchAll(/<script src="(\.\/assets\/js\/[^"]+)"/g)].map((match) => match[1]);
+  assert.ok(scripts.length >= 20, `scripts encontrados: ${scripts.length}`);
+  const sinVersion = scripts.filter((src) => !src.endsWith(`.js?v=${version}`));
+  assert.deepEqual(sinVersion, [], 'scripts sin ?v= de esta versión');
+  const files = fs.readdirSync(path.join(__dirname, '..', 'assets', 'js')).filter((file) => file.endsWith('.js'));
+  scripts.forEach((src) => assert.ok(files.includes(src.replace('./assets/js/', '').replace(/\?.*$/, '')), `existe ${src}`));
+  const sw = read('service-worker.js');
+  const cached = [...sw.matchAll(/'(\.\/assets\/js\/[^']+)'/g)].map((match) => match[1]);
+  assert.deepEqual(cached.slice().sort(), scripts.slice().sort(), 'el service worker guarda exactamente las direcciones que pide index.html');
+});
+
 test('comparar versiones por partes numéricas', () => {
   assert.equal(sync.compareVersions('0.9.16', '0.9.9'), 1);
   assert.equal(sync.compareVersions('0.9.9', '0.9.16'), -1);
