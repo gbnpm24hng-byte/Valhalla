@@ -89,14 +89,28 @@
     return String(value ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
   }
 
-  // Video del ejercicio de la galería enlazado: por libraryExerciseId y, si no, por nombre.
-  // library: solo ejercicios activos (un ejercicio eliminado de la galería no aporta video).
-  function videoUrlFor(exercise, library) {
+  // Ejercicio de la galería enlazado: por libraryExerciseId y, si no, por nombre.
+  // library: solo ejercicios activos (un ejercicio eliminado de la galería no aporta nada).
+  function libraryMatchFor(exercise, library) {
     const libraryId = exercise?.libraryExerciseId || '';
     const name = foldName(exercise?.exerciseName || exercise?.name);
-    const match = (libraryId && library.find((item) => item.id === libraryId))
-      || (name && library.find((item) => foldName(item.name) === name || foldName(item.normalizedName) === name));
+    return (libraryId && library.find((item) => item.id === libraryId))
+      || (name && library.find((item) => foldName(item.name) === name || foldName(item.normalizedName) === name))
+      || null;
+  }
+
+  // Video del ejercicio de la galería enlazado.
+  function videoUrlFor(exercise, library) {
+    const match = libraryMatchFor(exercise, library);
     return match ? safeVideoUrl(match.videoUrl) : '';
+  }
+
+  // v0.9.37: músculos del ejercicio de la galería enlazado (misma búsqueda que el video), solo
+  // claves conocidas y solo si dan alguna zona de la figura (muscle-map-core.js).
+  function musclesFor(exercise, library) {
+    const muscleMap = (typeof window !== 'undefined' && window.VALHALLA && window.VALHALLA.muscleMap) || null;
+    const match = libraryMatchFor(exercise, library);
+    return match && muscleMap ? muscleMap.publishableMuscles(match, exercise?.exerciseName || exercise?.name) : null;
   }
 
   function text(value, max = MAX_TEXT) {
@@ -127,7 +141,8 @@
 
   // Ejercicio del programa: nombre, series, repeticiones, carga objetivo, nota de técnica y,
   // solo si la galería tiene un enlace válido, videoUrl (sin video, la clave no existe y el
-  // programa queda idéntico al de antes).
+  // programa queda idéntico al de antes). Igual con primaryMuscle y secondaryMuscles (v0.9.37):
+  // solo si el ejercicio de la galería tiene músculos con zona en la figura.
   function pickProgramExercise(exercise, library) {
     const picked = {
       id: text(exercise?.id, 120),
@@ -143,6 +158,11 @@
     const videoUrl = videoUrlFor(exercise, library);
     if (videoUrl) {
       picked.videoUrl = videoUrl;
+    }
+    const muscles = musclesFor(exercise, library);
+    if (muscles) {
+      picked.primaryMuscle = text(muscles.primaryMuscle, 40);
+      picked.secondaryMuscles = muscles.secondaryMuscles.map((item) => text(item, 40));
     }
     return picked;
   }

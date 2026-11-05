@@ -174,7 +174,7 @@
         <li>Programa "${escapeHtml(current.program.programName)}": ${plural(current.program.days.length, 'día', 'días')}, ${plural(exercises, 'ejercicio', 'ejercicios')}.</li>
         <li>Historial: ${plural(current.progress.length, 'sesión', 'sesiones')} con series.</li>
       </ul>
-      <p class="muted">Solo se publican días, ejercicios, series, repeticiones, cargas objetivo, notas de técnica y enlaces de video. Nunca pagos, valores, teléfono, correo, lesiones ni observaciones.</p>
+      <p class="muted">Solo se publican días, ejercicios, series, repeticiones, cargas objetivo, notas de técnica, enlaces de video y los músculos que trabaja cada ejercicio. Nunca pagos, valores, teléfono, correo, lesiones ni observaciones.</p>
       ${current.omittedSets ? `<p class="notice">${plural(current.omittedSets, 'serie', 'series')} de tipo "T" no se publicarán (el alumno solo ve aproximaciones y series efectivas).</p>` : ''}
       <p class="notice auth-message hidden" data-publish-message role="alert"></p>
       <div class="inline-actions">

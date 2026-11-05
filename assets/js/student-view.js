@@ -184,6 +184,54 @@
     return window.VALHALLA.publishCore?.safeVideoUrl ? window.VALHALLA.publishCore.safeVideoUrl(exercise?.videoUrl) : '';
   }
 
+  // v0.9.37: figura con los músculos (muscle-map-core.js). Sin el módulo o sin zonas, nada.
+  function muscleMap() {
+    return window.VALHALLA.muscleMap || null;
+  }
+
+  function exerciseZones(exercise) {
+    const map = muscleMap();
+    return map ? map.zonesForExercise(exercise) : { main: [], sec: [] };
+  }
+
+  // Tarjeta "HOY TRABAJAS …" con la suma de los músculos del día.
+  function renderDayMuscles(exercises) {
+    const map = muscleMap();
+    if (!map) {
+      return '';
+    }
+    const zones = map.dayZones(exercises);
+    if (!map.hasZones(zones)) {
+      return '';
+    }
+    const names = map.joinLabels(zones.top);
+    return `
+      <div class="sv-muscles-card" data-sv-muscles-day>
+        <div class="sv-muscles-text">
+          <span class="sv-muscles-eyebrow">Hoy trabajas</span>
+          ${names ? `<strong class="sv-muscles-names">${escapeHtml(names)}</strong>` : ''}
+        </div>
+        <div class="sv-muscles-fig">${map.figureHtml(zones, 'md')}</div>
+      </div>`;
+  }
+
+  // Pantalla Ejercicio: figura grande con "TRABAJA: …" y "AYUDAN: …".
+  function renderExerciseMuscles(exercise) {
+    const map = muscleMap();
+    const zones = exerciseZones(exercise);
+    if (!map || !map.hasZones(zones)) {
+      return '';
+    }
+    return `
+      <div class="sv-muscles-ex" data-sv-muscles-ex>
+        ${map.figureHtml(zones, 'lg')}
+        <div class="sv-muscles-lines">
+          ${zones.main.length ? `<p><span>Trabaja:</span> ${escapeHtml(map.joinLabels(zones.main))}</p>` : ''}
+          ${zones.sec.length ? `<p><span>Ayudan:</span> ${escapeHtml(map.joinLabels(zones.sec))}</p>` : ''}
+        </div>
+      </div>`;
+  }
+
   function formatNumber(value) {
     return value === null || value === undefined || value === '' ? '' : String(value).replace('.', ',');
   }
@@ -575,10 +623,15 @@
       const can = ctx.canLog && loggable(exercise);
       const progress = can ? exerciseProgress(ctx, day.id, exercise) : null;
       const complete = progress && progress.done === progress.planned;
+      const zones = exerciseZones(exercise);
+      const figure = muscleMap() ? muscleMap().figureHtml(zones, 'sm') : '';
+      const zoneTag = figure ? muscleMap().mainLabel(zones) : '';
       return `
         <li class="sv-exercise${complete ? ' is-complete' : ''}">
-          <button type="button" class="sv-ex-card" data-sv-open="${escapeHtml(exercise.id || '')}">
+          <button type="button" class="sv-ex-card${figure ? ' has-fig' : ''}" data-sv-open="${escapeHtml(exercise.id || '')}">
+            ${figure}
             <span class="sv-ex-card-text">
+              ${zoneTag ? `<span class="sv-zone-tag" data-sv-zone-tag>${escapeHtml(zoneTag)}</span>` : ''}
               <strong>${escapeHtml(exercise.name || 'Ejercicio')}${videoFor(exercise) ? ' <span class="sv-video-mark" data-sv-video-mark role="img" aria-label="Tiene video">▶</span>' : ''}</strong>
               <span class="sv-meta">${escapeHtml(exerciseScheme(exercise))}</span>
             </span>
@@ -599,6 +652,7 @@
     }
     return `
       <section class="sv-screen sv-today" data-student-program data-sv-screen="today" data-assignment-id="${escapeHtml(program.assignment_id || '')}">
+        ${renderDayMuscles(exercises)}
         ${renderWeek(ctx, cache)}
         <p class="sv-program-title"><span class="sv-meta">Tu programa</span> ${escapeHtml(program.title || program.data?.programName || 'Programa')}</p>
         ${programChips}
@@ -726,6 +780,7 @@
           <button type="button" class="sv-ghost" data-sv-step="1"${exerciseIndex >= total - 1 ? ' disabled' : ''}>Siguiente ▶</button>
         </nav>
         <h2 class="sv-ex-name">${escapeHtml(exercise.name || 'Ejercicio')}</h2>
+        ${renderExerciseMuscles(exercise)}
         ${video ? `<a class="sv-video-btn" data-sv-video href="${escapeHtml(video)}" target="_blank" rel="noopener noreferrer">▶ Ver cómo se hace</a>` : ''}
         <p class="sv-meta sv-ex-scheme">${escapeHtml(exerciseScheme(exercise))}${hasValue(exercise.targetWeight) ? ` · objetivo ${escapeHtml(formatNumber(Number(exercise.targetWeight)))} kg` : ''}</p>
         ${note ? `<p class="sv-note">${escapeHtml(note)}</p>` : ''}

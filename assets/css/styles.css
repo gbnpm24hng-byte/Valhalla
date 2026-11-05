@@ -3792,6 +3792,82 @@ details.group-athlete-row[open] > summary h3::before {
   font-size: 0.75em;
 }
 
+/* v0.9.37: figura "esculpida" (assets/images/figura-esculpida.svg en línea, muscle-map-core.js).
+   Neutro gris; trabaja amarillo; ayuda dorado. Borde de 0,5 en todas las zonas. */
+.vk-fig { display: inline-block; flex: 0 0 auto; line-height: 0; }
+.vk-fig--sm { width: 60px; }
+.vk-fig--md { width: 132px; }
+.vk-fig--lg { width: 170px; }
+.vk-fig .vk-musculos { display: block; width: 100%; height: auto; }
+.vk-musculos [data-zona] {
+  fill: #3F3B31;
+  stroke: #26241E;
+  stroke-width: 0.5;
+  stroke-linejoin: round;
+}
+.vk-musculos [data-zona].is-main { fill: #FFCC1A; stroke: #FFE680; }
+.vk-musculos [data-zona].is-sec { fill: #9C7C14; stroke: #C9A23A; }
+
+.auth-gate--student .sv-muscles-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 16px;
+  background: var(--sv-accent);
+  color: var(--sv-ink);
+}
+.auth-gate--student .sv-muscles-text { display: grid; gap: 4px; min-width: 0; }
+.auth-gate--student .sv-muscles-eyebrow {
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.auth-gate--student .sv-muscles-names {
+  font-size: 1.15rem;
+  line-height: 1.2;
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+}
+/* Fondo oscuro detrás de la figura: lo amarillo no se pierde sobre la tarjeta amarilla. */
+.auth-gate--student .sv-muscles-fig {
+  flex: 0 0 auto;
+  padding: 8px;
+  border-radius: 12px;
+  background: var(--sv-ink);
+  line-height: 0;
+}
+
+.auth-gate--student .sv-ex-card.has-fig { justify-content: flex-start; }
+.auth-gate--student .sv-ex-card.has-fig .sv-ex-card-text { flex: 1 1 auto; }
+.auth-gate--student .sv-zone-tag {
+  font-size: 0.6875rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: var(--sv-accent);
+}
+
+.auth-gate--student .sv-muscles-ex {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 14px;
+  background: var(--sv-card);
+  border: 1px solid var(--sv-line);
+}
+.auth-gate--student .sv-muscles-lines { display: grid; gap: 2px; text-align: center; }
+.auth-gate--student .sv-muscles-lines p { margin: 0; font-size: 0.875rem; color: var(--sv-text); }
+.auth-gate--student .sv-muscles-lines span {
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--sv-accent);
+}
+.auth-gate--student .sv-muscles-lines p + p span { color: #C9A23A; }
+
 .auth-gate--student .sv-ref {
   display: grid;
   grid-template-columns: 1fr 1fr;
