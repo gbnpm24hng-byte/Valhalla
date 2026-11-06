@@ -20,6 +20,8 @@ Guarda primero en localStorage y sincroniza con Supabase (coach_state + tablas d
 - student-import-core.js — "Traer registros" (B3.3): junta student_sets en las sesiones sin pisar lo del entrenador.
 - coach-sets-core.js — B3.4: Modo Grupo prellena con lo del alumno; al confirmar escribe en student_sets solo lo
   corregido o no registrado (coach_validated). Lo pendiente vive en valhalla_coach_sets:<cuenta>, fuera del estado.
+- settings-core.js — Ajustes: fecha del último respaldo en valhalla_last_export_at (fuera del estado, no sube a la nube)
+  y revisión del archivo antes de "Restaurar" (archivo de programa o sin alumnos = bloqueado).
 - onboarding.js — formulario público de ingreso (?onboarding=1), sin login.
 - cloud-data.js — capa de tablas antiguas, desactivada. supabase/ — migración A0 y prueba de RLS (SQL).
 

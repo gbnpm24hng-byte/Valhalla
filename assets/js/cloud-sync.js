@@ -352,7 +352,6 @@
     closeModal();
     hidePanel();
     document.getElementById('syncStatusBadge')?.remove();
-    updateRestoreLabel();
   }
 
   function summaryTable(columns) {
@@ -758,7 +757,6 @@
     ctx.ready = true;
     ctx.conflictRow = null;
     ctx.retryIndex = 0;
-    updateRestoreLabel();
   }
 
   function scheduleSave(delay = AUTOSAVE_DELAY_MS) {
@@ -918,64 +916,33 @@
   // Restaurar un respaldo en la nube (reemplaza a "Importar respaldo")
   // ---------------------------------------------------------------------------
 
-  function updateRestoreLabel() {
-    const label = document.querySelector('label[for="fileInput"]');
-    if (label) {
-      label.textContent = ctx.ready ? 'Restaurar en la nube (desde un respaldo)' : 'Importar respaldo';
+  // La restauración en sí: aprueba subir este contenido aunque reduzca datos, reemplaza el
+  // estado del equipo (`apply`) y lo sube a la nube con la versión correcta.
+  async function performRestore(imported, apply, meta) {
+    // La confirmación explícita aprueba subir este contenido aunque reduzca datos.
+    const approvedHash = syncCore.fingerprint(syncCore.buildCloudPayload(imported));
+    if (ctx.ready && meta) {
+      saveMeta({ ...readMeta(), approvedHash });
     }
+    apply();
+    closeModal();
+    if (ctx.ready) {
+      await saveToCloud();
+      if (ctx.status === 'synced') {
+        showClosablePanel('✓ Respaldo restaurado en la nube', `Versión ${readMeta()?.version}.`, 'ok');
+      } else if (ctx.status === 'pending') {
+        showClosablePanel('Respaldo restaurado en este equipo', 'Se subirá a la nube cuando vuelva la conexión.', 'warn');
+      }
+    } else {
+      showClosablePanel('Respaldo restaurado en este equipo', 'La nube no se actualizó porque este equipo no está sincronizado.', 'warn');
+    }
+    return { ok: true };
   }
 
-  // `imported`: estado ya validado del archivo. `apply`: reemplaza el estado de la app
-  // y lo guarda en el equipo (nunca combina listas).
-  function restoreFromBackup(imported, apply) {
-    const backupPayload = syncCore.buildCloudPayload(imported);
-    const backupSummary = syncCore.summarize(backupPayload);
-    const currentSummary = syncCore.summarize(syncCore.buildCloudPayload(currentLocalState()));
-    const meta = readMeta();
-    const modal = openModal(`
-      <h2>Restaurar en la nube</h2>
-      <p>El respaldo reemplazará por completo los datos de este equipo y, después, los de la nube. No se combinan.</p>
-      ${summaryTable([
-        { title: 'Ahora', summary: currentSummary },
-        { title: 'Respaldo', summary: backupSummary }
-      ])}
-      <p class="muted">Antes de restaurar se descargará un respaldo de los datos actuales.</p>
-      <label class="sync-confirm"><input type="checkbox" data-sync-ack> Quiero reemplazar mis datos por este respaldo</label>
-      <div class="sync-choice-actions">
-        <button class="primary" type="button" data-sync-cancel>Cancelar</button>
-        <button class="danger" type="button" data-sync-confirm disabled>Continuar</button>
-      </div>`);
-    const ack = modal.querySelector('[data-sync-ack]');
-    const confirmButton = modal.querySelector('[data-sync-confirm]');
-    ack.addEventListener('change', () => { confirmButton.disabled = !ack.checked; });
-    modal.querySelector('[data-sync-cancel]').focus();
-    modal.querySelector('[data-sync-cancel]').addEventListener('click', closeModal);
-    confirmButton.addEventListener('click', () => confirmWithBackup({
-      title: 'Respaldo de los datos actuales descargado',
-      backupDescription: 'con todos los datos de este equipo antes de restaurar, incluidas las finanzas.',
-      confirmLabel: 'Ya tengo el respaldo: restaurar',
-      download: () => downloadLocalBackup('antes-de-restaurar'),
-      onConfirm: async () => {
-        // La confirmación explícita aprueba subir este contenido aunque reduzca datos.
-        const approvedHash = syncCore.fingerprint(backupPayload);
-        if (ctx.ready && meta) {
-          saveMeta({ ...readMeta(), approvedHash });
-        }
-        apply();
-        closeModal();
-        if (ctx.ready) {
-          await saveToCloud();
-          if (ctx.status === 'synced') {
-            showClosablePanel('✓ Respaldo restaurado en la nube', `Versión ${readMeta()?.version}.`, 'ok');
-          } else if (ctx.status === 'pending') {
-            showClosablePanel('Respaldo restaurado en este equipo', 'Se subirá a la nube cuando vuelva la conexión.', 'warn');
-          }
-        } else {
-          showClosablePanel('Respaldo restaurado en este equipo', 'La nube no se actualizó porque este equipo no está sincronizado.', 'warn');
-        }
-        return { ok: true };
-      }
-    }));
+  // v0.9.42: Ajustes → Zona de peligro ya confirmó (archivo revisado, RESTAURAR escrito y
+  // respaldo previo descargado con "Exportar respaldo"); restaura sin más diálogos.
+  function restoreConfirmed(imported, apply) {
+    return performRestore(imported, apply, readMeta());
   }
 
   // ---------------------------------------------------------------------------
@@ -1087,7 +1054,7 @@
       const badge = document.getElementById('syncStatusBadge');
       return badge ? badge.textContent.replace(/^Nube: /, '') : '';
     },
-    restoreFromBackup,
+    restoreConfirmed,
     status: () => ctx.status
   };
 })();

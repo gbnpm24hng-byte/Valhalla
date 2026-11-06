@@ -473,6 +473,18 @@
     savingsGoal: document.getElementById('savingsGoal'),
     fileInput: document.getElementById('fileInput'),
     importMessage: document.getElementById('importMessage'),
+    saveWhatsAppBtn: document.getElementById('saveWhatsAppBtn'),
+    toggleQrBtn: document.getElementById('toggleQrBtn'),
+    onboardingQrBox: document.getElementById('onboardingQrBox'),
+    lastExportAgo: document.getElementById('lastExportAgo'),
+    lastExportDate: document.getElementById('lastExportDate'),
+    exportReminder: document.getElementById('exportReminder'),
+    exportMessage: document.getElementById('exportMessage'),
+    dangerZone: document.getElementById('dangerZone'),
+    restoreSummary: document.getElementById('restoreSummary'),
+    restoreBlocked: document.getElementById('restoreBlocked'),
+    restoreConfirmInput: document.getElementById('restoreConfirmInput'),
+    restoreBtn: document.getElementById('restoreBtn'),
     initialCashInput: document.getElementById('initialCashInput'),
     cashForm: document.getElementById('cashForm'),
     nutritionMessage: document.getElementById('nutritionMessage'),
@@ -8685,18 +8697,33 @@
     if (supabaseApi && typeof supabaseApi.isCloudEnabled === 'function' && supabaseApi.isCloudEnabled()) {
       const user = window.VALHALLA.authGate?.getUser?.();
       els.authPanel.innerHTML = `
-        <div class="card">
-          <h3>Cuenta</h3>
-          <p class="muted">${user?.email ? `Sesión iniciada como ${escapeHtml(user.email)}.` : 'Sesión iniciada.'}</p>
-          <div class="notice">Tus datos se guardan primero en este equipo y se sincronizan solos con la nube. Las finanzas se quedan solo en este equipo.</div>
-          <p class="muted" id="authPanelSyncStatus">Estado de la nube: ${escapeHtml(window.VALHALLA.cloudSync?.statusText?.() || 'verificando…')}</p>
-          <button class="secondary" type="button" id="authPanelLogout">Cerrar sesión</button>
+        <div class="st-card st-account">
+          <div class="st-account-top">
+            <strong class="st-email">${user?.email ? escapeHtml(user.email) : 'Sesión iniciada'}</strong>
+            <span class="st-version">v${escapeHtml(window.VALHALLA.syncCore?.APP_VERSION || '')}</span>
+          </div>
+          <div class="st-account-foot">
+            <span class="st-chip" id="authPanelSyncStatus"></span>
+            <button class="st-link" type="button" id="authPanelLogout">Cerrar sesión</button>
+          </div>
         </div>`;
+      renderSyncChip();
       document.getElementById('authPanelLogout')?.addEventListener('click', () => window.VALHALLA.authGate?.signOut?.());
       return;
     }
 
-    els.authPanel.innerHTML = '<div class="card"><h3>Cuenta</h3><div class="notice">Modo Local activo. Los datos siguen guardándose en localStorage.</div></div>';
+    els.authPanel.innerHTML = `<div class="st-card st-account"><div class="st-account-top"><strong class="st-email">Modo Local</strong><span class="st-version">v${escapeHtml(window.VALHALLA.syncCore?.APP_VERSION || '')}</span></div><p class="st-muted">Los datos siguen guardándose en este equipo.</p></div>`;
+  }
+
+  // Chip de la nube en Ajustes → Cuenta: verde "Nube al día" o el estado actual.
+  function renderSyncChip() {
+    const chip = document.getElementById('authPanelSyncStatus');
+    if (!chip) {
+      return;
+    }
+    const synced = window.VALHALLA.cloudSync?.status?.() === 'synced';
+    chip.textContent = synced ? 'Nube al día' : `Nube: ${window.VALHALLA.cloudSync?.statusText?.() || 'verificando…'}`;
+    chip.classList.toggle('st-chip--ok', synced);
   }
 
   // Barra inferior: Hoy · Alumnos · Programas · Ajustes. Hoy y Programas son vistas de
@@ -9013,6 +9040,14 @@
     });
     if (els.nav) {
       els.nav.classList.toggle('hidden', section === 'studentTraining');
+    }
+    // Ajustes: al entrar, la Zona de peligro parte plegada y sin archivo elegido.
+    if (section === 'settings' && currentSection !== 'settings') {
+      if (els.dangerZone) {
+        els.dangerZone.open = false;
+      }
+      resetRestoreUi();
+      renderLastExport();
     }
     currentSection = section;
     updateNavActive();
@@ -10304,6 +10339,7 @@
     els.savingsGoal.value = state.profile.savings_goal || 0;
     els.coachWhatsAppNumber.value = String(state.settings.coach_whatsapp_number || '');
     renderOnboardingQr();
+    renderLastExport();
     if (els.accountSettings) {
       els.accountSettings.innerHTML = (state.accounts || []).map((account) => `
         <div class="list-item">
@@ -11273,46 +11309,199 @@
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // v0.9.42 · Ajustes → Zona de peligro → "Restaurar desde un respaldo".
+  // Paso 1: elegir el archivo (se revisa que sea un respaldo completo; un archivo de programa
+  // o sin alumnos queda bloqueado). Paso 2: escribir RESTAURAR. Al tocar "Restaurar" se
+  // descarga antes un respaldo de lo actual con "Exportar respaldo" y después se restaura
+  // con la misma restauración de siempre (cloud-sync.js), que reemplaza todo sin combinar.
+  // ---------------------------------------------------------------------------
+  const RESTORE_WORD = 'RESTAURAR';
+  const restoreUi = { raw: '', name: '', ok: false };
+
+  function setImportMessage(message, tone = 'neutral') {
+    els.importMessage.textContent = message;
+    els.importMessage.className = `notice${tone === 'neutral' ? '' : ` ${tone}`}`;
+  }
+
+  function resetRestoreUi() {
+    restoreUi.raw = '';
+    restoreUi.name = '';
+    restoreUi.ok = false;
+    els.fileInput.value = '';
+    els.restoreSummary.hidden = true;
+    els.restoreSummary.innerHTML = '';
+    els.restoreBlocked.hidden = true;
+    els.restoreConfirmInput.value = '';
+    updateRestoreButton();
+  }
+
+  function updateRestoreButton() {
+    els.restoreConfirmInput.disabled = !restoreUi.ok;
+    els.restoreBtn.disabled = !(restoreUi.ok && els.restoreConfirmInput.value === RESTORE_WORD);
+  }
+
+  function showRestoreSummary(name, check) {
+    const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+    els.restoreSummary.innerHTML = `
+      <div class="st-summary-name">${escapeHtml(name)}</div>
+      <div class="st-summary-counts">${check.readable
+        ? `${plural(check.clients, 'alumno', 'alumnos')} · ${plural(check.programs, 'programa', 'programas')}`
+        : 'No se pudo leer'}</div>
+      ${check.ok ? '' : `<div class="st-muted">${escapeHtml(check.reason)}</div>`}`;
+    els.restoreSummary.hidden = false;
+    els.restoreBlocked.hidden = check.ok;
+  }
+
   function handleImport(event) {
     const [file] = event.target.files || [];
+    restoreUi.raw = '';
+    restoreUi.ok = false;
+    els.restoreConfirmInput.value = '';
+    setImportMessage('');
+    updateRestoreButton();
     if (!file) {
+      els.restoreSummary.hidden = true;
+      els.restoreBlocked.hidden = true;
       return;
     }
     const reader = new FileReader();
     reader.onload = () => {
-      try {
-        const imported = dataApi.importState(reader.result);
-        // Reemplaza el estado completo (nunca combina listas).
-        const apply = () => {
-          Object.keys(state).forEach((key) => {
-            delete state[key];
-          });
-          Object.assign(state, imported);
-          persist();
-          els.importMessage.textContent = 'Datos importados correctamente.';
-        };
-        // Con la nube configurada pasa a ser "Restaurar en la nube": confirmación,
-        // respaldo previo y subida con la versión correcta (cloud-sync.js).
-        if (window.VALHALLA.cloudSync?.restoreFromBackup) {
-          els.importMessage.textContent = '';
-          window.VALHALLA.cloudSync.restoreFromBackup(imported, apply);
-        } else {
-          apply();
+      const raw = String(reader.result || '');
+      const check = window.VALHALLA.settingsCore.inspectBackup(raw);
+      let readable = check.ok;
+      if (readable) {
+        try {
+          dataApi.importState(raw);
+        } catch (_) {
+          readable = false;
         }
-      } catch (error) {
-        els.importMessage.textContent = 'No se pudo importar el archivo.';
       }
-      event.target.value = '';
+      restoreUi.raw = raw;
+      restoreUi.name = file.name;
+      restoreUi.ok = readable;
+      showRestoreSummary(file.name, readable ? check : { ...check, ok: false });
+      updateRestoreButton();
+    };
+    reader.onerror = () => {
+      showRestoreSummary(file.name, { ok: false, readable: false, clients: 0, programs: 0, reason: 'No se pudo leer el archivo.' });
+      updateRestoreButton();
     };
     reader.readAsText(file);
   }
 
+  async function handleRestoreClick() {
+    if (!restoreUi.ok || els.restoreConfirmInput.value !== RESTORE_WORD) {
+      updateRestoreButton();
+      return;
+    }
+    let imported;
+    try {
+      imported = dataApi.importState(restoreUi.raw);
+    } catch (_) {
+      setImportMessage('No se pudo leer el archivo. No se cambió nada.', 'bad');
+      return;
+    }
+    // Primero, el respaldo de lo que hay ahora (la exportación de siempre).
+    try {
+      exportData('antes-de-restaurar');
+      recordLastExport();
+    } catch (_) {
+      setImportMessage('No se pudo descargar el respaldo previo. Por seguridad no se cambió nada.', 'bad');
+      return;
+    }
+    els.restoreBtn.disabled = true;
+    const restoredName = restoreUi.name;
+    // Reemplaza el estado completo (nunca combina listas).
+    const apply = () => {
+      Object.keys(state).forEach((key) => {
+        delete state[key];
+      });
+      Object.assign(state, imported);
+      persist();
+      setImportMessage(`Datos restaurados desde ${restoredName}. Se descargó antes un respaldo de lo que había.`, 'ok');
+    };
+    resetRestoreUi();
+    try {
+      if (window.VALHALLA.cloudSync?.restoreConfirmed) {
+        await window.VALHALLA.cloudSync.restoreConfirmed(imported, apply);
+      } else {
+        apply();
+      }
+    } catch (_) {
+      setImportMessage('No se pudo terminar la restauración. Revisa el estado de la nube en Cuenta.', 'bad');
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // v0.9.42 · Ajustes → Respaldo: fecha del último respaldo exportado en este equipo
+  // (localStorage aparte, ver settings-core.js). Nunca va al estado ni a la nube.
+  // ---------------------------------------------------------------------------
+  function safeLocalStorage() {
+    try {
+      return window.localStorage;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function recordLastExport() {
+    window.VALHALLA.settingsCore.writeLastExport(safeLocalStorage());
+    renderLastExport();
+  }
+
+  function renderLastExport() {
+    if (!els.lastExportAgo) {
+      return;
+    }
+    const core = window.VALHALLA.settingsCore;
+    const info = core.describeLastExport(core.readLastExport(safeLocalStorage()));
+    els.lastExportAgo.textContent = info.agoText;
+    els.lastExportDate.textContent = info.dateText;
+    els.lastExportDate.hidden = !info.dateText;
+    els.exportReminder.hidden = !info.needsReminder;
+  }
+
+  function handleExportClick() {
+    els.exportMessage.textContent = '';
+    els.exportMessage.className = 'notice';
+    try {
+      exportData();
+      recordLastExport();
+    } catch (_) {
+      els.exportMessage.textContent = 'No se pudo descargar el respaldo. Inténtalo de nuevo.';
+      els.exportMessage.className = 'notice bad';
+    }
+  }
+
+  // Ajustes → Ingreso de alumnos nuevos: el WhatsApp se guarda al salir del campo o con "Guardar".
+  function saveCoachWhatsApp() {
+    const number = String(els.coachWhatsAppNumber.value || '').replace(/\D/g, '');
+    els.coachWhatsAppNumber.value = number;
+    if (number === String(state.settings.coach_whatsapp_number || '')) {
+      return;
+    }
+    state.settings.coach_whatsapp_number = number;
+    persist();
+    if (els.onboardingQrMessage) {
+      els.onboardingQrMessage.textContent = number ? 'WhatsApp guardado.' : 'WhatsApp borrado.';
+    }
+  }
+
+  function toggleOnboardingQr() {
+    const show = els.onboardingQrBox.hidden;
+    els.onboardingQrBox.hidden = !show;
+    els.toggleQrBtn.textContent = show ? 'Ocultar QR' : 'Mostrar QR';
+    els.toggleQrBtn.setAttribute('aria-expanded', String(show));
+  }
+
   // Respaldo completo del equipo (incluidas las finanzas). No depende de la nube.
-  function exportData() {
+  // `label` (opcional) va en el nombre: valhalla-respaldo-<label>-FECHA.json.
+  function exportData(label = '') {
     const blob = new Blob([dataApi.exportState(state)], { type: 'application/json' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `valhalla-respaldo-${getTodayLocalDate()}.json`;
+    link.download = `valhalla-respaldo-${label ? `${label}-` : ''}${getTodayLocalDate()}.json`;
     link.click();
     URL.revokeObjectURL(link.href);
   }
@@ -13109,8 +13298,13 @@
   els.clientForm?.addEventListener('submit', handleClientSubmit);
   document.getElementById('settingsForm').addEventListener('submit', handleSettingsSubmit);
   els.copyOnboardingUrlBtn?.addEventListener('click', copyOnboardingUrl);
-  document.getElementById('exportBtn').addEventListener('click', exportData);
+  document.getElementById('exportBtn').addEventListener('click', handleExportClick);
   els.fileInput.addEventListener('change', handleImport);
+  els.restoreConfirmInput.addEventListener('input', updateRestoreButton);
+  els.restoreBtn.addEventListener('click', handleRestoreClick);
+  els.coachWhatsAppNumber.addEventListener('change', saveCoachWhatsApp);
+  els.saveWhatsAppBtn.addEventListener('click', saveCoachWhatsApp);
+  els.toggleQrBtn.addEventListener('click', toggleOnboardingQr);
   els.clientSearch?.addEventListener('input', (event) => {
     clientUi.search = event.target.value || '';
     renderClients();
@@ -13289,10 +13483,7 @@
   });
   window.addEventListener('valhalla:auth-locked', () => resetGroupSessionForAccount(''));
   window.addEventListener('valhalla:sync-status', (event) => {
-    const statusEl = document.getElementById('authPanelSyncStatus');
-    if (statusEl) {
-      statusEl.textContent = `Estado de la nube: ${window.VALHALLA.cloudSync?.statusText?.() || 'verificando…'}`;
-    }
+    renderSyncChip();
     // B3.3: al abrir la app y al sincronizar se traen solos los registros de alumnos
     // (como máximo una vez por minuto; el botón los trae cuando se quiera).
     if (event.detail?.status === 'synced' && Date.now() - studentImportUi.lastAutoAt >= STUDENT_IMPORT_AUTO_MS) {

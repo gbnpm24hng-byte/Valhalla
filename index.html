@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Bebas+Neue&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <title>VALHALLA</title>
-  <link rel="stylesheet" href="./assets/css/styles.css?v=0.9.41">
+  <link rel="stylesheet" href="./assets/css/styles.css?v=0.9.42">
 </head>
 <!-- Clase "solo-entrenamientos": oculta Inicio, Registrar (finanzas) y Nutrición sin borrarlos. Quitarla los vuelve a mostrar. -->
 <body class="solo-entrenamientos">
@@ -31,7 +31,7 @@
       <div class="header-actions">
         <span class="user-pill">Usuario</span>
         <span class="badge" id="cloudModeBadge">Modo Local</span>
-        <span class="badge">v0.9.41</span>
+        <span class="badge">v0.9.42</span>
       </div>
     </header>
 
@@ -1089,59 +1089,92 @@
     </section>
 
     <section id="settings" class="hidden">
-      <!-- Cuenta (sesión, estado de la nube, Cerrar sesión): desde v0.9.35 vive aquí. -->
-      <div id="authPanel" class="settings-account"></div>
-      <div class="card">
-        <h2>Ajustes</h2>
-        <form id="settingsForm" class="form-grid">
-          <div data-modulo-oculto>
-            <label for="reserve">Reserva mínima</label>
-            <input id="reserve" name="reserve" type="number" min="0">
-          </div>
-          <div>
-            <label for="coachWhatsAppNumber">Número de WhatsApp para ingreso de alumnos</label>
-            <input id="coachWhatsAppNumber" name="coachWhatsAppNumber" type="tel" inputmode="tel" placeholder="56912345678">
-            <small class="muted">Incluye código de país, solo números.</small>
-          </div>
-          <div data-modulo-oculto>
-            <label for="magicBudget">Presupuesto mensual Magic</label>
-            <input id="magicBudget" name="magicBudget" type="number" min="0">
-          </div>
-          <div data-modulo-oculto>
-            <label for="antBudget">Presupuesto mensual gastos hormiga</label>
-            <input id="antBudget" name="antBudget" type="number" min="0">
-          </div>
-          <div data-modulo-oculto>
-            <label for="savingsGoal">Meta de ahorro</label>
-            <input id="savingsGoal" name="savingsGoal" type="number" min="0">
-          </div>
-          <button class="primary" type="submit">Guardar ajustes</button>
-        </form>
-      </div>
-      <div class="card onboarding-qr-settings">
-        <h2>Código QR de registro</h2>
-        <div id="onboardingQr" class="onboarding-qr" aria-label="Código QR de registro"></div>
-        <label for="onboardingUrl">URL de ingreso</label>
-        <div class="inline-actions onboarding-link-row">
-          <input id="onboardingUrl" type="url" readonly>
-          <button class="secondary" id="copyOnboardingUrlBtn" type="button">Copiar link</button>
+      <!-- v0.9.42: Ajustes en este orden: Cuenta, Respaldo, Ingreso de alumnos nuevos, Zona de peligro.
+           "Restaurar" vive plegado en la Zona de peligro, lejos de "Exportar respaldo". -->
+      <div class="st-screen">
+        <h1 class="st-title">Ajustes</h1>
+
+        <h2 class="st-label">Cuenta</h2>
+        <div id="authPanel" class="settings-account"></div>
+
+        <h2 class="st-label">Respaldo</h2>
+        <div class="st-card st-card--backup" id="backupCard">
+          <p class="st-backup-when" id="lastExportAgo">Último respaldo: nunca en este equipo</p>
+          <p class="st-muted" id="lastExportDate" hidden></p>
+          <p class="st-reminder" id="exportReminder" hidden>Pasó más de una semana. Exporta uno y guárdalo en Drive.</p>
+          <button class="st-cta" id="exportBtn" type="button">Exportar respaldo</button>
+          <div id="exportMessage" class="notice" role="status"></div>
+          <p class="st-small">La nube gratis no guarda copias. Este archivo es tu única copia de seguridad.</p>
         </div>
-        <div id="onboardingQrMessage" class="notice"></div>
+
+        <h2 class="st-label">Ingreso de alumnos nuevos</h2>
+        <div class="st-card onboarding-qr-settings">
+          <label for="coachWhatsAppNumber">Número de WhatsApp para ingreso de alumnos</label>
+          <div class="st-row">
+            <input id="coachWhatsAppNumber" name="coachWhatsAppNumber" type="tel" inputmode="tel" placeholder="56912345678">
+            <button class="st-small-btn" id="saveWhatsAppBtn" type="button">Guardar</button>
+          </div>
+          <small class="st-muted">Incluye código de país, solo números. Se guarda al salir del campo.</small>
+          <label for="onboardingUrl">Link de ingreso</label>
+          <input id="onboardingUrl" type="url" readonly>
+          <div class="st-row">
+            <button class="st-ghost-btn" id="copyOnboardingUrlBtn" type="button">Copiar link</button>
+            <button class="st-ghost-btn" id="toggleQrBtn" type="button" aria-expanded="false" aria-controls="onboardingQrBox">Mostrar QR</button>
+          </div>
+          <div id="onboardingQrBox" hidden>
+            <div id="onboardingQr" class="onboarding-qr" aria-label="Código QR de registro"></div>
+          </div>
+          <div id="onboardingQrMessage" class="notice"></div>
+        </div>
+
+        <h2 class="st-label">Zona de peligro</h2>
+        <details class="st-card st-danger" id="dangerZone">
+          <summary>Restaurar desde un respaldo</summary>
+          <div class="st-danger-body">
+            <p>Reemplaza <strong>todo</strong>: alumnos, programas y registros en la nube, y las finanzas de este equipo. Lo que no esté en el archivo se pierde. <strong>No sirve para cargar programas</strong>: para eso usa Programas → Importar.</p>
+            <label for="fileInput">Paso 1 · Elige el archivo de respaldo</label>
+            <input id="fileInput" type="file" accept=".json,application/json">
+            <div id="restoreSummary" class="st-summary" hidden></div>
+            <p id="restoreBlocked" class="st-blocked" role="alert" hidden>Este archivo no es un respaldo completo. No se puede restaurar.</p>
+            <label for="restoreConfirmInput">Paso 2 · Escribe RESTAURAR para confirmar</label>
+            <input id="restoreConfirmInput" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" disabled>
+            <p class="st-small">Antes de restaurar se descarga automáticamente un respaldo de lo que hay ahora.</p>
+            <button class="st-danger-btn" id="restoreBtn" type="button" disabled>Restaurar</button>
+            <div id="importMessage" class="notice" role="status"></div>
+          </div>
+        </details>
+
+        <!-- Ajustes de finanzas: igual que antes, ocultos en modo solo-entrenamientos. -->
+        <div class="card" data-modulo-oculto>
+          <h2>Finanzas</h2>
+          <form id="settingsForm" class="form-grid">
+            <div data-modulo-oculto>
+              <label for="reserve">Reserva mínima</label>
+              <input id="reserve" name="reserve" type="number" min="0">
+            </div>
+            <div data-modulo-oculto>
+              <label for="magicBudget">Presupuesto mensual Magic</label>
+              <input id="magicBudget" name="magicBudget" type="number" min="0">
+            </div>
+            <div data-modulo-oculto>
+              <label for="antBudget">Presupuesto mensual gastos hormiga</label>
+              <input id="antBudget" name="antBudget" type="number" min="0">
+            </div>
+            <div data-modulo-oculto>
+              <label for="savingsGoal">Meta de ahorro</label>
+              <input id="savingsGoal" name="savingsGoal" type="number" min="0">
+            </div>
+            <button class="primary" type="submit">Guardar ajustes</button>
+          </form>
+        </div>
+        <div class="card" data-modulo-oculto>
+          <h2>Cuentas</h2>
+          <div id="accountSettings"></div>
+          <div id="accountSettingsMessage" class="notice"></div>
+        </div>
+
+        <p class="brand-signature">by Vikingos Radical</p>
       </div>
-      <div class="card" data-modulo-oculto>
-        <h2>Cuentas</h2>
-        <div id="accountSettings"></div>
-        <div id="accountSettingsMessage" class="notice"></div>
-      </div>
-      <div class="card">
-        <h2>Respaldo</h2>
-        <button class="secondary" id="exportBtn" type="button">Exportar respaldo</button>
-        <p class="muted">Descarga todos los datos de este equipo, incluidas las finanzas. Funciona sin conexión.</p>
-        <label for="fileInput">Importar respaldo</label>
-        <input id="fileInput" type="file" accept=".json,application/json">
-        <div id="importMessage" class="notice"></div>
-      </div>
-      <p class="brand-signature">by Vikingos Radical</p>
     </section>
   </div>
 
@@ -1156,30 +1189,31 @@
     </div>
   </nav>
 
-  <script src="./assets/js/config.js?v=0.9.41"></script>
+  <script src="./assets/js/config.js?v=0.9.42"></script>
   <!-- supabase-js fijado a una versión exacta; integrity = SHA-384 del archivo publicado en npm -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js" integrity="sha384-Rj26LVGvoeRVR6+mwQmFfcR3QOBEwT+ZmuCWpuiqeTzJpCs0ER4ITAWGb4Hiy3Ok" crossorigin="anonymous"></script>
-  <script src="./assets/js/data.js?v=0.9.41"></script>
-  <script src="./assets/js/supabase.js?v=0.9.41"></script>
-  <script src="./assets/js/auth.js?v=0.9.41"></script>
-  <script src="./assets/js/cloud-data.js?v=0.9.41"></script>
-  <script src="./assets/js/finance.js?v=0.9.41"></script>
-  <script src="./assets/js/qrcode-generator.js?v=0.9.41"></script>
-  <script src="./assets/js/onboarding.js?v=0.9.41"></script>
-  <script src="./assets/js/sync-core.js?v=0.9.41"></script>
-  <script src="./assets/js/cloud-sync.js?v=0.9.41"></script>
-  <script src="./assets/js/client-overrides-core.js?v=0.9.41"></script>
-  <script src="./assets/js/muscle-map-core.js?v=0.9.41"></script>
-  <script src="./assets/js/publish-core.js?v=0.9.41"></script>
-  <script src="./assets/js/publish.js?v=0.9.41"></script>
-  <script src="./assets/js/self-log-core.js?v=0.9.41"></script>
-  <script src="./assets/js/student-view.js?v=0.9.41"></script>
-  <script src="./assets/js/auth-gate.js?v=0.9.41"></script>
-  <script src="./assets/js/labels.js?v=0.9.41"></script>
-  <script src="./assets/js/student-import-core.js?v=0.9.41"></script>
-  <script src="./assets/js/coach-sets-core.js?v=0.9.41"></script>
-  <script src="./assets/js/group-draft-core.js?v=0.9.41"></script>
-  <script src="./assets/js/program-import-core.js?v=0.9.41"></script>
-  <script src="./assets/js/app.js?v=0.9.41"></script>
+  <script src="./assets/js/data.js?v=0.9.42"></script>
+  <script src="./assets/js/supabase.js?v=0.9.42"></script>
+  <script src="./assets/js/auth.js?v=0.9.42"></script>
+  <script src="./assets/js/cloud-data.js?v=0.9.42"></script>
+  <script src="./assets/js/finance.js?v=0.9.42"></script>
+  <script src="./assets/js/qrcode-generator.js?v=0.9.42"></script>
+  <script src="./assets/js/onboarding.js?v=0.9.42"></script>
+  <script src="./assets/js/sync-core.js?v=0.9.42"></script>
+  <script src="./assets/js/cloud-sync.js?v=0.9.42"></script>
+  <script src="./assets/js/client-overrides-core.js?v=0.9.42"></script>
+  <script src="./assets/js/muscle-map-core.js?v=0.9.42"></script>
+  <script src="./assets/js/publish-core.js?v=0.9.42"></script>
+  <script src="./assets/js/publish.js?v=0.9.42"></script>
+  <script src="./assets/js/self-log-core.js?v=0.9.42"></script>
+  <script src="./assets/js/student-view.js?v=0.9.42"></script>
+  <script src="./assets/js/auth-gate.js?v=0.9.42"></script>
+  <script src="./assets/js/labels.js?v=0.9.42"></script>
+  <script src="./assets/js/student-import-core.js?v=0.9.42"></script>
+  <script src="./assets/js/coach-sets-core.js?v=0.9.42"></script>
+  <script src="./assets/js/group-draft-core.js?v=0.9.42"></script>
+  <script src="./assets/js/program-import-core.js?v=0.9.42"></script>
+  <script src="./assets/js/settings-core.js?v=0.9.42"></script>
+  <script src="./assets/js/app.js?v=0.9.42"></script>
 </body>
 </html>
