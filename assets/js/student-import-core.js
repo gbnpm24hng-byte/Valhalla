@@ -12,6 +12,8 @@
   //     (studentSetId). Traer dos veces no duplica. Si el entrenador corrige una serie del
   //     alumno, pasa a loggedBy: 'coach' y ya no se toca al volver a traer.
   //   * No toca asistencia, saldo de sesiones, programas ni cargas.
+  //   * v0.9.45: las filas de un circuito (exercise_id = id del circuito del día) no son series: S1 y
+  //     S2 se juntan en session.circuits (circuits-core.js). Lo que guardó el entrenador gana.
   window.VALHALLA = window.VALHALLA || {};
 
   const STUDENT = 'student';
@@ -64,6 +66,17 @@
     }
     entry.rir = numberOrNull(row.rir);
     entry.completed = row.completed !== false;
+  }
+
+  function circuitsApi() {
+    return (typeof window !== 'undefined' && window.VALHALLA && window.VALHALLA.circuitsCore) || null;
+  }
+
+  // Circuito del día de la fila (o null si la fila es de un ejercicio).
+  function findCircuit(state, row) {
+    const assignment = (state.trainingsV08?.assignments || []).find((item) => item.id === row.assignment_id) || null;
+    const day = (assignment?.days || []).find((item) => item.id === row.day_id) || null;
+    return (Array.isArray(day?.blocks) ? day.blocks : []).find((block) => block && block.type === 'circuit' && block.id === row.exercise_id) || null;
   }
 
   function findPlan(state, row) {
@@ -126,13 +139,8 @@
       || String(a.set_type).localeCompare(String(b.set_type))
       || Number(a.set_number) - Number(b.set_number));
 
-    for (const row of usable) {
-      if (pendingCoach.has(row)) continue;
-      const id = rowId(row);
-      const plan = findPlan(state, row);
-      const timed = plan.exercise?.measure === 'time';
-
-      // Sesión del mismo alumno, día y fecha (la de esa asignación primero).
+    // Sesión del mismo alumno, día y fecha (la de esa asignación primero); si no hay, se crea.
+    const sessionFor = (row, plan) => {
       const candidates = sessions.filter((session) => session.clientId === row.client_id && session.date === row.session_date && session.programDayId === row.day_id);
       let session = candidates.find((item) => item.programAssignmentId === row.assignment_id) || candidates[0] || null;
       if (!session) {
@@ -154,6 +162,66 @@
         sessions.push(session);
         summary.sessionsCreated += 1;
       }
+      return session;
+    };
+
+    // Circuitos: las filas S1 y S2 de un mismo circuito, alumno y fecha van juntas.
+    const circuitGroups = new Map();
+    const api = circuitsApi();
+    for (const row of usable) {
+      if (pendingCoach.has(row)) continue;
+      const circuit = findCircuit(state, row);
+      if (!circuit) continue;
+      const key = [row.client_id, row.assignment_id, row.session_date, row.day_id, row.exercise_id].join('|');
+      if (!circuitGroups.has(key)) circuitGroups.set(key, { circuit, rows: [] });
+      circuitGroups.get(key).rows.push(row);
+    }
+    const circuitRows = new Set([...circuitGroups.values()].flatMap((group) => group.rows));
+    circuitGroups.forEach(({ circuit, rows: groupRows }) => {
+      const effective = groupRows.filter((row) => row.set_type === 'S');
+      if (!api || !effective.length) {
+        summary.ignored += groupRows.length;
+        return;
+      }
+      const first = effective[0];
+      const session = sessionFor(first, findPlan(state, first));
+      if (!Array.isArray(session.exercises)) session.exercises = [];
+      const list = Array.isArray(session.circuits) ? session.circuits : [];
+      const index = list.findIndex((entry) => entry.blockId === circuit.id);
+      const current = index >= 0 ? list[index] : null;
+      if (current && current.loggedBy !== STUDENT && api.resultHasData(current)) {
+        summary.keptCoach += effective.length; // Lo del entrenador gana.
+        return;
+      }
+      const byNumber = {};
+      effective.forEach((row) => { byNumber[Number(row.set_number)] = numberOrNull(row.reps); });
+      const entry = api.buildSessionEntry(circuit, api.studentSetsToResult(circuit, byNumber), { now, loggedBy: STUDENT });
+      if (!entry) {
+        summary.ignored += groupRows.length;
+        return;
+      }
+      entry.studentSetIds = effective.map(rowId);
+      const same = current && api.formatResult(circuit, current) === api.formatResult(circuit, entry);
+      if (same) {
+        summary.unchanged += effective.length;
+        return;
+      }
+      if (current) {
+        list[index] = { ...current, ...entry };
+        summary.updated += effective.length;
+      } else {
+        list.push(entry);
+        summary.added += effective.length;
+      }
+      session.circuits = list;
+    });
+
+    for (const row of usable) {
+      if (pendingCoach.has(row) || circuitRows.has(row)) continue;
+      const id = rowId(row);
+      const plan = findPlan(state, row);
+      const timed = plan.exercise?.measure === 'time';
+      const session = sessionFor(row, plan);
       if (!Array.isArray(session.exercises)) session.exercises = [];
 
       let exercise = session.exercises.find((item) => item.programExerciseId === row.exercise_id) || null;
@@ -242,5 +310,10 @@
     return (session?.exercises || []).reduce((sum, exercise) => sum + (exercise.sets || []).filter(isStudentSet).length, 0);
   }
 
-  window.VALHALLA.studentImportCore = { mergeStudentSets, findDaySplits, isStudentSet, countStudentSets, rowId };
+  // v0.9.45: circuitos con el resultado que anotó el alumno.
+  function countStudentCircuits(session) {
+    return (Array.isArray(session?.circuits) ? session.circuits : []).filter(isStudentSet).length;
+  }
+
+  window.VALHALLA.studentImportCore = { mergeStudentSets, findDaySplits, isStudentSet, countStudentSets, countStudentCircuits, rowId };
 })();

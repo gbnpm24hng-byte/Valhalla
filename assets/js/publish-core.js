@@ -190,12 +190,96 @@
     };
   }
 
+  // v0.9.45 · Circuito (circuits-core.js): se publica como una entrada más de day.exercises, en su
+  // lugar del día, con su id y sets: 2. Así la base acepta el resultado del alumno en student_sets
+  // (S1 y S2, ver circuits-core.js) sin cambiar nada en Supabase. Lista cerrada: formato, sus números,
+  // nombre y estaciones (nombre, cantidad, unidad y video de la galería). Una app vieja lo ve como un
+  // ejercicio llamado "Circuito · AMRAP 12 min".
+  const CIRCUIT_NUMBER_FIELDS = ['rounds', 'restSeconds', 'minutes', 'workSeconds', 'pauseSeconds', 'capMinutes'];
+  const CIRCUIT_FORMATS = ['rounds', 'emom', 'amrap', 'tabata', 'fortime'];
+  const STATION_UNITS = ['reps', 'seconds', 'meters'];
+  function circuitsApi() {
+    return (typeof window !== 'undefined' && window.VALHALLA && window.VALHALLA.circuitsCore) || null;
+  }
+
+  function pickStation(station, library) {
+    const picked = { name: text(station?.name, 120) };
+    const quantity = numberOrNull(station?.quantity);
+    if (quantity !== null) {
+      picked.quantity = quantity;
+      if (STATION_UNITS.includes(station?.unit)) {
+        picked.unit = station.unit;
+      }
+    }
+    const videoUrl = station?.libraryExerciseId ? videoUrlFor({ libraryExerciseId: station.libraryExerciseId, exerciseName: station.name }, library) : '';
+    if (videoUrl) {
+      picked.videoUrl = videoUrl;
+    }
+    return picked;
+  }
+
+  function pickCircuitExercise(block, library) {
+    const circuit = { format: text(block?.format, 20) };
+    const name = text(block?.name, 120);
+    if (name) {
+      circuit.name = name;
+    }
+    CIRCUIT_NUMBER_FIELDS.forEach((field) => {
+      const value = numberOrNull(block?.[field]);
+      if (value !== null) {
+        circuit[field] = value;
+      }
+    });
+    circuit.stations = list(block?.stations).map((station) => pickStation(station, library)).filter((station) => station.name);
+    const api = circuitsApi();
+    return {
+      id: text(block?.id, 120),
+      name: `Circuito · ${api ? api.formatHeadline(block) : 'circuito'}`.slice(0, 120),
+      sets: api ? api.STUDENT_SETS : 2,
+      repMin: null,
+      repMax: null,
+      targetWeight: null,
+      techniqueNotes: '',
+      approximations: [],
+      effectiveSets: [],
+      circuit
+    };
+  }
+
+  // Los ejercicios del día con cada circuito en su lugar (at = ejercicios antes de él).
+  function pickDayEntries(day, library) {
+    const exercises = list(day?.exercises).map((exercise) => pickProgramExercise(exercise, library));
+    const circuits = list(day?.blocks)
+      .map((block, order) => ({ block, order }))
+      .filter((item) => item.block && item.block.id && item.block.type === 'circuit' && CIRCUIT_FORMATS.includes(item.block.format));
+    if (!circuits.length) {
+      return exercises;
+    }
+    const at = (block) => {
+      const value = Number(block.at);
+      return Number.isFinite(value) ? Math.min(Math.max(value, 0), exercises.length) : exercises.length;
+    };
+    circuits.sort((a, b) => at(a.block) - at(b.block) || a.order - b.order);
+    const out = [];
+    let next = 0;
+    for (let index = 0; index <= exercises.length; index += 1) {
+      while (next < circuits.length && at(circuits[next].block) <= index) {
+        out.push(pickCircuitExercise(circuits[next].block, library));
+        next += 1;
+      }
+      if (index < exercises.length) {
+        out.push(exercises[index]);
+      }
+    }
+    return out;
+  }
+
   function pickProgramDay(day, index, library) {
     const picked = {
       id: text(day?.id, 120),
       name: text(day?.name, 120) || `Día ${index + 1}`,
       order: numberOrNull(day?.order) ?? index + 1,
-      exercises: list(day?.exercises).map((exercise) => pickProgramExercise(exercise, library))
+      exercises: pickDayEntries(day, library)
     };
     const blocks = list(day?.blocks).filter((block) => block && block.id && PUBLISHABLE_BLOCK_TYPES.includes(block.type)).map(pickBlock);
     if (blocks.length) {
@@ -259,17 +343,25 @@
       }
       return record;
     }).filter((exercise) => exercise.sets.length > 0);
-    return {
-      record: {
-        schema: 1,
-        sessionId: text(session?.id, 120),
-        date: text(session?.date, 10),
-        title: text(session?.title, 120),
-        dayName: text(session?.programDayName, 120),
-        exercises
-      },
-      omittedSets
+    const record = {
+      schema: 1,
+      sessionId: text(session?.id, 120),
+      date: text(session?.date, 10),
+      title: text(session?.title, 120),
+      dayName: text(session?.programDayName, 120),
+      exercises
     };
+    // v0.9.45: resultado de cada circuito ("AMRAP 12 · 5 rondas + 12"). Solo etiqueta y resultado:
+    // la nota del entrenador no se publica. Sin circuitos, el registro queda igual que antes.
+    const api = circuitsApi();
+    const circuits = api ? list(session?.circuits).map((entry) => {
+      const result = api.formatResult({ format: entry?.format, minutes: entry?.totalRounds, rounds: entry?.totalRounds }, entry);
+      return { label: text(entry?.label, 60), result: text(result, 60) };
+    }).filter((entry) => entry.label && entry.result) : [];
+    if (circuits.length) {
+      record.circuits = circuits;
+    }
+    return { record, omittedSets };
   }
 
   // Todo lo que se publica para un cliente: su programa activo y su historial.
@@ -282,7 +374,7 @@
         omittedSets += item.omittedSets;
         return item.record;
       })
-      .filter((record) => record.sessionId && record.exercises.length > 0)
+      .filter((record) => record.sessionId && (record.exercises.length > 0 || (record.circuits || []).length > 0))
       .sort((a, b) => String(b.date).localeCompare(String(a.date)));
     return { program, progress, omittedSets };
   }

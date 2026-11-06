@@ -256,7 +256,8 @@ test('importar: errores claros (circuito, bloque de 1, no seguidos, tiempo con r
   const base = (day) => JSON.stringify({ format: 'valhalla-programa', name: 'X', durationWeeks: 4, days: [day] });
   const err = (day) => programImport.parseProgramFile(base(day)).error || '';
   const two = [{ exerciseName: 'a falso', repMin: 8, block: 'A' }, { exerciseName: 'b falso', repMin: 8, block: 'A' }];
-  assert.match(err({ name: 'D', blocks: [{ id: 'A', type: 'circuit', rounds: 3 }], exercises: two }), /circuitos/i);
+  // v0.9.45: los circuitos ya se importan; sin "format" el error lo dice.
+  assert.match(err({ name: 'D', blocks: [{ id: 'A', type: 'circuit', rounds: 3 }], exercises: two }), /"format" debe ser/);
   assert.match(err({ name: 'D', blocks: [{ id: 'A', type: 'superset', rounds: 3 }], exercises: [two[0], { exerciseName: 'c', sets: 3, repMin: 8 }] }), /de 2 a 4/);
   assert.match(err({ name: 'D', blocks: [{ id: 'A', type: 'superset', rounds: 3 }], exercises: [two[0], { exerciseName: 'c', sets: 3, repMin: 8 }, two[1]] }), /seguidos/);
   assert.match(err({ name: 'D', exercises: [{ exerciseName: 'p', sets: 3, measure: 'time', durationSeconds: 30, repMin: 8 }] }), /no lleva "repMin"/);

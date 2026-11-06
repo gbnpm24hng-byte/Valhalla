@@ -491,8 +491,21 @@
       notes: session.notes || '',
       exercises: Array.isArray(session.exercises)
         ? session.exercises.map((exercise, exerciseIndex) => normalizeTrainingExercise(exercise, exerciseIndex))
-        : []
-    }, ['studentId', 'sessionCompleted', 'name']);
+        : [],
+      ...sessionCircuitFields(session)
+    }, ['studentId', 'sessionCompleted', 'name', ...(circuitsApi() && Array.isArray(session.circuits) ? ['circuits'] : [])]);
+  }
+
+  // v0.9.45 · Circuitos (circuits-core.js): resultados de los circuitos del día en la sesión. Solo
+  // si la sesión los trae; sin el módulo cargado, keepUnknown los conserva tal cual.
+  function circuitsApi() {
+    return (typeof window !== 'undefined' && window.VALHALLA && window.VALHALLA.circuitsCore) || null;
+  }
+
+  function sessionCircuitFields(session) {
+    const api = circuitsApi();
+    const circuits = api && Array.isArray(session.circuits) ? api.normalizeSessionCircuits(session.circuits) : null;
+    return circuits ? { circuits } : {};
   }
 
   function normalizeTrainingProgramExercise(exercise, index) {

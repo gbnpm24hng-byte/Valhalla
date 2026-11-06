@@ -24,6 +24,8 @@
   const groupRoundApi = window.VALHALLA.groupRoundCore;
   // v0.9.44 · Bloques fase 1: ejercicios por tiempo y superseries (blocks-core.js).
   const blocksApi = window.VALHALLA.blocksCore;
+  // v0.9.45 · Bloques fase 2: circuitos (circuits-core.js; los guarda blocks-core en day.blocks).
+  const circuitsApi = window.VALHALLA.circuitsCore;
   // Ejercicio (del programa o hecho en una sesión) por tiempo: measure 'time'.
   function isTimedExercise(exercise) {
     return exercise?.measure === 'time';
@@ -113,7 +115,13 @@
     // Cierre de ronda abierto: { items: [{ clientId, planExerciseId }], ask, skipped } o null.
     round: null,
     // Línea pequeña sobre lo traído de los alumnos (sin conexión, error o dos sesiones el mismo día).
-    importNotice: ''
+    importNotice: '',
+    // v0.9.45 · Circuito abierto para todo el grupo ({ blockId } o null), su reloj por circuito
+    // ({ running, startedAt, accumulatedMs }), lo escrito por alumno y el aviso al guardar.
+    circuitView: null,
+    circuitTimers: {},
+    circuitDrafts: {},
+    circuitNotice: ''
   };
   // Cuenta dueña del borrador (el borrador queda ligado a ella) y si ya se revisó al abrir.
   let groupDraftOwner = '';
@@ -1245,7 +1253,9 @@
     const { day: programDay, index: dayIndex } = getGroupProgramDay(clientId, assignment);
     const day = getEffectiveProgramDay(clientId, assignment, programDay, groupSessionUi.sessionDate);
     const exercises = Array.isArray(day?.exercises) ? day.exercises : [];
-    if (!day || !exercises.length) {
+    // v0.9.45: un día puede tener solo un circuito (sin ejercicios).
+    const hasCircuit = Boolean(blocksApi?.circuitsOf && day && blocksApi.circuitsOf(day).length);
+    if (!day || (!exercises.length && !hasCircuit)) {
       return null;
     }
     return { assignment, day, dayIndex, exercises };
@@ -1971,6 +1981,9 @@
   // Ejercicio a la vista del alumno: el que dejó (por id; si cambió, en la misma posición)
   // o, la primera vez, el primero sin confirmar.
   function getGroupFocusIndex(clientId, exercises) {
+    if (!exercises.length) {
+      return 0;
+    }
     const saved = groupSessionUi.focus[clientId];
     let index = saved ? exercises.findIndex((exercise) => exercise.id === saved.id) : -1;
     if (index < 0 && saved) {
@@ -2056,7 +2069,7 @@
   function getGroupSetStates() {
     return groupSessionUi.selectedClientIds.map((clientId) => {
       const context = getGroupDayContext(clientId);
-      if (!context) {
+      if (!context || !context.exercises.length) {
         return { clientId, planExerciseId: '', active: false, pending: false, done: 0, total: 0, current: 0 };
       }
       const planExercise = context.exercises[getGroupFocusIndex(clientId, context.exercises)];
@@ -2159,6 +2172,13 @@
     if (groupSessionUi.round) {
       return `${top}${renderGroupRound()}`;
     }
+    // v0.9.45: el circuito abierto (o el único bloque de un día sin ejercicios) es para todo el grupo.
+    const circuitId = groupSessionUi.circuitView?.blockId
+      || (context && !context.exercises.length ? getGroupCircuits(context)[0]?.id : '');
+    if (circuitId && findGroupCircuit(circuitId)) {
+      return `${top}${renderGroupCircuit(circuitId)}`;
+    }
+    groupSessionUi.circuitView = null;
     const inHistory = Boolean(context) && groupSessionUi.history[clientId] !== undefined;
     const notice = groupSessionUi.clientNotices[clientId];
     let body;
@@ -2246,13 +2266,13 @@
     const figure = map ? map.figureHtml(prZones(prLibraryItem(planExercise), planExercise.exerciseName), 'gv') : '';
     const nav = `
       <div class="gv-nav">
-        <button class="gv-icon" type="button" data-group-ex-step="-1" data-client-id="${cid}" aria-label="Ejercicio anterior" ${exercises.length < 2 ? 'disabled' : ''}>◀</button>
+        <button class="gv-icon" type="button" data-group-ex-step="-1" data-client-id="${cid}" aria-label="Ejercicio anterior" ${getGroupStops(context).length < 2 ? 'disabled' : ''}>◀</button>
         ${figure ? `<span class="gv-fig">${figure}</span>` : ''}
         <div class="gv-ex-text">
           <span class="gv-ex-title">${confirmed ? '<span class="gv-ex-ok" aria-label="Confirmado">✓</span> ' : ''}<strong class="gv-ex-name">${escapeHtml(planExercise.exerciseName || 'Ejercicio')}</strong></span>
           <span class="gv-ex-meta" data-gv-ex-meta>${escapeHtml(getClientFirstName(client))} · ejercicio ${index + 1} de ${exercises.length}</span>
         </div>
-        <button class="gv-icon" type="button" data-group-ex-step="1" data-client-id="${cid}" aria-label="Ejercicio siguiente" ${exercises.length < 2 ? 'disabled' : ''}>▶</button>
+        <button class="gv-icon" type="button" data-group-ex-step="1" data-client-id="${cid}" aria-label="Ejercicio siguiente" ${getGroupStops(context).length < 2 ? 'disabled' : ''}>▶</button>
       </div>
       <p class="gv-target" data-gv-target>${escapeHtml(targetText)}${feel ? ` · <span data-group-rir>${escapeHtml(feel)}</span>` : ''}</p>
       ${blockTag || tag || studentLogged.line || studentLogged.feel ? `<div class="gv-tags">${blockTag}${tag}${studentLogged.line}${studentLogged.feel}</div>` : ''}`;
@@ -2290,6 +2310,7 @@
         ${editingComment ? '' : `<button class="gv-link" type="button" data-group-comment-open ${attrs}>Comentario</button>`}
         <button class="gv-link gv-more${moreHasData ? ' has-data' : ''}" type="button" data-group-more data-client-id="${cid}" aria-expanded="${moreOpen}" aria-label="Más opciones${moreHasData ? ' (tiene datos)' : ''}">⋯</button>
         <button class="gv-link" type="button" data-gv-round-open>Cerrar ronda</button>
+        ${getGroupCircuits(context).length ? `<button class="gv-link gv-link--circuit" type="button" data-gc-open="${escapeHtml(getGroupNextCircuit(context, index).id)}">Ir al circuito</button>` : ''}
       </div>
       ${comment.block}
       ${more}`;
@@ -2344,6 +2365,421 @@
         ${renderGroupDoneButton(clientId, states, progress, attrs, context.day, planExercise)}
         ${links}
       </div>`;
+  }
+
+  // ---- v0.9.45 · Circuito en Modo Grupo ----
+  // Una tarjeta para todo el grupo: formato, reloj grande (cuenta regresiva en AMRAP, EMOM y Tabata;
+  // cronómetro en Por tiempo), Pausa y Reiniciar, las estaciones y una fila por alumno con su
+  // resultado (−/+). Sin regla de carga: no hay Subir/Mantener/Bajar y no cuenta como series ni
+  // récords. "Guardar resultados" escribe session.circuits de cada alumno (circuits-core.js). El reloj
+  // y lo escrito sin guardar viven solo en memoria.
+  let groupCircuitTicker = null;
+
+  function getGroupCircuits(context) {
+    return context && blocksApi?.circuitsOf && circuitsApi ? blocksApi.circuitsOf(context.day) : [];
+  }
+
+  function findGroupCircuit(blockId) {
+    for (const clientId of groupSessionUi.selectedClientIds) {
+      const circuit = getGroupCircuits(getGroupDayContext(clientId)).find((block) => block.id === blockId);
+      if (circuit) {
+        return circuit;
+      }
+    }
+    return null;
+  }
+
+  function getGroupCircuitAt(context, circuit) {
+    const at = Number(circuit.at);
+    return Number.isFinite(at) ? Math.min(Math.max(at, 0), context.exercises.length) : context.exercises.length;
+  }
+
+  // Paradas del día en orden: { index } (ejercicio) o { circuitId }.
+  function getGroupStops(context) {
+    if (!context) {
+      return [];
+    }
+    const circuits = getGroupCircuits(context);
+    const stops = [];
+    let next = 0;
+    const place = (upTo) => {
+      while (next < circuits.length && getGroupCircuitAt(context, circuits[next]) <= upTo) {
+        stops.push({ circuitId: circuits[next].id });
+        next += 1;
+      }
+    };
+    context.exercises.forEach((exercise, index) => {
+      place(index);
+      stops.push({ index });
+    });
+    place(Infinity);
+    return stops;
+  }
+
+  // El primer circuito después del ejercicio a la vista (o el primero del día).
+  function getGroupNextCircuit(context, index) {
+    const circuits = getGroupCircuits(context);
+    return circuits.find((circuit) => getGroupCircuitAt(context, circuit) > index) || circuits[0];
+  }
+
+  // ◀ ▶: de parada en parada (ejercicios y circuitos), dando la vuelta como siempre.
+  function stepGroupStop(clientId, step) {
+    const context = getGroupDayContext(clientId);
+    if (!context) {
+      return;
+    }
+    if (!getGroupCircuits(context).length) {
+      stepGroupFocus(clientId, step);
+      return;
+    }
+    const stops = getGroupStops(context);
+    const viewId = groupSessionUi.circuitView?.blockId;
+    let current = viewId ? stops.findIndex((stop) => stop.circuitId === viewId) : -1;
+    if (current < 0) {
+      const focus = getGroupFocusIndex(clientId, context.exercises);
+      current = Math.max(stops.findIndex((stop) => stop.index === focus), 0);
+    }
+    const target = stops[(current + step + stops.length) % stops.length];
+    if (target.circuitId) {
+      openGroupCircuit(target.circuitId);
+      return;
+    }
+    groupSessionUi.circuitView = null;
+    groupSessionUi.focus[clientId] = { id: context.exercises[target.index].id, index: target.index };
+  }
+
+  function openGroupCircuit(blockId) {
+    groupSessionUi.circuitView = { blockId };
+    groupSessionUi.circuitNotice = '';
+    groupSessionUi.round = null;
+  }
+
+  // Alumnos del grupo que tienen este circuito hoy (en el orden de la barra).
+  function getGroupCircuitClients(blockId) {
+    return groupSessionUi.selectedClientIds.filter((clientId) => getGroupCircuits(getGroupDayContext(clientId)).some((block) => block.id === blockId));
+  }
+
+  function getGroupCircuitTimer(blockId) {
+    return groupSessionUi.circuitTimers[blockId] || circuitsApi.timerReset();
+  }
+
+  function getGroupCircuitClock(circuit) {
+    return circuitsApi.clockState(circuit, circuitsApi.timerElapsed(getGroupCircuitTimer(circuit.id), Date.now()));
+  }
+
+  // Línea bajo el reloj: "Minuto 3 de 10 · quedan 42 s", "Ronda 2 de 8 · TRABAJO 14 s"…
+  function getGroupClockSub(circuit, clock) {
+    if (clock.finished) {
+      return circuit.format === 'fortime' ? 'Se cumplió el tope' : 'Tiempo';
+    }
+    if (circuit.format === 'emom') {
+      return `Minuto ${clock.minute} de ${circuit.minutes} · quedan ${clock.phaseLeft} s`;
+    }
+    if (circuit.format === 'tabata') {
+      return `Ronda ${clock.round} de ${circuit.rounds} · ${clock.phase === 'work' ? 'TRABAJO' : 'PAUSA'} ${clock.phaseLeft} s`;
+    }
+    if (circuit.format === 'fortime') {
+      return circuit.capMinutes ? `Cronómetro · tope ${circuit.capMinutes} min` : 'Cronómetro';
+    }
+    return 'Cuenta regresiva';
+  }
+
+  function renderGroupCircuitClock(circuit) {
+    if (circuitsApi.clockMode(circuit) === 'none') {
+      return '';
+    }
+    const timer = getGroupCircuitTimer(circuit.id);
+    const clock = getGroupCircuitClock(circuit);
+    const id = escapeHtml(circuit.id);
+    const startLabel = timer.running ? 'Pausa' : clock.elapsed > 0 ? 'Seguir' : 'Iniciar';
+    return `
+      <div class="gc-clock-box${clock.phase === 'pause' ? ' is-pause' : ''}${clock.finished ? ' is-finished' : ''}" data-gc-clock-box="${id}">
+        <div class="gc-clock" data-gc-clock aria-live="off">${escapeHtml(clock.display)}</div>
+        <p class="gc-clock-sub" data-gc-clock-sub>${escapeHtml(getGroupClockSub(circuit, clock))}</p>
+        <div class="gc-clock-actions">
+          <button class="gc-clock-btn gc-clock-btn--main" type="button" data-gc-timer="toggle" data-gc-circuit="${id}" ${clock.finished ? 'disabled' : ''}>${startLabel}</button>
+          <button class="gc-clock-btn" type="button" data-gc-timer="reset" data-gc-circuit="${id}">Reiniciar</button>
+        </div>
+      </div>`;
+  }
+
+  // Cada 250 ms (solo con el reloj andando y la tarjeta a la vista) se cambia solo el reloj:
+  // lo que se está escribiendo no se toca.
+  function tickGroupCircuitClock() {
+    const blockId = groupSessionUi.circuitView?.blockId;
+    const box = blockId ? document.querySelector(`[data-gc-clock-box="${CSS.escape(blockId)}"]`) : null;
+    const circuit = blockId ? findGroupCircuit(blockId) : null;
+    if (!box || !circuit) {
+      syncGroupCircuitTicker(true);
+      return;
+    }
+    const timer = getGroupCircuitTimer(blockId);
+    const clock = getGroupCircuitClock(circuit);
+    box.querySelector('[data-gc-clock]').textContent = clock.display;
+    box.querySelector('[data-gc-clock-sub]').textContent = getGroupClockSub(circuit, clock);
+    box.classList.toggle('is-pause', clock.phase === 'pause');
+    box.classList.toggle('is-finished', clock.finished);
+    if (clock.finished && timer.running) {
+      // Al llegar a cero (o al tope) el reloj se detiene ahí.
+      groupSessionUi.circuitTimers[blockId] = circuitsApi.timerPause(timer, Date.now());
+      const toggle = box.querySelector('[data-gc-timer="toggle"]');
+      if (toggle) {
+        toggle.textContent = 'Seguir';
+        toggle.disabled = true;
+      }
+      syncGroupCircuitTicker(true);
+    }
+  }
+
+  function syncGroupCircuitTicker(stop = false) {
+    const blockId = groupSessionUi.circuitView?.blockId;
+    const running = !stop && blockId && getGroupCircuitTimer(blockId).running;
+    if (running && !groupCircuitTicker) {
+      groupCircuitTicker = setInterval(tickGroupCircuitClock, 250);
+    } else if (!running && groupCircuitTicker) {
+      clearInterval(groupCircuitTicker);
+      groupCircuitTicker = null;
+    }
+  }
+
+  // Resultado ya guardado hoy para el alumno (de Modo Grupo o traído del alumno).
+  function findGroupCircuitEntry(clientId, blockId) {
+    const sessions = getTrainingSessionsByClient(clientId).filter((session) => session.date === groupSessionUi.sessionDate);
+    for (const session of sessions) {
+      const entry = (Array.isArray(session.circuits) ? session.circuits : []).find((item) => item.blockId === blockId);
+      if (entry) {
+        return { session, entry };
+      }
+    }
+    return null;
+  }
+
+  function getGroupCircuitDraft(clientId, circuit) {
+    const key = `${clientId}::${circuit.id}`;
+    if (!groupSessionUi.circuitDrafts[key]) {
+      const saved = findGroupCircuitEntry(clientId, circuit.id)?.entry;
+      const value = (field) => (saved && Number.isFinite(saved[field]) ? saved[field] : null);
+      groupSessionUi.circuitDrafts[key] = {
+        rounds: value('rounds'),
+        reps: value('reps'),
+        seconds: value('seconds'),
+        completed: Boolean(saved?.completed),
+        noData: Boolean(saved?.noData),
+        note: saved?.note || '',
+        noteOpen: Boolean(saved?.note)
+      };
+    }
+    return groupSessionUi.circuitDrafts[key];
+  }
+
+  function renderGroupCircuitRow(clientId, circuit) {
+    const draft = getGroupCircuitDraft(clientId, circuit);
+    const saved = findGroupCircuitEntry(clientId, circuit.id)?.entry;
+    const client = getClientById(clientId);
+    const fullName = client ? getClientDisplayName(client) : 'Alumno';
+    const attrs = `data-client-id="${escapeHtml(clientId)}" data-gc-circuit="${escapeHtml(circuit.id)}"`;
+    const stepper = (field, label, value, step = 1, display = (item) => (item === null || item === undefined ? '' : String(item))) => `
+        <div class="gc-field">
+          <small>${label}</small>
+          <div class="gv-stepper">
+            <button class="gv-step" type="button" data-gc-step="${field}" data-gc-delta="-${step}" ${attrs} aria-label="Menos ${label.toLowerCase()} · ${escapeHtml(fullName)}">−</button>
+            <input class="gv-value" type="text" inputmode="numeric" autocomplete="off" data-gc-field="${field}" ${attrs} value="${escapeHtml(display(value))}" placeholder="0" aria-label="${label} · ${escapeHtml(fullName)}">
+            <button class="gv-step" type="button" data-gc-step="${field}" data-gc-delta="${step}" ${attrs} aria-label="Más ${label.toLowerCase()} · ${escapeHtml(fullName)}">+</button>
+          </div>
+        </div>`;
+    let fields = '';
+    if (circuit.format === 'amrap') {
+      fields = `${stepper('rounds', 'Rondas', draft.rounds)}${stepper('reps', 'Reps', draft.reps)}`;
+    } else if (circuit.format === 'rounds') {
+      fields = stepper('rounds', 'Vueltas', draft.rounds);
+    } else if (circuit.format === 'emom' || circuit.format === 'tabata') {
+      fields = `
+        <button class="gv-chip gc-completed${draft.completed ? ' is-on' : ''}" type="button" data-gc-completed ${attrs} aria-pressed="${draft.completed}">✓ Completado</button>
+        ${stepper('rounds', 'Rondas cumplidas', draft.completed ? null : draft.rounds)}`;
+    } else if (circuit.format === 'fortime') {
+      fields = `
+        ${stepper('seconds', 'Tiempo (mm:ss)', draft.seconds, 5, (item) => (item === null || item === undefined ? '' : circuitsApi.formatClock(item)))}
+        <button class="gv-chip gc-arrived" type="button" data-gc-arrived ${attrs}>Llegó</button>`;
+    }
+    const savedText = saved ? circuitsApi.formatResult(circuit, saved) : '';
+    return `
+      <div class="gc-row${draft.noData ? ' is-nodata' : ''}" data-gc-row="${escapeHtml(clientId)}">
+        <div class="gc-row-head">
+          <span class="gv-avatar" aria-hidden="true">${escapeHtml(groupRoundApi.initials(fullName))}</span>
+          <strong class="gc-row-name">${escapeHtml(getGroupShortName(clientId))}</strong>
+          ${savedText ? `<span class="tag ok gc-saved" data-gc-saved>✓ ${escapeHtml(savedText)}${saved.loggedBy === 'student' ? ' · del alumno' : ''}</span>` : ''}
+        </div>
+        <div class="gc-row-fields">${fields}</div>
+        <div class="gc-row-tools">
+          <button class="gv-link" type="button" data-gc-note-toggle ${attrs} aria-expanded="${draft.noteOpen}">Nota${draft.note ? ' ✎' : ''}</button>
+          <button class="gv-chip gc-nodata${draft.noData ? ' is-on' : ''}" type="button" data-gc-nodata ${attrs} aria-pressed="${draft.noData}">Hecho sin datos</button>
+        </div>
+        ${draft.noteOpen ? `<input class="gc-note" type="text" maxlength="300" data-gc-field="note" ${attrs} value="${escapeHtml(draft.note)}" placeholder="Nota (opcional)" aria-label="Nota · ${escapeHtml(fullName)}">` : ''}
+      </div>`;
+  }
+
+  function renderGroupCircuit(blockId) {
+    const circuit = findGroupCircuit(blockId);
+    const clientIds = getGroupCircuitClients(blockId);
+    const missing = groupSessionUi.selectedClientIds.filter((clientId) => !clientIds.includes(clientId));
+    const activeId = getGroupActiveClientId();
+    const stops = getGroupStops(getGroupDayContext(activeId));
+    const detail = circuitsApi.formatDetail(circuit);
+    const stations = (circuit.stations || []).map((station) => `<li>${escapeHtml(circuitsApi.formatStation(station))}</li>`).join('');
+    const notice = groupSessionUi.circuitNotice;
+    // Se arma después de pintar: el reloj sigue andando aunque se haya cambiado de alumno o de vista.
+    setTimeout(() => syncGroupCircuitTicker(), 0);
+    return `
+      <div class="group-compact-card gv-card gc-card" data-gc-card="${escapeHtml(circuit.id)}">
+        <div class="gv-nav">
+          <button class="gv-icon" type="button" data-group-ex-step="-1" data-client-id="${escapeHtml(activeId)}" aria-label="Anterior" ${stops.length < 2 ? 'disabled' : ''}>◀</button>
+          <div class="gv-ex-text">
+            <span class="gc-title" data-gc-title>${escapeHtml(circuitsApi.formatTitle(circuit))}</span>
+            ${circuit.name ? `<span class="gv-ex-meta">${escapeHtml(circuit.name)}</span>` : ''}
+            ${detail ? `<span class="gv-ex-meta" data-gc-detail>${escapeHtml(detail)}</span>` : ''}
+          </div>
+          <button class="gv-icon" type="button" data-group-ex-step="1" data-client-id="${escapeHtml(activeId)}" aria-label="Siguiente" ${stops.length < 2 ? 'disabled' : ''}>▶</button>
+        </div>
+        ${renderGroupCircuitClock(circuit)}
+        ${stations ? `<ol class="gc-stations" data-gc-stations>${stations}</ol>` : '<p class="meta">Este circuito no tiene estaciones.</p>'}
+        <p class="gc-rule meta">Sin regla de carga: no cuenta como series ni récords.</p>
+        <div class="gc-rows">${clientIds.map((clientId) => renderGroupCircuitRow(clientId, circuit)).join('')}</div>
+        ${missing.length ? `<p class="meta gc-missing">No está en el día de: ${escapeHtml(joinGroupNames(missing.map(getGroupShortName)))}.</p>` : ''}
+        ${notice ? `<p class="notice ${notice.startsWith('✓') ? 'ok' : 'warn'} gc-notice" role="status" data-gc-notice>${escapeHtml(notice)}</p>` : ''}
+        <button class="gv-done" type="button" data-gc-save="${escapeHtml(circuit.id)}">Guardar resultados</button>
+      </div>`;
+  }
+
+  // Escribe lo de una casilla en lo escrito del alumno (sin redibujar: el foco queda donde está).
+  function setGroupCircuitField(input) {
+    const circuit = findGroupCircuit(input.getAttribute('data-gc-circuit'));
+    if (!circuit) {
+      return;
+    }
+    const draft = getGroupCircuitDraft(input.getAttribute('data-client-id'), circuit);
+    const field = input.getAttribute('data-gc-field');
+    if (field === 'note') {
+      draft.note = input.value.slice(0, 300);
+    } else if (field === 'seconds') {
+      draft.seconds = circuitsApi.parseClock(input.value);
+    } else {
+      const value = groupRoundApi.parseNumber(input.value);
+      draft[field] = value === null ? null : Math.max(0, Math.round(value));
+      if (field === 'rounds' && draft.completed) {
+        draft.completed = false;
+      }
+    }
+  }
+
+  // Un resultado por alumno en su sesión del día (la de Modo Grupo; si no hay, la crea).
+  function saveGroupCircuitResults(blockId) {
+    const circuit = findGroupCircuit(blockId);
+    if (!circuit) {
+      return;
+    }
+    const touched = [];
+    getGroupCircuitClients(blockId).forEach((clientId) => {
+      const draft = getGroupCircuitDraft(clientId, circuit);
+      const entry = circuitsApi.buildSessionEntry(circuit, draft, { loggedBy: 'coach' });
+      if (!entry) {
+        return;
+      }
+      const context = getGroupDayContext(clientId);
+      let session = findGroupCircuitEntry(clientId, blockId)?.session
+        || findGroupSessionForClient(clientId)
+        || adoptGroupStudentSession(clientId, context.day);
+      if (!session) {
+        session = {
+          id: dataApi.createId('tx-session'),
+          clientId,
+          planId: context.assignment.programId || null,
+          programAssignmentId: context.assignment.id,
+          programDayId: context.day.id,
+          programDayName: context.day.name || '',
+          groupSessionId: getGroupSessionId(),
+          date: groupSessionUi.sessionDate,
+          title: `Modo Grupo · ${context.day.name || 'Entrenamiento'}`,
+          status: 'completed',
+          notes: '',
+          exercises: []
+        };
+        state.trainingsV08.sessions.push(session);
+      }
+      session.circuits = [...(Array.isArray(session.circuits) ? session.circuits : []).filter((item) => item.blockId !== blockId), entry];
+      touched.push(session);
+    });
+    if (!touched.length) {
+      groupSessionUi.circuitNotice = 'Anota el resultado de al menos un alumno (o "Hecho sin datos").';
+      renderTrainingGroupMode();
+      return;
+    }
+    dataApi.saveState(state);
+    if (isCloudSessionActive()) {
+      touched.forEach((session) => syncSessionToCloud(session).catch((error) => console.error(error)));
+    }
+    groupSessionUi.circuitNotice = `✓ Resultados guardados: ${prPlural(touched.length, 'alumno', 'alumnos')}.`;
+    renderTrainingGroupMode();
+  }
+
+  function handleGroupCircuitClick(target) {
+    const open = target.closest('[data-gc-open]');
+    if (open) {
+      openGroupCircuit(open.getAttribute('data-gc-open'));
+      renderTrainingGroupMode();
+      return true;
+    }
+    const button = target.closest('[data-gc-circuit]');
+    const save = target.closest('[data-gc-save]');
+    if (save) {
+      saveGroupCircuitResults(save.getAttribute('data-gc-save'));
+      return true;
+    }
+    if (!button || button.tagName === 'INPUT') {
+      return false;
+    }
+    const blockId = button.getAttribute('data-gc-circuit');
+    const circuit = findGroupCircuit(blockId);
+    if (!circuit) {
+      return false;
+    }
+    const timerAction = button.getAttribute('data-gc-timer');
+    if (timerAction) {
+      const timer = getGroupCircuitTimer(blockId);
+      const now = Date.now();
+      groupSessionUi.circuitTimers[blockId] = timerAction === 'reset'
+        ? circuitsApi.timerReset()
+        : timer.running ? circuitsApi.timerPause(timer, now) : circuitsApi.timerStart(timer, now);
+      renderTrainingGroupMode();
+      return true;
+    }
+    const clientId = button.getAttribute('data-client-id');
+    const draft = getGroupCircuitDraft(clientId, circuit);
+    if (button.hasAttribute('data-gc-step')) {
+      const field = button.getAttribute('data-gc-step');
+      const delta = Number(button.getAttribute('data-gc-delta'));
+      const base = Number.isFinite(draft[field]) ? draft[field] : 0;
+      draft[field] = Math.max(0, base + delta);
+      if (field === 'rounds' && draft.completed) {
+        draft.completed = false;
+      }
+    } else if (button.hasAttribute('data-gc-completed')) {
+      draft.completed = !draft.completed;
+      if (draft.completed) {
+        draft.rounds = null;
+      }
+    } else if (button.hasAttribute('data-gc-arrived')) {
+      // "Llegó": el tiempo del cronómetro en este momento.
+      draft.seconds = getGroupCircuitClock(circuit).elapsed;
+    } else if (button.hasAttribute('data-gc-nodata')) {
+      draft.noData = !draft.noData;
+    } else if (button.hasAttribute('data-gc-note-toggle')) {
+      draft.noteOpen = !draft.noteOpen;
+    } else {
+      return false;
+    }
+    groupSessionUi.circuitNotice = '';
+    renderTrainingGroupMode();
+    return true;
   }
 
   // ---- Cierre de ronda: "¿CUÁNTAS LES QUEDABAN?" ----
@@ -2621,6 +3057,9 @@
   }
 
   function handleGroupV2Click(target) {
+    if (handleGroupCircuitClick(target)) {
+      return true;
+    }
     const button = (selector) => target.closest(selector);
     const stepButton = button('[data-gv-step]');
     if (stepButton) {
@@ -2701,13 +3140,37 @@
     return Boolean(groupDraftOwner);
   }
 
+  // v0.9.45: lo anotado en circuitos que todavía no se guardó (distinto de lo guardado hoy).
+  // Lo ya guardado con "Guardar resultados" vive en la sesión: no va al borrador.
+  function getUnsavedGroupCircuitDrafts() {
+    const out = {};
+    Object.keys(groupSessionUi.circuitDrafts || {}).forEach((key) => {
+      const draft = groupSessionUi.circuitDrafts[key];
+      if (!groupDraftApi.circuitEntryHasData(groupDraftApi.cleanCircuitEntry(draft))) {
+        return;
+      }
+      const [clientId, blockId] = key.split('::');
+      const saved = findGroupCircuitEntry(clientId, blockId)?.entry;
+      const format = findGroupCircuit(blockId)?.format || saved?.format;
+      if (saved && format && JSON.stringify(circuitsApi.normalizeResult(format, draft)) === JSON.stringify(circuitsApi.normalizeResult(format, saved))) {
+        return;
+      }
+      out[key] = draft;
+    });
+    return out;
+  }
+
+  function groupUnconfirmedView() {
+    return { drafts: groupSessionUi.drafts, circuits: getUnsavedGroupCircuitDrafts(), picker: groupSessionUi.picker, commentEditor: groupSessionUi.commentEditor };
+  }
+
   function persistGroupDraft() {
     if (!groupDraftApi || !groupDraftChecked || groupSessionUi.pendingDraft || !groupDraftOwnerReady()) {
       return;
     }
     try {
       const key = groupDraftApi.storageKey(groupDraftOwner);
-      const snapshot = groupDraftApi.buildSnapshot({ ownerId: groupDraftOwner, ui: groupSessionUi, today: getTodayLocalDate() });
+      const snapshot = groupDraftApi.buildSnapshot({ ownerId: groupDraftOwner, ui: { ...groupSessionUi, circuitDrafts: getUnsavedGroupCircuitDrafts() }, today: getTodayLocalDate() });
       if (groupDraftApi.isWorthSaving(snapshot)) {
         localStorage.setItem(key, JSON.stringify(snapshot));
       } else {
@@ -2734,6 +3197,14 @@
     groupSessionUi.drafts = JSON.parse(JSON.stringify(snapshot.drafts));
     groupSessionUi.picker = snapshot.picker ? { ...snapshot.picker } : null;
     groupSessionUi.commentEditor = snapshot.commentEditor ? { ...snapshot.commentEditor } : null;
+    // v0.9.45: lo anotado en circuitos sin guardar vuelve a su tarjeta (la nota, abierta).
+    groupSessionUi.circuitDrafts = {};
+    Object.keys(snapshot.circuits || {}).forEach((key) => {
+      const entry = snapshot.circuits[key];
+      groupSessionUi.circuitDrafts[key] = { ...entry, noteOpen: Boolean(entry.note) };
+    });
+    groupSessionUi.circuitView = snapshot.circuitView ? { blockId: snapshot.circuitView.blockId } : null;
+    groupSessionUi.circuitNotice = '';
     groupSessionUi.history = {};
     groupSessionUi.clientNotices = {};
     groupSessionUi.cancelAsk = false;
@@ -2770,7 +3241,8 @@
     Object.assign(groupSessionUi, {
       selectedClientIds: [], sessionDate: getTodayLocalDate(), dateIsManual: false, dayChoices: {}, openClients: {}, drafts: {},
       message: '', picker: null, history: {}, clientNotices: {}, commentEditor: null, draftNotice: '', pendingDraft: null, cancelAsk: false,
-      activeClientId: '', focus: {}, moreOpen: {}, clientsOpen: null, round: null, importNotice: ''
+      activeClientId: '', focus: {}, moreOpen: {}, clientsOpen: null, round: null, importNotice: '',
+      circuitView: null, circuitTimers: {}, circuitDrafts: {}, circuitNotice: ''
     });
     // Los vínculos de alumnos de la cuenta anterior no valen para esta.
     Object.assign(studentLinks, { loaded: false, ownerId: '', byClient: new Map() });
@@ -2805,17 +3277,17 @@
   }
 
   function groupHasUnconfirmed() {
-    return Boolean(groupDraftApi) && groupDraftApi.hasUnconfirmedData({ drafts: groupSessionUi.drafts, picker: groupSessionUi.picker, commentEditor: groupSessionUi.commentEditor });
+    return Boolean(groupDraftApi) && groupDraftApi.hasUnconfirmedData(groupUnconfirmedView());
   }
 
   function renderGroupSessionActions() {
     if (!groupSessionUi.cancelAsk) {
       return '<div class="group-session-actions"><button class="ghost small" type="button" data-group-cancel>Descartar lo no confirmado</button></div>';
     }
-    const names = groupClientNames(groupDraftApi.clientsWithData({ drafts: groupSessionUi.drafts, picker: groupSessionUi.picker, commentEditor: groupSessionUi.commentEditor }));
+    const names = groupClientNames(groupDraftApi.clientsWithData(groupUnconfirmedView()));
     return `
       <div class="notice warn group-session-actions" data-group-cancel-ask role="alert">
-        <p>¿Descartar lo no confirmado${names ? ` de ${escapeHtml(names)}` : ''}? Se borra lo escrito sin confirmar (series, pesos, reps, RIR, aproximaciones, decisiones, comentarios y la galería abierta) y se limpia la selección de alumnos. Lo ya confirmado no se toca.</p>
+        <p>¿Descartar lo no confirmado${names ? ` de ${escapeHtml(names)}` : ''}? Se borra lo escrito sin confirmar (series, pesos, reps, RIR, aproximaciones, decisiones, comentarios, resultados de circuito sin guardar y la galería abierta) y se limpia la selección de alumnos. Lo ya confirmado no se toca.</p>
         <div class="group-draft-actions">
           <button class="danger small" type="button" data-group-cancel-yes>Sí, descartar</button>
           <button class="secondary small" type="button" data-group-cancel-no>No, seguir</button>
@@ -2828,6 +3300,7 @@
       selectedClientIds: [], dateIsManual: false, dayChoices: {}, openClients: {}, drafts: {}, picker: null, history: {},
       clientNotices: {}, commentEditor: null, draftNotice: '', cancelAsk: false,
       activeClientId: '', focus: {}, moreOpen: {}, clientsOpen: null, round: null,
+      circuitView: null, circuitDrafts: {}, circuitNotice: '',
       message: 'Se descartó lo no confirmado. Lo ya confirmado sigue guardado.'
     });
     discardStoredGroupDraft();
@@ -3317,6 +3790,10 @@
   }
 
   function handleGroupSessionInputValue(event) {
+    if (event.target.hasAttribute('data-gc-field')) {
+      setGroupCircuitField(event.target);
+      return;
+    }
     const commentField = event.target.getAttribute('data-group-comment-field');
     if (commentField && groupSessionUi.commentEditor) {
       const editor = groupSessionUi.commentEditor;
@@ -3410,7 +3887,8 @@
     }
     const exerciseStep = target.closest('[data-group-ex-step]');
     if (exerciseStep) {
-      stepGroupFocus(exerciseStep.getAttribute('data-client-id'), Number(exerciseStep.getAttribute('data-group-ex-step')));
+      // v0.9.45: ◀ ▶ también pasan por los circuitos del día.
+      stepGroupStop(exerciseStep.getAttribute('data-client-id'), Number(exerciseStep.getAttribute('data-group-ex-step')));
       renderTrainingGroupMode();
       return true;
     }
@@ -5906,6 +6384,22 @@
               <button class="pr-tool" type="button" data-pr-move="-1" data-pr-segment="${segment}" aria-label="Subir" ${segment === 0 ? 'disabled' : ''}>↑</button>
               <button class="pr-tool" type="button" data-pr-move="1" data-pr-segment="${segment}" aria-label="Bajar" ${segment === count - 1 ? 'disabled' : ''}>↓</button>`;
     const html = parts.map((part, segment) => {
+      // v0.9.45: circuito (borde verde, "CIRCUITO · AMRAP 12 MIN"); ↑ y ↓ lo mueven entero.
+      if (part.kind === 'circuit' && circuitsApi) {
+        const block = part.block;
+        const detail = circuitsApi.formatDetail(block);
+        const stations = (block.stations || []).map((station) => `<li>${escapeHtml(circuitsApi.formatStation(station))}</li>`).join('');
+        return `
+          <div class="pr-block pr-circuit" data-pr-circuit="${escapeHtml(block.id)}">
+            <div class="pr-block-head">
+              <button class="pr-block-title pr-circuit-title" type="button" data-pr-circuit-edit="${escapeHtml(block.id)}" aria-label="Cambiar el circuito">${escapeHtml(circuitsApi.formatTitle(block))}</button>
+              <div class="pr-ex-tools">${moveTools(segment, parts.length)}</div>
+            </div>
+            ${block.name ? `<p class="pr-circuit-name">${escapeHtml(block.name)}</p>` : ''}
+            ${detail ? `<p class="pr-circuit-detail">${escapeHtml(detail)}</p>` : ''}
+            ${stations ? `<ol class="pr-stations" data-pr-stations>${stations}</ol>` : '<p class="pr-empty">Sin estaciones.</p>'}
+          </div>`;
+      }
       if (part.kind === 'single') {
         const name = part.exercise.exerciseName || 'Ejercicio';
         return exerciseRow(part.exercise, part.index, {
@@ -5936,19 +6430,19 @@
     }).join('');
     els.routineBuilderRoot.innerHTML = `
       <div class="pr-exercises">
-        ${items.length ? html : '<p class="pr-empty">Este día no tiene ejercicios todavía.</p>'}
+        ${parts.length ? html : '<p class="pr-empty">Este día no tiene ejercicios todavía.</p>'}
         <button class="pr-add" type="button" data-pr-add>+ Agregar al día</button>
       </div>`;
   }
 
-  // v0.9.44: "+ Agregar al día": Ejercicio / Superserie / Circuito (fase 2, desactivado).
+  // v0.9.44: "+ Agregar al día": Ejercicio / Superserie / Circuito (v0.9.45).
   function prOpenAddSheet() {
     const overlay = prOpenModal('prAddSheet', `
       <h3 class="pr-sheet-title">Agregar al día</h3>
       <div class="pr-add-options" role="group" aria-label="Qué agregar">
         <button class="pr-add-option" type="button" data-pr-add-kind="exercise"><strong>Ejercicio</strong><span>Uno de la galería, con sus series</span></button>
         <button class="pr-add-option" type="button" data-pr-add-kind="superset"><strong>Superserie</strong><span>2 a 4 ejercicios seguidos, sin descanso entre ellos</span></button>
-        <button class="pr-add-option" type="button" data-pr-add-kind="circuit" disabled aria-disabled="true"><strong>Circuito</strong><span>Próximamente</span></button>
+        <button class="pr-add-option" type="button" data-pr-add-kind="circuit" ${circuitsApi ? '' : 'disabled aria-disabled="true"'}><strong>Circuito</strong><span>Vueltas, EMOM, AMRAP, Tabata o Por tiempo, con sus estaciones</span></button>
       </div>
       <button class="pr-link" type="button" data-pr-sheet-close>Cancelar</button>`);
     overlay.addEventListener('click', (event) => {
@@ -5957,11 +6451,169 @@
         prCloseModal('prAddSheet');
         return;
       }
+      if (kind === 'circuit' && circuitsApi) {
+        prCloseModal('prAddSheet');
+        prOpenCircuitSheet();
+        return;
+      }
       if (kind === 'exercise' || kind === 'superset') {
         prCloseModal('prAddSheet');
         Object.assign(programsUi, { view: 'pick', pickMode: kind, picked: [], pickSearch: '', pickZone: 'all' });
         renderProgramsScreen();
         window.scrollTo(0, 0);
+      }
+    });
+  }
+
+  // v0.9.45: crear o cambiar un circuito: formato y sus datos, nombre y estaciones (de la galería o
+  // texto libre como "200 m remo", con cantidad en reps, segundos o metros).
+  const PR_CIRCUIT_FIELDS = {
+    rounds: [['rounds', 'Vueltas', 1], ['restSeconds', 'Descanso entre vueltas (s)', 5]],
+    emom: [['minutes', 'Minutos', 1]],
+    amrap: [['minutes', 'Minutos', 1]],
+    tabata: [['rounds', 'Rondas', 1], ['workSeconds', 'Trabajo (s)', 5], ['pauseSeconds', 'Pausa (s)', 5]],
+    fortime: [['rounds', 'Vueltas', 1], ['capMinutes', 'Tope (min, opcional)', 1]]
+  };
+
+  function prOpenCircuitSheet(blockId = '') {
+    const program = prCurrentProgram();
+    const day = program?.days?.[programsUi.dayIndex];
+    if (!day || !circuitsApi || !blocksApi) {
+      return;
+    }
+    const existing = blockId ? blocksApi.findCircuit(day, blockId) : null;
+    const draft = existing
+      ? JSON.parse(JSON.stringify(existing))
+      : circuitsApi.createCircuit({ id: dataApi.createId('program-circuit'), format: 'amrap' });
+    if (!draft.stations.length) {
+      draft.stations = [{ id: dataApi.createId('station'), name: '', unit: 'reps' }];
+    }
+    const library = (state.exerciseLibrary || []).filter((item) => item && item.active !== false && item.name);
+    const fold = (value) => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+    let error = '';
+    const overlay = prOpenModal('prCircuitSheet', '');
+    const card = overlay.querySelector('.pr-sheet');
+    card.classList.add('pr-circuit-sheet');
+    // Lee lo escrito antes de redibujar (cambio de formato, + estación, quitar…).
+    const collect = () => {
+      card.querySelectorAll('[data-pr-c-field]').forEach((input) => {
+        draft[input.getAttribute('data-pr-c-field')] = input.value === '' ? null : Number(input.value);
+      });
+      const name = card.querySelector('[data-pr-c-name]');
+      if (name) {
+        draft.name = name.value;
+      }
+      card.querySelectorAll('[data-pr-c-station]').forEach((row) => {
+        const station = draft.stations[Number(row.getAttribute('data-pr-c-station'))];
+        if (!station) return;
+        station.name = row.querySelector('[data-pr-c-st="name"]').value;
+        const quantity = row.querySelector('[data-pr-c-st="quantity"]').value;
+        station.quantity = quantity === '' ? null : Number(quantity);
+        station.unit = row.querySelector('[data-pr-c-st="unit"]').value;
+      });
+    };
+    const draw = () => {
+      const fields = PR_CIRCUIT_FIELDS[draft.format].map(([field, label, step]) => `
+        <label class="pr-sheet-field">${label}<input type="number" min="0" step="${step}" inputmode="numeric" data-pr-c-field="${field}" value="${draft[field] ?? ''}"></label>`).join('');
+      const stations = draft.stations.map((station, index) => `
+        <div class="pr-c-station" data-pr-c-station="${index}">
+          <span class="pr-c-num">${index + 1}</span>
+          <input class="pr-c-st-name" type="text" list="prCircuitLibrary" maxlength="120" data-pr-c-st="name" value="${escapeHtml(station.name || '')}" placeholder="De la galería o texto libre" aria-label="Estación ${index + 1}">
+          <input class="pr-c-st-qty" type="number" min="1" inputmode="numeric" data-pr-c-st="quantity" value="${station.quantity ?? ''}" placeholder="Cant." aria-label="Cantidad de la estación ${index + 1}">
+          <select class="pr-c-st-unit" data-pr-c-st="unit" aria-label="Unidad de la estación ${index + 1}">
+            ${[['reps', 'reps'], ['seconds', 'seg'], ['meters', 'm'], ['', '—']].map(([value, label]) => `<option value="${value}"${(station.unit || '') === value ? ' selected' : ''}>${label}</option>`).join('')}
+          </select>
+          <button class="pr-tool pr-tool--danger" type="button" data-pr-c-st-remove="${index}" aria-label="Quitar la estación ${index + 1}" ${draft.stations.length < 2 ? 'disabled' : ''}>✕</button>
+        </div>`).join('');
+      card.innerHTML = `
+        <h3 class="pr-sheet-title">${existing ? 'Cambiar circuito' : 'Nuevo circuito'}</h3>
+        <div class="pr-c-formats" role="group" aria-label="Formato">
+          ${circuitsApi.FORMATS.map((format) => `<button class="pr-c-format${draft.format === format ? ' is-active' : ''}" type="button" data-pr-c-format="${format}" aria-pressed="${draft.format === format}">${escapeHtml(circuitsApi.FORMAT_NAMES[format])}</button>`).join('')}
+        </div>
+        <div class="pr-c-fields">${fields}</div>
+        <label class="pr-sheet-field">Nombre (opcional)<input type="text" maxlength="120" data-pr-c-name value="${escapeHtml(draft.name || '')}" placeholder="Por ejemplo: Final de piernas"></label>
+        <p class="pr-c-label">Estaciones</p>
+        <datalist id="prCircuitLibrary">${library.map((item) => `<option value="${escapeHtml(item.name)}"></option>`).join('')}</datalist>
+        <div class="pr-c-stations">${stations}</div>
+        <button class="pr-link" type="button" data-pr-c-station-add ${draft.stations.length >= circuitsApi.STATIONS_MAX ? 'disabled' : ''}>+ Estación</button>
+        <p class="pr-c-preview" data-pr-c-preview>${escapeHtml(circuitsApi.formatTitle(circuitsApi.normalizeCircuit({ ...draft, type: 'circuit' }) || draft))}</p>
+        <p class="pr-c-error${error ? '' : ' hidden'}" role="alert" data-pr-c-error>${escapeHtml(error)}</p>
+        <div class="pr-sheet-actions">
+          ${existing ? '<button class="pr-link pr-link--danger" type="button" data-pr-c-delete>Eliminar circuito</button>' : ''}
+          <button class="pr-link" type="button" data-pr-sheet-close>Cancelar</button>
+          <button class="pr-cta" type="button" data-pr-c-save>${existing ? 'Guardar' : 'Agregar circuito'}</button>
+        </div>`;
+    };
+    draw();
+    overlay.addEventListener('click', (event) => {
+      const target = event.target;
+      if (target === overlay || target.closest('[data-pr-sheet-close]')) {
+        prCloseModal('prCircuitSheet');
+        return;
+      }
+      const format = target.closest('[data-pr-c-format]')?.getAttribute('data-pr-c-format');
+      if (format) {
+        collect();
+        // Los datos que no son del formato nuevo se dejan; el formato nuevo toma sus valores por defecto.
+        PR_CIRCUIT_FIELDS[format].forEach(([field]) => {
+          if (draft[field] === null || draft[field] === undefined || format !== draft.format) {
+            draft[field] = circuitsApi.DEFAULTS[format][field] ?? null;
+          }
+        });
+        draft.format = format;
+        error = '';
+        draw();
+        return;
+      }
+      if (target.closest('[data-pr-c-station-add]')) {
+        collect();
+        draft.stations.push({ id: dataApi.createId('station'), name: '', unit: 'reps' });
+        draw();
+        card.querySelector(`[data-pr-c-station="${draft.stations.length - 1}"] [data-pr-c-st="name"]`)?.focus();
+        return;
+      }
+      const remove = target.closest('[data-pr-c-st-remove]');
+      if (remove) {
+        collect();
+        draft.stations.splice(Number(remove.getAttribute('data-pr-c-st-remove')), 1);
+        draw();
+        return;
+      }
+      if (target.closest('[data-pr-c-delete]')) {
+        prCloseModal('prCircuitSheet');
+        prReplaceDay(blocksApi.removeCircuit(day, draft.id));
+        return;
+      }
+      if (target.closest('[data-pr-c-save]')) {
+        collect();
+        // Una estación con el nombre de un ejercicio de la galería queda enlazada a él (video).
+        draft.stations.forEach((station) => {
+          const match = library.find((item) => fold(item.name) === fold(station.name));
+          if (match) {
+            station.libraryExerciseId = match.id;
+            station.name = match.name;
+          } else {
+            delete station.libraryExerciseId;
+          }
+        });
+        const circuit = circuitsApi.normalizeCircuit({ ...draft, type: 'circuit' });
+        if (!circuit || !circuit.stations.length) {
+          error = 'Agrega al menos una estación con nombre.';
+          draw();
+          return;
+        }
+        prCloseModal('prCircuitSheet');
+        prReplaceDay(existing ? blocksApi.replaceCircuit(day, circuit) : blocksApi.addCircuit(day, circuit));
+      }
+    });
+    overlay.addEventListener('input', (event) => {
+      if (event.target.matches('[data-pr-c-field]')) {
+        collect();
+        const preview = card.querySelector('[data-pr-c-preview]');
+        const circuit = circuitsApi.normalizeCircuit({ ...draft, type: 'circuit' });
+        if (preview && circuit) {
+          preview.textContent = circuitsApi.formatTitle(circuit);
+        }
       }
     });
   }
@@ -6604,6 +7256,11 @@
     if (outId && blocksApi) {
       const day = prCurrentProgram()?.days?.[programsUi.dayIndex];
       prReplaceDay(day ? blocksApi.removeFromBlock(day, outId) : null);
+      return;
+    }
+    const circuitEditId = target.closest('[data-pr-circuit-edit]')?.getAttribute('data-pr-circuit-edit');
+    if (circuitEditId) {
+      prOpenCircuitSheet(circuitEditId);
       return;
     }
     const blockEditId = target.closest('[data-pr-block-edit]')?.getAttribute('data-pr-block-edit');
@@ -7601,10 +8258,24 @@
   function showProgramImportPreview(fileName, rawText, preview) {
     closeProgramImportModal();
     const exercisesLabel = (count) => `${count} ${count === 1 ? 'ejercicio' : 'ejercicios'}`;
-    const daysMarkup = preview.days.map((day) => `
-      <li><strong>${escapeHtml(day.name)}</strong> · ${exercisesLabel(day.exercises.length)}
-        <ul>${day.exercises.map((exercise) => `<li>${exercise.superset ? `<span class="pill">${escapeHtml(exercise.superset)}</span> ` : ''}${escapeHtml(exercise.name)} <span class="muted">· ${exercise.sets} × ${exercise.seconds !== undefined ? `${escapeHtml(exercise.seconds ?? '—')} s` : exercise.reps === null ? 'sin repeticiones' : escapeHtml(exercise.reps)}</span>${exercise.linked ? '' : ' <span class="pill">no está en la galería</span>'}</li>`).join('')}</ul>
-      </li>`).join('');
+    const circuitsLabel = (count) => `${count} ${count === 1 ? 'circuito' : 'circuitos'}`;
+    // v0.9.45: cada circuito en su lugar del día (at = ejercicios antes), con sus estaciones.
+    const circuitMarkup = (item) => `<li class="program-import-circuit" data-program-import-circuit><strong>${escapeHtml(circuitsApi ? circuitsApi.formatTitle(item.block) : 'CIRCUITO')}</strong>${item.block.name ? ` <span class="muted">· ${escapeHtml(item.block.name)}</span>` : ''}
+          <ul>${(item.block.stations || []).map((station, index) => `<li>${escapeHtml(circuitsApi ? circuitsApi.formatStation(station) : station.name)}${item.stations[index]?.linked ? '' : ' <span class="muted">· texto libre</span>'}</li>`).join('')}</ul></li>`;
+    const daysMarkup = preview.days.map((day) => {
+      const circuits = Array.isArray(day.circuits) ? day.circuits : [];
+      const exerciseMarkup = (exercise) => `<li>${exercise.superset ? `<span class="pill">${escapeHtml(exercise.superset)}</span> ` : ''}${escapeHtml(exercise.name)} <span class="muted">· ${exercise.sets} × ${exercise.seconds !== undefined ? `${escapeHtml(exercise.seconds ?? '—')} s` : exercise.reps === null ? 'sin repeticiones' : escapeHtml(exercise.reps)}</span>${exercise.linked ? '' : ' <span class="pill">no está en la galería</span>'}</li>`;
+      const items = [];
+      day.exercises.forEach((exercise, index) => {
+        circuits.filter((item) => item.at === index).forEach((item) => items.push(circuitMarkup(item)));
+        items.push(exerciseMarkup(exercise));
+      });
+      circuits.filter((item) => item.at >= day.exercises.length).forEach((item) => items.push(circuitMarkup(item)));
+      return `
+      <li><strong>${escapeHtml(day.name)}</strong> · ${exercisesLabel(day.exercises.length)}${circuits.length ? ` · ${circuitsLabel(circuits.length)}` : ''}
+        <ul>${items.join('')}</ul>
+      </li>`;
+    }).join('');
     const missingMarkup = preview.missing.length
       ? `<p><strong>${exercisesLabel(preview.missing.length)}</strong> ${preview.missing.length === 1 ? 'no está en la galería y quedará' : 'no están en la galería y quedarán'} sin enlace (no se crean): ${preview.missing.map((name) => escapeHtml(name)).join(', ')}.</p>`
       : '<p>Todos los ejercicios están en la galería.</p>';
@@ -7617,7 +8288,7 @@
       <div class="sync-modal-card card">
         <h2>Importar programa</h2>
         <p class="muted">Archivo: ${escapeHtml(fileName)}</p>
-        <p><strong>${escapeHtml(preview.name)}</strong> · ${preview.durationWeeks} semanas · ${preview.days.length} ${preview.days.length === 1 ? 'día' : 'días'} · ${exercisesLabel(preview.exerciseCount)}</p>
+        <p><strong>${escapeHtml(preview.name)}</strong> · ${preview.durationWeeks} semanas · ${preview.days.length} ${preview.days.length === 1 ? 'día' : 'días'} · ${exercisesLabel(preview.exerciseCount)}${preview.circuitCount ? ` · ${circuitsLabel(preview.circuitCount)}` : ''}</p>
         <ul class="library-import-list program-import-days">${daysMarkup}</ul>
         ${missingMarkup}
         <p class="muted">Se agrega como programa nuevo, sin alumnos. No se modifica ningún programa, asignación, cliente ni la galería.</p>
@@ -9265,6 +9936,7 @@
 
   function sessionHasWork(session) {
     return session.status === 'completed'
+      || (Array.isArray(session.circuits) && session.circuits.length > 0)
       || getSessionExercises(session).some((exercise) => getExerciseSets(exercise).some((setEntry) => setEntry.completed !== false));
   }
 
@@ -9754,12 +10426,15 @@
       ? ['record', 'Récord']
       : session.status === 'completed' || (planned > 0 && done >= planned) ? ['done', 'Completa'] : ['partial', 'Incompleta'];
     const studentSets = studentImportApi ? studentImportApi.countStudentSets(session) : 0;
+    // v0.9.45: "AMRAP 12 · 5 rondas + 12" (un circuito no son series).
+    const circuitLines = circuitsApi && Array.isArray(session.circuits) ? session.circuits.map(circuitsApi.formatSessionEntry).filter(Boolean) : [];
     return `
           <button class="pg-session" type="button" data-training-open-session="${escapeHtml(session.id)}">
             <span class="pg-session-date"><span class="pg-session-day">${valid ? date.getDate() : '—'}</span><span class="pg-session-month">${valid ? FICHA_MONTHS[date.getMonth()].toUpperCase() : ''}</span></span>
             <span class="pg-session-body">
               <span class="pg-session-title">${escapeHtml(session.title || 'Sesión')}${valid ? ` · ${PG_WEEKDAYS[date.getDay()]}` : ''}</span>
-              <span class="pg-session-meta">${prPlural(exercises.length, 'ejercicio', 'ejercicios')} · ${done}/${planned} series</span>
+              ${exercises.length || !circuitLines.length ? `<span class="pg-session-meta">${prPlural(exercises.length, 'ejercicio', 'ejercicios')} · ${done}/${planned} series</span>` : ''}
+              ${circuitLines.map((line) => `<span class="pg-session-circuit" data-pg-circuit>${escapeHtml(line)}</span>`).join('')}
               ${studentSets ? `<span class="pg-session-student" data-student-logged>Registrado por el alumno · ${prPlural(studentSets, 'serie', 'series')}</span>` : ''}
             </span>
             <span class="pg-tag pg-tag--${tag[0]}">${tag[1]}</span>
@@ -14023,6 +14698,10 @@
       if (day && exerciseIndex >= 0) {
         day.exercises.splice(exerciseIndex, 1);
         day.exercises = day.exercises.map((item, index) => ({ ...item, order: index + 1 }));
+        // v0.9.45: el circuito que iba después del ejercicio quitado se queda en su lugar.
+        if (blocksApi?.shiftCircuitsAfterRemoval && Array.isArray(day.blocks)) {
+          day.blocks = blocksApi.shiftCircuitsAfterRemoval(day.blocks, exerciseIndex);
+        }
         renderPlanningDays();
       }
       return;

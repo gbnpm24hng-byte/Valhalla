@@ -5129,3 +5129,68 @@ button.client-back {
 .sv-member-label { display: inline-block; padding: 0 6px; border-radius: 6px; background: var(--sv-accent); color: #0E0E0C; font-size: 0.78rem; font-weight: 800; }
 .sv-block-line { margin: 0; color: var(--sv-accent); font-size: 0.82rem; font-weight: 800; text-transform: uppercase; }
 .auth-gate--student .sv-log-row--time, .auth-gate--student .sv-log-head--time { grid-template-columns: 24px minmax(0, 1fr) 52px; }
+
+/* v0.9.45 · Bloques fase 2: circuitos (borde izquierdo verde). */
+.pr-circuit { border-left-color: #7FD68E; background: rgba(127, 214, 142, 0.05); }
+.pr-circuit .pr-circuit-title { color: #7FD68E; }
+.pr-circuit-name { margin: 0 4px; font-weight: 700; }
+.pr-circuit-detail { margin: 0 4px; color: var(--pr-muted, #8F8B80); font-size: 0.85rem; }
+.pr-stations, .gc-stations, .sv-stations { margin: 0; padding-left: 24px; display: grid; gap: 2px; }
+.pr-stations li, .gc-stations li, .sv-stations li { font-size: 0.92rem; }
+.pr-circuit-sheet { max-height: 88vh; overflow-y: auto; display: grid; gap: 10px; }
+.pr-c-formats { display: flex; flex-wrap: wrap; gap: 6px; }
+.pr-c-format { min-height: 40px; padding: 0 12px; border: 1px solid #2B2922; border-radius: 12px; background: #1C1B17; color: var(--text); font-weight: 700; cursor: pointer; }
+.pr-c-format.is-active { border-color: #7FD68E; background: #7FD68E; color: #0E0E0C; }
+.pr-c-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
+.pr-c-label { margin: 4px 0 0; font-weight: 700; }
+.pr-c-stations { display: grid; gap: 6px; }
+.pr-c-station { display: grid; grid-template-columns: 20px minmax(0, 1fr) 88px 40px; grid-template-areas: "num name name name" ". qty unit del"; gap: 6px; align-items: center; padding-bottom: 6px; border-bottom: 1px solid #2B2922; }
+.pr-c-num { grid-area: num; }
+.pr-c-st-name { grid-area: name; }
+.pr-c-st-qty { grid-area: qty; }
+.pr-c-st-unit { grid-area: unit; }
+.pr-c-station .pr-tool { grid-area: del; }
+.pr-c-station input, .pr-c-station select { min-width: 0; min-height: 40px; }
+.pr-c-num { color: #7FD68E; font-weight: 800; text-align: center; }
+.pr-c-preview { margin: 0; color: #7FD68E; font-size: 0.8rem; font-weight: 800; letter-spacing: 0.03em; }
+.pr-c-error { margin: 0; color: #FF8A7A; font-weight: 600; }
+.pr-link--danger { color: #FF8A7A; }
+.gc-card { display: grid; gap: 10px; border-left: 4px solid #7FD68E !important; }
+.gc-title { color: #7FD68E; font-weight: 800; letter-spacing: 0.03em; font-size: 0.95rem; }
+.gc-clock-box { display: grid; justify-items: center; gap: 4px; padding: 10px; border-radius: 14px; background: #10140F; border: 1px solid #2E4A33; }
+.gc-clock-box.is-pause { border-color: #5A5547; background: #15140F; }
+.gc-clock-box.is-finished .gc-clock { color: #FF8A7A; }
+.gc-clock { font-size: clamp(3.2rem, 18vw, 5rem); font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; color: #7FD68E; }
+.gc-clock-sub { margin: 0; color: var(--gv-muted, #8F8B80); font-weight: 700; font-size: 0.9rem; text-align: center; }
+.gc-clock-actions { display: flex; gap: 8px; width: 100%; }
+.gc-clock-btn { flex: 1 1 0; min-height: 48px; border: 0; border-radius: 12px; background: var(--gv-btn, #2B2922); color: var(--text); font-weight: 800; font-size: 1rem; }
+.gc-clock-btn--main { background: #7FD68E; color: #0E0E0C; }
+.gc-clock-btn:disabled { opacity: 0.5; }
+.gc-rule { margin: 0; }
+.gc-rows { display: grid; gap: 8px; }
+.gc-row { display: grid; gap: 6px; padding: 8px; border: 1px solid #2B2922; border-radius: 12px; }
+.gc-row.is-nodata { border-color: #5A5547; }
+.gc-row-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.gc-row-head .gv-avatar { width: 34px; height: 34px; font-size: 0.8rem; }
+.gc-row-name { flex: 1 1 auto; }
+.gc-saved { font-size: 0.78rem; }
+.gc-row-fields { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
+.gc-field { display: grid; gap: 2px; flex: 1 1 140px; min-width: 0; }
+.gc-field small { color: var(--gv-muted, #8F8B80); font-weight: 700; }
+.gc-row-tools { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
+.group-mode-view--compact .gv-chip.is-on { background: #7FD68E; color: #0E0E0C; }
+.gc-note { width: 100%; min-height: 40px; }
+.gc-missing, .gc-notice { margin: 0; }
+.gv-link--circuit { color: #7FD68E; }
+.sv-circuit { list-style: none; display: grid; gap: 6px; padding: 10px 10px 10px 12px; border-left: 4px solid #7FD68E; border-radius: 4px 12px 12px 4px; background: rgba(127, 214, 142, 0.05); }
+.sv-circuit-title { margin: 0; color: #7FD68E; font-size: 0.85rem; font-weight: 800; letter-spacing: 0.03em; }
+.sv-circuit-name { margin: 0; font-weight: 700; }
+.sv-circuit-log { display: grid; gap: 8px; margin-top: 4px; }
+.sv-circuit-ask { margin: 0; font-weight: 700; }
+.sv-circuit-fields { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
+.sv-circuit-field { display: grid; gap: 2px; flex: 1 1 140px; font-size: 0.85rem; font-weight: 600; }
+.sv-circuit-field input { min-height: 44px; }
+.sv-circuit-done.is-active { background: #7FD68E; color: #0E0E0C; }
+.pg-session-circuit { color: #7FD68E; font-size: 0.85rem; font-weight: 700; }
+/* Las hojas de Programas (superserie, circuito…) cuelgan de body, fuera de .pr-screen: mismas variables. */
+.pr-modal { --pr-card: #1C1B17; --pr-line: #2B2922; --pr-yellow: #FFCC1A; --pr-muted: #8F8B80; }

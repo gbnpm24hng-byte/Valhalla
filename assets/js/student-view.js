@@ -168,6 +168,22 @@
     return exercise?.measure === 'time';
   }
 
+  // v0.9.45 · Circuito publicado: una entrada de day.exercises con circuit (formato y estaciones).
+  // No tiene series ni récords; el alumno anota un resultado (S1 y S2 en student_sets, ver
+  // circuits-core.js).
+  function circuitsApi() {
+    return window.VALHALLA.circuitsCore || null;
+  }
+
+  function isCircuit(exercise) {
+    return Boolean(exercise?.circuit) && typeof exercise.circuit === 'object' && Boolean(circuitsApi());
+  }
+
+  // El circuito publicado con su id (el de la entrada del día).
+  function circuitOf(exercise) {
+    return { ...exercise.circuit, id: exercise.id, type: 'circuit' };
+  }
+
   // Superserie publicada: day.blocks y blockId en cada ejercicio (seguidos). Letra por orden de
   // aparición en el día (A, B…) y posición dentro del bloque (A1, A2…).
   function dayBlockMap(day) {
@@ -201,6 +217,10 @@
     const { blocks, letters } = dayBlockMap(day);
     const out = [];
     (exercises || []).forEach((exercise) => {
+      if (isCircuit(exercise)) {
+        out.push({ circuit: exercise });
+        return;
+      }
       const block = exercise?.blockId ? blocks.get(exercise.blockId) : null;
       const last = out[out.length - 1];
       if (block && last?.block && last.block.id === block.id) {
@@ -393,7 +413,22 @@
   // las pruebas y otras baterías para revisar lo publicado.
   // ---------------------------------------------------------------------------
 
+  function renderCircuitInfo(exercise) {
+    const api = circuitsApi();
+    const circuit = circuitOf(exercise);
+    const detail = api.formatDetail(circuit);
+    const stations = (circuit.stations || []).map((station) => `<li>${escapeHtml(api.formatStation(station))}${station.videoUrl ? ` <a class="sv-video-mark" data-sv-video href="${escapeHtml(station.videoUrl)}" target="_blank" rel="noopener noreferrer" aria-label="Ver cómo se hace">▶</a>` : ''}</li>`).join('');
+    return `
+        <p class="sv-circuit-title" data-sv-circuit-title>${escapeHtml(api.formatTitle(circuit))}</p>
+        ${circuit.name ? `<p class="sv-circuit-name">${escapeHtml(circuit.name)}</p>` : ''}
+        ${detail ? `<p class="sv-meta">${escapeHtml(detail)}</p>` : ''}
+        ${stations ? `<ol class="sv-stations" data-sv-stations>${stations}</ol>` : '<p class="sv-meta">Sin estaciones todavía.</p>'}`;
+  }
+
   function renderExercise(exercise) {
+    if (isCircuit(exercise)) {
+      return `<li class="sv-exercise sv-circuit" data-sv-circuit="${escapeHtml(exercise.id || '')}">${renderCircuitInfo(exercise)}</li>`;
+    }
     const summary = [
       hasValue(exercise.sets) ? `${Number(exercise.sets)} ${Number(exercise.sets) === 1 ? 'serie' : 'series'}` : '',
       isTimed(exercise) ? (hasValue(exercise.durationSeconds) ? `${Number(exercise.durationSeconds)} s` : 'tiempo por definir') : repsRange(exercise),
@@ -443,6 +478,7 @@
           return `
             <details class="sv-day">
               <summary>${escapeHtml(formatDate(row.session_date || data.date) || 'Sesión')} <span class="sv-meta">${escapeHtml(data.dayName || row.title || '')}</span></summary>
+              ${(data.circuits || []).length ? `<ul class="sv-exercises">${data.circuits.map((entry) => `<li class="sv-history-exercise sv-history-circuit" data-sv-history-circuit><strong>${escapeHtml(entry.label || 'Circuito')}</strong> <span class="sv-meta">${escapeHtml(entry.result || '')}</span></li>`).join('')}</ul>` : ''}
               <ul class="sv-exercises">${(data.exercises || []).map((exercise) => `
                 <li class="sv-history-exercise">
                   <strong>${escapeHtml(exercise.name || 'Ejercicio')}</strong>
@@ -505,7 +541,21 @@
   }
 
   function loggable(exercise) {
-    return selfLog.plannedEffectiveSets(exercise) > 0;
+    return !isCircuit(exercise) && selfLog.plannedEffectiveSets(exercise) > 0;
+  }
+
+  // Resultado del circuito en la fecha elegida: { status, result, text } (lo del entrenador gana).
+  function circuitState(ctx, dayId, exercise) {
+    const api = circuitsApi();
+    const states = [1, 2].map((n) => setState(ctx, rowKey(ctx, dayId, exercise.id, 'S', n)));
+    if (!states[0].status) {
+      return { status: '', result: {}, text: '' };
+    }
+    const result = api.studentSetsToResult(circuitOf(exercise), { 1: states[0].reps, 2: states[1].status ? states[1].reps : null });
+    const rejected = states.find((state) => state.status === 'rejected');
+    const pending = states.find((state) => state.status === 'pending');
+    const status = states[0].status === 'coach' ? 'coach' : rejected ? 'rejected' : pending ? 'pending' : states[0].status;
+    return { status, result, text: api.formatResult(circuitOf(exercise), result), error: rejected?.error || '' };
   }
 
   function dayComplete(ctx, day) {
@@ -571,7 +621,7 @@
     const records = [];
     const seen = new Set();
     exercises.forEach((exercise) => {
-      if (!exercise?.id || seen.has(exercise.id)) return;
+      if (!exercise?.id || seen.has(exercise.id) || isCircuit(exercise)) return;
       seen.add(exercise.id);
       let best = 0;
       exerciseHistory(ctx, exercise).forEach((entry) => {
@@ -659,8 +709,10 @@
       logState.dayId = day?.id || '';
     }
     const exercises = day?.exercises || [];
-    const exerciseIndex = Math.max(exercises.findIndex((item) => item.id === logState.exerciseId), 0);
-    return { program, days, day, exercises, exerciseIndex, exercise: exercises[exerciseIndex] || null };
+    // La pantalla de un ejercicio recorre solo ejercicios (el circuito se ve y se anota en "Hoy").
+    const steps = exercises.filter((item) => !isCircuit(item));
+    const exerciseIndex = Math.max(steps.findIndex((item) => item.id === logState.exerciseId), 0);
+    return { program, days, day, exercises, steps, exerciseIndex, exercise: steps[exerciseIndex] || null };
   }
 
   // ---------------------------------------------------------------------------
@@ -726,6 +778,9 @@
     };
     // v0.9.44: A1 y A2 juntos bajo "Superserie · 3 vueltas".
     const cards = daySegments(day, exercises).map((segment) => {
+      if (segment.circuit) {
+        return renderCircuitCard(ctx, day, segment.circuit);
+      }
       if (!segment.block) {
         return card(segment.exercise);
       }
@@ -737,9 +792,10 @@
         </li>`;
     }).join('');
     let next = '';
+    const firstStep = selection.steps?.[0];
     if (exercises.length) {
       if (!ctx.canLog) {
-        next = `<button type="button" class="sv-next" data-sv-open="${escapeHtml(exercises[0].id || '')}">Ver: ${escapeHtml(exercises[0].name || 'Ejercicio')}</button>`;
+        next = firstStep ? `<button type="button" class="sv-next" data-sv-open="${escapeHtml(firstStep.id || '')}">Ver: ${escapeHtml(firstStep.name || 'Ejercicio')}</button>` : '';
       } else if (dayComplete(ctx, day)) {
         next = '<button type="button" class="sv-next" data-sv-summary>Ver resumen ✓</button>';
       } else {
@@ -759,6 +815,116 @@
         ${next}
         ${renderHistory(cache.progress || [])}
       </section>`;
+  }
+
+  // v0.9.45: tarjeta del circuito en "Hoy": formato, estaciones y, si registra, su resultado.
+  function renderCircuitCard(ctx, day, exercise) {
+    const api = circuitsApi();
+    const circuit = circuitOf(exercise);
+    const id = escapeHtml(exercise.id || '');
+    let form = '';
+    if (ctx.canLog) {
+      const state = circuitState(ctx, day.id, exercise);
+      const locked = state.status === 'coach';
+      const r = state.result || {};
+      const stepper = (field, label, value) => `
+        <label class="sv-circuit-field"><span>${label}</span>
+          <span class="sv-stepper">
+            ${locked ? '' : `<button type="button" class="sv-step-btn" data-sv-c-adjust="${field}" data-sv-delta="-1" aria-label="Menos ${label.toLowerCase()}">−</button>`}
+            <input type="text" inputmode="numeric" autocomplete="off" data-sv-c-field="${field}" aria-label="${label}" value="${escapeHtml(hasValue(value) ? String(value) : '')}"${locked ? ' disabled' : ''}>
+            ${locked ? '' : `<button type="button" class="sv-step-btn" data-sv-c-adjust="${field}" data-sv-delta="1" aria-label="Más ${label.toLowerCase()}">+</button>`}
+          </span>
+        </label>`;
+      let fields = '';
+      if (circuit.format === 'rounds') {
+        fields = stepper('rounds', 'Vueltas', r.rounds);
+      } else if (circuit.format === 'amrap') {
+        fields = `${stepper('rounds', 'Rondas', r.rounds)}${stepper('reps', 'Reps', r.reps)}`;
+      } else if (circuit.format === 'emom' || circuit.format === 'tabata') {
+        fields = `
+        <button type="button" class="sv-chip sv-circuit-done${r.completed ? ' is-active' : ''}" data-sv-c-completed aria-pressed="${Boolean(r.completed)}"${locked ? ' disabled' : ''}>Completado</button>
+        ${stepper('rounds', 'Rondas cumplidas', r.completed ? '' : r.rounds)}`;
+      } else if (circuit.format === 'fortime') {
+        fields = `<label class="sv-circuit-field"><span>Tiempo (mm:ss)</span><input type="text" inputmode="numeric" autocomplete="off" placeholder="12:34" data-sv-c-field="seconds" aria-label="Tiempo" value="${escapeHtml(hasValue(r.seconds) ? api.formatClock(r.seconds) : '')}"${locked ? ' disabled' : ''}></label>`;
+      }
+      const statusText = state.status ? `${STATUS_TEXT[state.status] || ''}${state.text ? ` · ${state.text}` : ''}` : '';
+      form = `
+        <div class="sv-circuit-log" data-sv-circuit-form="${id}" data-day-id="${escapeHtml(day.id || '')}" data-completed="${r.completed ? '1' : ''}">
+          <p class="sv-circuit-ask">Tu resultado</p>
+          <div class="sv-circuit-fields">${fields}</div>
+          ${locked ? '' : '<button type="button" class="sv-next sv-circuit-save" data-sv-c-save>Guardar resultado</button>'}
+          <p class="sv-log-status" data-sv-c-status data-status="${state.status}">${escapeHtml(statusText)}</p>
+          <p class="sv-log-msg${state.status === 'rejected' && state.error ? ' sv-log-msg--bad' : ' hidden'}" role="alert" data-sv-log-msg>${escapeHtml(state.status === 'rejected' ? state.error : '')}</p>
+        </div>`;
+    }
+    return `
+        <li class="sv-circuit${ctx.canLog && circuitState(ctx, day.id, exercise).status ? ' is-complete' : ''}" data-sv-circuit="${id}">
+          ${renderCircuitInfo(exercise)}
+          ${form}
+        </li>`;
+  }
+
+  function adjustCircuitValue(form, field, delta) {
+    const input = form?.querySelector(`[data-sv-c-field="${field}"]`);
+    if (!input || input.disabled) return;
+    const current = Number(String(input.value || '0').replace(',', '.'));
+    input.value = String(Math.max(0, (Number.isFinite(current) ? Math.round(current) : 0) + delta));
+    if (field === 'rounds' && form.getAttribute('data-completed')) {
+      form.setAttribute('data-completed', '');
+      form.querySelector('[data-sv-c-completed]')?.classList.remove('is-active');
+    }
+  }
+
+  function saveCircuit(form) {
+    const api = circuitsApi();
+    const cache = logState.cache;
+    const program = form.closest('[data-student-program]');
+    const assignmentId = program?.getAttribute('data-assignment-id') || '';
+    const dayId = form.getAttribute('data-day-id');
+    const circuitId = form.getAttribute('data-sv-circuit-form');
+    const exercise = findPublishedExercise(cache, assignmentId, dayId, circuitId);
+    if (!exercise || !isCircuit(exercise)) {
+      showFormMessage(form, 'Este circuito ya no está en tu rutina publicada.', 'bad');
+      return;
+    }
+    if (!selfLog.isDateAllowed(logState.date, new Date())) {
+      showFormMessage(form, 'La fecha debe ser de hoy o de hasta 3 días atrás (hora de Chile). Elige otra fecha en "Hoy".', 'bad');
+      return;
+    }
+    const circuit = circuitOf(exercise);
+    const value = (field) => form.querySelector(`[data-sv-c-field="${field}"]`)?.value ?? '';
+    const raw = circuit.format === 'fortime'
+      ? { seconds: api.parseClock(value('seconds')) }
+      : { rounds: value('rounds'), reps: value('reps'), completed: form.getAttribute('data-completed') === '1' };
+    if (circuit.format === 'fortime' && String(value('seconds')).trim() && raw.seconds === null) {
+      showFormMessage(form, 'Escribe el tiempo como minutos:segundos (por ejemplo 12:34).', 'bad');
+      return;
+    }
+    const sets = api.resultToStudentSets(circuit, raw);
+    if (!sets.length) {
+      showFormMessage(form, 'Anota tu resultado antes de guardar.', 'bad');
+      return;
+    }
+    const base = { ownerId: cache.ownerId, clientId: cache.clientId, assignmentId, sessionDate: logState.date, dayId, exerciseId: circuitId };
+    const entries = sets.map((set) => ({ setType: 'S', setNumber: set.setNumber, weight: null, reps: set.reps, rir: null }));
+    const outbox = selfLog.queueEntries(selfLog.readOutbox(localStorage, logState.userId), base, entries);
+    if (!selfLog.writeOutbox(localStorage, logState.userId, outbox)) {
+      showFormMessage(form, 'No se pudo guardar en el teléfono (sin espacio). No cierres esta pantalla y avísale a tu entrenador.', 'bad');
+      return;
+    }
+    rerenderLog();
+    const fresh = logState.container?.querySelector(`[data-sv-circuit-form="${CSS.escape(circuitId)}"]`);
+    showFormMessage(fresh, 'Guardado en el teléfono. Se sube solo cuando hay conexión.', 'ok');
+    flushOutbox().then(() => {
+      const after = logState.container?.querySelector(`[data-sv-circuit-form="${CSS.escape(circuitId)}"]`);
+      const status = after?.querySelector('[data-sv-c-status]');
+      if (!after || !status || !logState.cache) return;
+      const ctx = buildContext(logState.cache);
+      const state = circuitState(ctx, dayId, exercise);
+      status.setAttribute('data-status', state.status);
+      status.textContent = state.status ? `${STATUS_TEXT[state.status] || ''}${state.text ? ` · ${state.text}` : ''}` : '';
+      if (state.status === 'rejected') showFormMessage(after, state.error || 'La base no aceptó este resultado.', 'bad');
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -878,7 +1044,7 @@
           <p class="sv-log-msg hidden" role="alert" data-sv-log-msg></p>
         </div>`;
     }
-    const total = exercises.length;
+    const total = (selection.steps || exercises).length;
     const video = videoFor(exercise);
     return `
       <section class="sv-screen sv-exercise-screen" data-student-program data-sv-screen="exercise" data-assignment-id="${escapeHtml(program.assignment_id || '')}">
@@ -1362,7 +1528,21 @@
     const target = event.target;
     const pick = (selector) => target.closest(selector);
     let button;
-    if ((button = pick('[data-sv-adjust]'))) {
+    if ((button = pick('[data-sv-c-adjust]'))) {
+      adjustCircuitValue(button.closest('[data-sv-circuit-form]'), button.getAttribute('data-sv-c-adjust'), Number(button.getAttribute('data-sv-delta')));
+    } else if ((button = pick('[data-sv-c-completed]'))) {
+      const form = button.closest('[data-sv-circuit-form]');
+      const on = form.getAttribute('data-completed') !== '1';
+      form.setAttribute('data-completed', on ? '1' : '');
+      button.classList.toggle('is-active', on);
+      button.setAttribute('aria-pressed', String(on));
+      if (on) {
+        const rounds = form.querySelector('[data-sv-c-field="rounds"]');
+        if (rounds) rounds.value = '';
+      }
+    } else if ((button = pick('[data-sv-c-save]'))) {
+      saveCircuit(button.closest('[data-sv-circuit-form]'));
+    } else if ((button = pick('[data-sv-adjust]'))) {
       adjustValue(button.closest('.sv-log-row'), button.getAttribute('data-sv-adjust'), Number(button.getAttribute('data-sv-delta')));
     } else if ((button = pick('[data-sv-check]'))) {
       handleCheck(button.closest('.sv-log-row'));
@@ -1377,8 +1557,8 @@
       rerenderLog({ scrollTop: true });
     } else if ((button = pick('[data-sv-step]'))) {
       const ctx = buildContext(logState.cache);
-      const { exercises, exerciseIndex } = resolveSelection(ctx, logState.cache.programs || []);
-      const next = exercises[exerciseIndex + Number(button.getAttribute('data-sv-step'))];
+      const { steps, exerciseIndex } = resolveSelection(ctx, logState.cache.programs || []);
+      const next = steps[exerciseIndex + Number(button.getAttribute('data-sv-step'))];
       if (next) {
         logState.exerciseId = next.id;
         logState.feelKey = '';
@@ -1483,7 +1663,8 @@
     clearCache,
     format: {
       setLine, studentSetLine, setHasData, repsRange, exerciseScheme, noteForStudent, renderProgram,
-      feelFromRir, plannedFeel, FEEL_OPTIONS, weekStart, weekDates, weekStreak, localToday, addDays, renderExerciseScreen, renderToday
+      feelFromRir, plannedFeel, FEEL_OPTIONS, weekStart, weekDates, weekStreak, localToday, addDays, renderExerciseScreen, renderToday,
+      isCircuit
     }
   };
 })();

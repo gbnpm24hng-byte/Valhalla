@@ -8,12 +8,13 @@
   //   * Día: blocks: [{ id, type: 'superset', rounds, restSeconds }]. Los ejercicios de un bloque
   //     van seguidos en day.exercises (la lista sigue siendo plana: todo lo que ya recorre los
   //     ejercicios del día sigue funcionando) y sus series = vueltas del bloque.
-  //   * Fase 2 (circuitos: EMOM, AMRAP…): type: 'circuit' con su formato (format, minutes…).
-  //     BLOCK_TYPES lo deja preparado; hoy solo se crea 'superset'.
+  //   * Fase 2 (v0.9.45, circuits-core.js): type: 'circuit' con su formato y sus estaciones adentro
+  //     (no en day.exercises) y at = cuántos ejercicios del día van antes. Es un tramo más del día:
+  //     se mueve entero con ↑ y ↓ y nunca queda dentro de una superserie.
   //   * Serie hecha de un ejercicio por tiempo: seconds (peso 0 y reps null).
 
   const TIME = 'time';
-  const BLOCK_TYPES = ['superset'];
+  const BLOCK_TYPES = ['superset', 'circuit'];
   const SUPERSET_MIN = 2;
   const SUPERSET_MAX = 4;
   const ROUNDS_MIN = 1;
@@ -77,9 +78,22 @@
     return out;
   }
 
+  function circuitsApi() {
+    return (typeof window !== 'undefined' && window.VALHALLA && window.VALHALLA.circuitsCore) || null;
+  }
+
+  function isCircuitBlock(block) {
+    return block?.type === 'circuit';
+  }
+
   function normalizeBlock(raw) {
     if (!isPlainObject(raw) || !raw.id || !BLOCK_TYPES.includes(raw.type)) {
       return null;
+    }
+    if (isCircuitBlock(raw)) {
+      // Sin circuits-core cargado, el circuito queda tal cual (nunca se borra por no conocerlo).
+      const api = circuitsApi();
+      return api ? api.normalizeCircuit(raw) : { ...raw, id: String(raw.id) };
     }
     return {
       id: String(raw.id),
@@ -97,7 +111,8 @@
     const list = Array.isArray(exercises) ? exercises.map((exercise) => ({ ...exercise })) : [];
     const blocks = (Array.isArray(rawBlocks) ? rawBlocks : []).map(normalizeBlock).filter(Boolean)
       .filter((block, index, all) => all.findIndex((other) => other.id === block.id) === index);
-    const known = new Set(blocks.map((block) => block.id));
+    // Un ejercicio solo pertenece a una superserie (las estaciones de un circuito viven en el bloque).
+    const known = new Set(blocks.filter((block) => !isCircuitBlock(block)).map((block) => block.id));
     list.forEach((exercise) => {
       if (exercise.blockId && !known.has(exercise.blockId)) {
         delete exercise.blockId;
@@ -118,6 +133,9 @@
       ordered.push(...list.filter((item) => item.blockId === exercise.blockId));
     });
     const kept = blocks.filter((block) => {
+      if (isCircuitBlock(block)) {
+        return true;
+      }
       const members = ordered.filter((exercise) => exercise.blockId === block.id);
       if (block.type === 'superset' && members.length >= SUPERSET_MIN && members.length <= SUPERSET_MAX) {
         return true;
@@ -131,10 +149,43 @@
         exercise.sets = block.rounds;
       });
     });
+    // Circuitos: at entre 0 y el largo del día; si cae dentro de una superserie, va al final de ella.
+    const finalBlocks = kept.map((block) => {
+      if (!isCircuitBlock(block)) {
+        return block;
+      }
+      const raw = Number(block.at);
+      let at = Number.isFinite(raw) ? Math.min(Math.max(Math.round(raw), 0), ordered.length) : ordered.length;
+      while (at > 0 && at < ordered.length && ordered[at - 1].blockId && ordered[at - 1].blockId === ordered[at].blockId) {
+        at += 1;
+      }
+      return { ...block, at };
+    });
     return {
       exercises: ordered.map((exercise, index) => ({ ...exercise, order: index + 1 })),
-      blocks: kept
+      blocks: finalBlocks
     };
+  }
+
+  // Lugar de un circuito entre 0 y el largo del día.
+  function circuitAt(block, length) {
+    const raw = Number(block?.at);
+    return Number.isFinite(raw) ? Math.min(Math.max(raw, 0), length) : length;
+  }
+
+  // Circuitos del día en el orden en que aparecen (por at; empate: el orden de day.blocks).
+  function circuitsOf(day) {
+    const length = (day?.exercises || []).length;
+    return (Array.isArray(day?.blocks) ? day.blocks : [])
+      .map((block, order) => ({ block, order }))
+      .filter((item) => isCircuitBlock(item.block))
+      .sort((a, b) => circuitAt(a.block, length) - circuitAt(b.block, length) || a.order - b.order)
+      .map((item) => item.block);
+  }
+
+  function findCircuit(day, blockId) {
+    const block = findBlock(day, blockId);
+    return isCircuitBlock(block) ? block : null;
   }
 
   // Letra de cada bloque del día por orden de aparición: A, B, C…
@@ -142,7 +193,8 @@
     const letters = {};
     let next = 0;
     (day?.exercises || []).forEach((exercise) => {
-      if (exercise?.blockId && !letters[exercise.blockId] && findBlock(day, exercise.blockId)) {
+      const found = exercise?.blockId ? findBlock(day, exercise.blockId) : null;
+      if (found && !isCircuitBlock(found) && !letters[exercise.blockId]) {
         letters[exercise.blockId] = String.fromCharCode(65 + next);
         next += 1;
       }
@@ -155,24 +207,37 @@
   }
 
   // El día en tramos: [{ kind: 'single', exercise, index }] o
-  // [{ kind: 'superset', block, letter, items: [{ exercise, index, position }] }]. index = posición en
-  // day.exercises; position = 1, 2… dentro del bloque (A1, A2…).
+  // [{ kind: 'superset', block, letter, items: [{ exercise, index, position }] }] o
+  // [{ kind: 'circuit', block, index: -1, at }]. index = posición en day.exercises; position = 1, 2…
+  // dentro del bloque (A1, A2…); at = ejercicios del día antes del circuito.
   function segments(day) {
     const letters = blockLetters(day);
     const out = [];
-    (day?.exercises || []).forEach((exercise, index) => {
-      const block = exercise?.blockId ? findBlock(day, exercise.blockId) : null;
+    const exercises = day?.exercises || [];
+    const circuits = circuitsOf(day);
+    let next = 0;
+    const placeCircuits = (upTo) => {
+      while (next < circuits.length && circuitAt(circuits[next], exercises.length) <= upTo) {
+        out.push({ kind: 'circuit', block: circuits[next], index: -1, at: circuitAt(circuits[next], exercises.length) });
+        next += 1;
+      }
+    };
+    exercises.forEach((exercise, index) => {
+      const found = exercise?.blockId ? findBlock(day, exercise.blockId) : null;
+      const block = found && !isCircuitBlock(found) ? found : null;
+      const last = out[out.length - 1];
+      if (block && last && last.kind === block.type && last.block.id === block.id) {
+        last.items.push({ exercise, index, position: last.items.length + 1 });
+        return;
+      }
+      placeCircuits(index);
       if (!block) {
         out.push({ kind: 'single', exercise, index });
         return;
       }
-      const last = out[out.length - 1];
-      if (last && last.kind === block.type && last.block.id === block.id) {
-        last.items.push({ exercise, index, position: last.items.length + 1 });
-        return;
-      }
       out.push({ kind: block.type, block, letter: letters[block.id], items: [{ exercise, index, position: 1 }] });
     });
+    placeCircuits(Infinity);
     return out;
   }
 
@@ -214,8 +279,62 @@
       return null;
     }
     [parts[segmentIndex], parts[target]] = [parts[target], parts[segmentIndex]];
-    const exercises = parts.flatMap((part) => (part.kind === 'single' ? [part.exercise] : part.items.map((item) => item.exercise)));
-    return finishDay(day, exercises, day.blocks);
+    return rebuildFromSegments(day, parts);
+  }
+
+  // Día a partir de sus tramos en orden: los ejercicios seguidos y cada circuito con su nuevo at
+  // (los circuitos quedan en day.blocks en el orden en que aparecen).
+  function rebuildFromSegments(day, parts) {
+    const exercises = [];
+    const ats = new Map();
+    const order = [];
+    parts.forEach((part) => {
+      if (part.kind === 'circuit') {
+        ats.set(part.block.id, exercises.length);
+        order.push(part.block.id);
+      } else if (part.kind === 'single') {
+        exercises.push(part.exercise);
+      } else {
+        exercises.push(...part.items.map((item) => item.exercise));
+      }
+    });
+    const all = Array.isArray(day?.blocks) ? day.blocks : [];
+    const blocks = [
+      ...all.filter((block) => !isCircuitBlock(block)),
+      ...order.map((id) => ({ ...all.find((block) => block.id === id), at: ats.get(id) }))
+    ];
+    return finishDay(day, exercises, blocks);
+  }
+
+  // Día nuevo (copia) con un circuito al final del día.
+  function addCircuit(day, circuit) {
+    if (!circuit?.id || !isCircuitBlock(circuit)) {
+      return null;
+    }
+    const exercises = day?.exercises || [];
+    return finishDay(day, exercises, [...(day?.blocks || []), { ...circuit, at: exercises.length }]);
+  }
+
+  // Reemplaza los datos de un circuito (formato, estaciones…) sin cambiar su lugar.
+  function replaceCircuit(day, circuit) {
+    const current = findCircuit(day, circuit?.id);
+    if (!current) {
+      return null;
+    }
+    const blocks = day.blocks.map((block) => (block.id === current.id ? { ...circuit, type: 'circuit', at: current.at } : block));
+    return finishDay(day, day.exercises || [], blocks);
+  }
+
+  function removeCircuit(day, blockId) {
+    if (!findCircuit(day, blockId)) {
+      return null;
+    }
+    return finishDay(day, day.exercises || [], day.blocks.filter((block) => block.id !== blockId));
+  }
+
+  // Al quitar el ejercicio de la posición index, los circuitos que estaban después corren uno.
+  function shiftCircuitsAfterRemoval(blocks, index) {
+    return (Array.isArray(blocks) ? blocks : []).map((block) => (isCircuitBlock(block) && Number(block.at) > index ? { ...block, at: Number(block.at) - 1 } : block));
   }
 
   // Tramo que contiene el ejercicio de la posición `index` de day.exercises.
@@ -264,7 +383,7 @@
   // Quita un ejercicio del día (si estaba en un bloque y éste queda con uno, se deshace).
   function removeExercise(day, index) {
     const exercises = (day?.exercises || []).filter((_, position) => position !== index);
-    return finishDay(day, exercises, day.blocks);
+    return finishDay(day, exercises, shiftCircuitsAfterRemoval(day?.blocks, index));
   }
 
   function finishDay(day, exercises, blocks) {
@@ -307,6 +426,13 @@
     SECONDS_STEP,
     SECONDS_MAX,
     isTimed,
+    isCircuitBlock,
+    circuitsOf,
+    findCircuit,
+    addCircuit,
+    replaceCircuit,
+    removeCircuit,
+    shiftCircuitsAfterRemoval,
     cleanSeconds,
     formatSeconds,
     formatTarget,

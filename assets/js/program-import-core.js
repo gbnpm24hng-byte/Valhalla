@@ -12,6 +12,36 @@
   const DAY_KEYS = ['name', 'exercises', 'blocks'];
   const EXERCISE_KEYS = ['exerciseName', 'sets', 'repMin', 'repMax', 'targetWeight', 'restSeconds', 'notes', 'zone', 'approximations', 'effectiveSets', 'measure', 'durationSeconds', 'block'];
   const BLOCK_KEYS = ['id', 'type', 'rounds', 'restSeconds'];
+  // v0.9.45 (opcional): circuitos en blocks: { id, type: "circuit", format, name?, at?, stations, …datos del
+  // formato }. Las estaciones van dentro del circuito (no en exercises). Mismos límites que circuits-core.js.
+  const CIRCUIT_FORMATS = ['rounds', 'emom', 'amrap', 'tabata', 'fortime'];
+  const CIRCUIT_FIELDS = {
+    rounds: ['rounds', 'restSeconds'],
+    emom: ['minutes'],
+    amrap: ['minutes'],
+    tabata: ['rounds', 'workSeconds', 'pauseSeconds'],
+    fortime: ['rounds', 'capMinutes']
+  };
+  const CIRCUIT_DEFAULTS = {
+    rounds: { rounds: 3, restSeconds: 60 },
+    emom: { minutes: 10 },
+    amrap: { minutes: 12 },
+    tabata: { rounds: 8, workSeconds: 20, pauseSeconds: 10 },
+    fortime: { rounds: 3 }
+  };
+  const CIRCUIT_LIMITS = {
+    rounds: [1, 50],
+    restSeconds: [0, 900],
+    minutes: [1, 90],
+    workSeconds: [5, 120],
+    pauseSeconds: [0, 120],
+    capMinutes: [1, 180]
+  };
+  const CIRCUIT_KEYS = ['id', 'type', 'format', 'name', 'at', 'stations', ...Object.keys(CIRCUIT_LIMITS)];
+  const ALL_BLOCK_KEYS = [...new Set([...BLOCK_KEYS, ...CIRCUIT_KEYS])];
+  const STATION_KEYS = ['exerciseName', 'quantity', 'unit'];
+  const STATION_UNITS = ['reps', 'seconds', 'meters'];
+  const STATIONS_MAX = 12;
   const SUPERSET_MIN = 2;
   const SUPERSET_MAX = 4;
   const APPROXIMATION_KEYS = ['label', 'weight', 'reps'];
@@ -187,7 +217,7 @@
     checkKeys(raw, DAY_KEYS, where);
     const name = text(raw, 'name', where, { required: true, max: 80 });
     const dayWhere = `Día ${index + 1} ("${name}")`;
-    if (!Array.isArray(raw.exercises) || !raw.exercises.length) {
+    if (!Array.isArray(raw.exercises)) {
       fail(`${dayWhere}: "exercises" debe ser una lista con al menos un ejercicio.`);
     }
     if (raw.exercises.length > MAX_EXERCISES_PER_DAY) {
@@ -195,20 +225,77 @@
     }
     const exercises = raw.exercises.map((exercise, exerciseIndex) => readExercise(exercise, `${dayWhere}, ejercicio ${exerciseIndex + 1}`));
     const blocks = readBlocks(raw, dayWhere, exercises);
+    // Un día solo con circuitos vale; sin ejercicios ni circuitos, no.
+    if (!exercises.length && !blocks.some((block) => block.type === 'circuit')) {
+      fail(`${dayWhere}: "exercises" debe ser una lista con al menos un ejercicio (o el día debe tener un circuito en "blocks").`);
+    }
     return blocks.length ? { name, exercises, blocks } : { name, exercises };
   }
 
-  // Superseries del día: "blocks": [{ "id": "A", "type": "superset", "rounds": 3, "restSeconds": 60 }]
-  // y en cada ejercicio "block": "A". De 2 a 4 ejercicios seguidos por bloque.
+  // Circuito: { "id", "type": "circuit", "format", "name"?, "at"?, "stations": [{ "exerciseName",
+  // "quantity"?, "unit"? }], …datos del formato }. Un dato de otro formato se rechaza.
+  function readCircuit(item, where, exercises) {
+    if (!has(item, 'format') || !CIRCUIT_FORMATS.includes(item.format)) {
+      fail(`${where}: "format" debe ser uno de: ${CIRCUIT_FORMATS.map((format) => `"${format}"`).join(', ')}.`);
+    }
+    const format = item.format;
+    const allowed = CIRCUIT_FIELDS[format];
+    const foreign = Object.keys(CIRCUIT_LIMITS).find((key) => has(item, key) && !allowed.includes(key));
+    if (foreign) {
+      fail(`${where}: "${foreign}" no corresponde al formato "${format}" (usa: ${allowed.join(', ')}).`);
+    }
+    const out = { id: text(item, 'id', where, { required: true, max: 40 }), type: 'circuit', format };
+    const name = text(item, 'name', where, { max: 120 });
+    if (name) {
+      out.name = name;
+    }
+    allowed.forEach((key) => {
+      const [min, max] = CIRCUIT_LIMITS[key];
+      const value = integer(item, key, where, { min, max, fallback: CIRCUIT_DEFAULTS[format][key], allowNull: key === 'capMinutes' });
+      if (value !== undefined && value !== null) {
+        out[key] = value;
+      }
+    });
+    out.at = integer(item, 'at', where, { min: 0, max: exercises.length, fallback: exercises.length });
+    if (!Array.isArray(item.stations) || !item.stations.length) {
+      fail(`${where}: "stations" debe ser una lista con al menos una estación.`);
+    }
+    if (item.stations.length > STATIONS_MAX) {
+      fail(`${where}: "stations" tiene más de ${STATIONS_MAX} estaciones.`);
+    }
+    out.stations = list(item, 'stations', where, STATION_KEYS, (station, stationWhere) => {
+      const clean = { exerciseName: text(station, 'exerciseName', stationWhere, { required: true, max: 120 }) };
+      const quantity = integer(station, 'quantity', stationWhere, { min: 1, max: 10000, fallback: null, allowNull: true });
+      const unit = has(station, 'unit') ? station.unit : null;
+      if (unit !== null && !STATION_UNITS.includes(unit)) {
+        fail(`${stationWhere}: "unit" debe ser "reps", "seconds" o "meters".`);
+      }
+      if (unit !== null && quantity === null) {
+        fail(`${stationWhere}: "unit" va con "quantity".`);
+      }
+      if (quantity !== null) {
+        clean.quantity = quantity;
+        if (unit) {
+          clean.unit = unit;
+        }
+      }
+      return clean;
+    });
+    return out;
+  }
+
+  // Bloques del día. Superseries: "blocks": [{ "id": "A", "type": "superset", "rounds": 3, "restSeconds": 60 }]
+  // y en cada ejercicio "block": "A" (de 2 a 4 ejercicios seguidos por bloque). Circuitos: ver readCircuit.
   function readBlocks(raw, where, exercises) {
-    const blocks = list(raw, 'blocks', where, BLOCK_KEYS, (item, itemWhere) => {
+    const blocks = list(raw, 'blocks', where, ALL_BLOCK_KEYS, (item, itemWhere) => {
       const type = text(item, 'type', itemWhere, { required: true, max: 20 });
       if (type === 'circuit') {
-        fail(`${itemWhere}: los circuitos (EMOM, AMRAP…) todavía no están disponibles. Por ahora solo "superset".`);
+        return readCircuit(item, itemWhere, exercises);
       }
       if (type !== 'superset') {
-        fail(`${itemWhere}: "type" debe ser "superset".`);
+        fail(`${itemWhere}: "type" debe ser "superset" o "circuit".`);
       }
+      checkKeys(item, BLOCK_KEYS, itemWhere);
       return {
         id: text(item, 'id', itemWhere, { required: true, max: 40 }),
         type,
@@ -225,14 +312,28 @@
       if (exercise.block && !ids.includes(exercise.block)) {
         fail(`${where}, ejercicio ${index + 1}: "block": "${exercise.block}" no está en "blocks" del día.`);
       }
+      if (exercise.block && blocks.some((block) => block.id === exercise.block && block.type === 'circuit')) {
+        fail(`${where}, ejercicio ${index + 1}: "block": "${exercise.block}" es un circuito; sus ejercicios van en "stations" del circuito.`);
+      }
     });
     blocks.forEach((block) => {
+      if (block.type === 'circuit') {
+        return;
+      }
       const positions = exercises.map((exercise, index) => (exercise.block === block.id ? index : -1)).filter((index) => index >= 0);
       if (positions.length < SUPERSET_MIN || positions.length > SUPERSET_MAX) {
         fail(`${where}: la superserie "${block.id}" debe tener de ${SUPERSET_MIN} a ${SUPERSET_MAX} ejercicios (tiene ${positions.length}).`);
       }
       if (positions[positions.length - 1] - positions[0] !== positions.length - 1) {
         fail(`${where}: los ejercicios de la superserie "${block.id}" deben ir seguidos.`);
+      }
+    });
+    // Un circuito no puede quedar en medio de una superserie.
+    blocks.filter((block) => block.type === 'circuit').forEach((block) => {
+      const before = exercises[block.at - 1];
+      const after = exercises[block.at];
+      if (before?.block && after?.block === before.block) {
+        fail(`${where}: el circuito "${block.id}" ("at": ${block.at}) queda en medio de la superserie "${before.block}".`);
       }
     });
     return blocks;
@@ -296,8 +397,8 @@
     const now = deps.now || new Date().toISOString();
     const missing = [];
     const days = file.days.map((day, dayIndex) => {
-      // Superseries: ids nuevos para los bloques (solo en días que los traen).
-      const blockIds = new Map((day.blocks || []).map((block) => [block.id, deps.createId('program-block')]));
+      // Superseries y circuitos: ids nuevos para los bloques (solo en días que los traen).
+      const blockIds = new Map((day.blocks || []).map((block) => [block.id, deps.createId(block.type === 'circuit' ? 'program-circuit' : 'program-block')]));
       const built = {
         id: deps.createId('program-day'),
         name: day.name,
@@ -330,7 +431,27 @@
         })
       };
       if (blockIds.size) {
-        built.blocks = day.blocks.map((block) => ({ id: blockIds.get(block.id), type: block.type, rounds: block.rounds, restSeconds: block.restSeconds }));
+        built.blocks = day.blocks.map((block) => {
+          if (block.type !== 'circuit') {
+            return { id: blockIds.get(block.id), type: block.type, rounds: block.rounds, restSeconds: block.restSeconds };
+          }
+          // Estaciones: enlazadas con la galería por nombre igual; si no, quedan como texto libre.
+          const { stations, id, ...rest } = block;
+          return {
+            ...rest,
+            id: blockIds.get(id),
+            stations: stations.map((station, stationIndex) => {
+              const match = byName.get(fold(station.exerciseName)) || null;
+              return {
+                id: `station-${stationIndex + 1}`,
+                name: match ? match.name : station.exerciseName,
+                ...(match ? { libraryExerciseId: match.id } : {}),
+                ...(station.quantity !== undefined ? { quantity: station.quantity } : {}),
+                ...(station.unit ? { unit: station.unit } : {})
+              };
+            })
+          };
+        });
         // Las series de cada ejercicio de la superserie son las vueltas del bloque.
         built.exercises.forEach((exercise) => {
           const block = built.blocks.find((item) => item.id === exercise.blockId);
@@ -362,7 +483,8 @@
         // Superseries: "A1", "A2"… (letra por orden de aparición en el día).
         const letters = new Map();
         const counts = new Map();
-        return {
+        const circuits = circuitsOfDay(day);
+        const built = {
           name: day.name,
           exercises: day.exercises.map((exercise) => {
             const item = {
@@ -384,11 +506,29 @@
             return item;
           })
         };
+        // v0.9.45: circuitos del día con su lugar (at = ejercicios antes) y sus estaciones. Un día
+        // sin circuitos queda igual que antes (sin la clave).
+        if (circuits.length) {
+          built.circuits = circuits.map((block) => ({
+            at: Number.isFinite(Number(block.at)) ? Number(block.at) : day.exercises.length,
+            block,
+            stations: (block.stations || []).map((station) => ({ name: station.name, linked: Boolean(station.libraryExerciseId) }))
+          }));
+        }
+        return built;
       }),
       exerciseCount: program.days.reduce((sum, day) => sum + day.exercises.length, 0),
       missing
     };
+    const circuitCount = program.days.reduce((sum, day) => sum + circuitsOfDay(day).length, 0);
+    if (circuitCount) {
+      preview.circuitCount = circuitCount;
+    }
     return { program, preview };
+  }
+
+  function circuitsOfDay(day) {
+    return (Array.isArray(day?.blocks) ? day.blocks : []).filter((block) => block && block.type === 'circuit');
   }
 
   // Lee el archivo y arma programa + vista previa, o devuelve { error }.

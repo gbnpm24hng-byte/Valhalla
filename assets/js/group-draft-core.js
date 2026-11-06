@@ -46,6 +46,45 @@
     return clean;
   }
 
+  // v0.9.45 · Circuitos: lo anotado en la tarjeta del circuito y aún sin "Guardar resultados",
+  // por alumno (clave "alumno::circuito"). Solo números, Completado, Hecho sin datos y nota.
+  function cleanCircuitEntry(entry) {
+    if (!isPlainObject(entry)) {
+      return null;
+    }
+    const number = (value, max) => {
+      if (value === null || value === undefined || value === '') {
+        return null;
+      }
+      const parsed = Math.round(Number(value));
+      return Number.isFinite(parsed) && parsed >= 0 && parsed <= max ? parsed : null;
+    };
+    return {
+      rounds: number(entry.rounds, 999),
+      reps: number(entry.reps, 999),
+      seconds: number(entry.seconds, 35999),
+      completed: entry.completed === true,
+      noData: entry.noData === true,
+      note: cleanText(entry.note)
+    };
+  }
+
+  function circuitEntryHasData(entry) {
+    return Boolean(entry) && (entry.completed === true || entry.noData === true || Boolean(String(entry.note || '').trim())
+      || ['rounds', 'reps', 'seconds'].some((key) => Number.isFinite(entry[key])));
+  }
+
+  function cleanCircuits(source) {
+    const out = {};
+    Object.keys(isPlainObject(source) ? source : {}).forEach((key) => {
+      const entry = cleanCircuitEntry(source[key]);
+      if (entry && circuitEntryHasData(entry) && /^[^:]+::.+$/.test(key)) {
+        out[key] = entry;
+      }
+    });
+    return out;
+  }
+
   // ¿Hay algo escrito sin confirmar en este ejercicio? Cuentan series, pesos, reps, RIR,
   // aproximaciones y comentarios. La decisión o la propuesta de peso por sí solas no
   // (se guardan igual junto con lo demás).
@@ -64,7 +103,9 @@
       return false;
     }
     const drafts = snapshot.drafts || {};
+    const circuits = snapshot.circuits || {};
     return Object.keys(drafts).some((key) => entryHasData(drafts[key]))
+      || Object.keys(circuits).some((key) => circuitEntryHasData(circuits[key]))
       || Boolean(snapshot.picker && snapshot.picker.exerciseId)
       || Boolean(snapshot.commentEditor && String(snapshot.commentEditor.text || '').trim());
   }
@@ -77,12 +118,18 @@
         ids.add(key.split('::')[0]);
       }
     });
+    Object.keys(snapshot?.circuits || {}).forEach((key) => {
+      if (circuitEntryHasData(snapshot.circuits[key])) {
+        ids.add(key.split('::')[0]);
+      }
+    });
     if (snapshot?.picker?.exerciseId) ids.add(snapshot.picker.clientId);
     if (String(snapshot?.commentEditor?.text || '').trim()) ids.add(snapshot.commentEditor.clientId);
     return [...ids].filter(Boolean);
   }
 
-  // Foto de lo que hay en pantalla. ui: el groupSessionUi de app.js.
+  // Foto de lo que hay en pantalla. ui: el groupSessionUi de app.js; circuitDrafts (opcional) =
+  // solo lo anotado en circuitos que todavía no se guardó (app.js deja afuera lo ya guardado).
   function buildSnapshot({ ownerId, ui, now = new Date(), today }) {
     const drafts = {};
     Object.keys(ui.drafts || {}).forEach((key) => {
@@ -101,6 +148,8 @@
       selectedClientIds: (ui.selectedClientIds || []).map(String).slice(0, 4),
       dayChoices: isPlainObject(ui.dayChoices) ? { ...ui.dayChoices } : {},
       drafts,
+      circuits: cleanCircuits(ui.circuitDrafts),
+      circuitView: isPlainObject(ui.circuitView) && ui.circuitView.blockId ? { blockId: String(ui.circuitView.blockId) } : null,
       picker: isPlainObject(ui.picker) ? { ...ui.picker } : null,
       commentEditor: isPlainObject(ui.commentEditor) ? { ...ui.commentEditor, text: cleanText(ui.commentEditor.text) } : null
     };
@@ -133,6 +182,8 @@
       selectedClientIds: Array.isArray(parsed.selectedClientIds) ? parsed.selectedClientIds.map(String).slice(0, 4) : [],
       dayChoices: isPlainObject(parsed.dayChoices) ? parsed.dayChoices : {},
       drafts,
+      circuits: cleanCircuits(parsed.circuits),
+      circuitView: isPlainObject(parsed.circuitView) && parsed.circuitView.blockId ? { blockId: String(parsed.circuitView.blockId) } : null,
       picker: isPlainObject(parsed.picker) ? parsed.picker : null,
       commentEditor: isPlainObject(parsed.commentEditor) ? parsed.commentEditor : null
     };
@@ -189,6 +240,8 @@
     KEY_PREFIX,
     storageKey,
     entryHasData,
+    circuitEntryHasData,
+    cleanCircuitEntry,
     hasUnconfirmedData,
     clientsWithData,
     buildSnapshot,

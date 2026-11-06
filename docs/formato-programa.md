@@ -30,8 +30,32 @@ Los nombres de los campos son los mismos que usa el armador. Un campo con un nom
 | Campo | Obligatorio | Valor |
 |---|---|---|
 | `name` | sí | Nombre libre (hasta 80 caracteres). Para que **Modo Grupo** elija el día solo, empiézalo con el día de la semana: `"Lunes — A"`, `"Miércoles — B"`, `"Vie - C"`. |
-| `exercises` | sí | Lista de 1 a 30 ejercicios. |
-| `blocks` | no | (v0.9.44) Superseries del día: lista de `{ "id", "type": "superset", "rounds", "restSeconds"? }`. `id` es un nombre corto (por ejemplo `"A"`) que usan los ejercicios en `block`; `rounds` son las vueltas (1 a 10) y `restSeconds` el descanso al final de cada vuelta (0 a 900; si falta, 90). Los circuitos (`"circuit"`) todavía no existen. |
+| `exercises` | sí | Lista de 1 a 30 ejercicios. Puede ser `[]` si el día tiene al menos un circuito en `blocks`. |
+| `blocks` | no | (v0.9.44) Superseries del día: lista de `{ "id", "type": "superset", "rounds", "restSeconds"? }`. `id` es un nombre corto (por ejemplo `"A"`) que usan los ejercicios en `block`; `rounds` son las vueltas (1 a 10) y `restSeconds` el descanso al final de cada vuelta (0 a 900; si falta, 90). (v0.9.45) También circuitos: `{ "type": "circuit", … }`, ver abajo. |
+
+### Circuito (v0.9.45)
+
+Va en `blocks` del día. Sus ejercicios son **estaciones** y van dentro del circuito (en `stations`), no en
+`exercises`. Un circuito no tiene series, regla de carga ni récords: en Modo Grupo se anota un resultado por alumno.
+
+| Campo | Obligatorio | Valor |
+|---|---|---|
+| `id` | sí | Nombre corto, distinto de los demás bloques del día (por ejemplo `"C1"`). Un ejercicio no puede usarlo en `block`. |
+| `type` | sí | `"circuit"`. |
+| `format` | sí | `"rounds"` (Vueltas), `"emom"`, `"amrap"`, `"tabata"` o `"fortime"` (Por tiempo). |
+| `name` | no | Nombre del circuito (hasta 120 caracteres), por ejemplo `"Final"`. |
+| `at` | no | Cuántos ejercicios del día van **antes** del circuito: `0` = al principio. Si falta, va al final. No puede quedar en medio de una superserie. |
+| `stations` | sí | Lista de 1 a 12 estaciones: `{ "exerciseName", "quantity"?, "unit"? }`. `exerciseName` se enlaza con la galería igual que un ejercicio (si no está, queda como texto libre, por ejemplo `"200 m remo"`). `quantity` de 1 a 10000; `unit`: `"reps"`, `"seconds"` o `"meters"` (solo con `quantity`). |
+
+Datos de cada formato (solo los de su formato; uno de otro formato se rechaza). Si falta, se usa el valor entre paréntesis:
+
+| `format` | Campos |
+|---|---|
+| `"rounds"` | `rounds` vueltas, 1 a 50 (3) · `restSeconds` descanso entre vueltas, 0 a 900 (60) |
+| `"emom"` | `minutes` 1 a 90 (10) |
+| `"amrap"` | `minutes` 1 a 90 (12) |
+| `"tabata"` | `rounds` 1 a 50 (8) · `workSeconds` 5 a 120 (20) · `pauseSeconds` 0 a 120 (10) |
+| `"fortime"` | `rounds` 1 a 50 (3) · `capMinutes` tope opcional, 1 a 180 (sin tope) |
 
 ### Ejercicio
 
@@ -57,7 +81,8 @@ como A1, A2… o S1, S2…
 
 - **Biseries:** desde v0.9.44 usa una superserie (`blocks` en el día y `block` en cada ejercicio).
   Los archivos anteriores, con los ejercicios seguidos y la nota en `notes`, se siguen importando igual.
-- **Circuitos (EMOM, AMRAP…):** todavía no; llegan en la fase 2.
+- **Circuitos (EMOM, AMRAP…):** desde v0.9.45, con `{ "type": "circuit" }` en `blocks` (ver arriba).
+  Los archivos anteriores, sin circuitos, se siguen importando igual.
 - **Repeticiones distintas por semana o bloque, y semana de descarga:** escríbelas en `notes`, por
   ejemplo `"S1-3: 3×10 · S4-6: 4×8 · S7-8: 5×6 · S9 descarga: 2×8 liviano"`.
 
@@ -137,8 +162,23 @@ como A1, A2… o S1, S2…
           "targetWeight": null,
           "notes": "8 por pierna"
         }
+      ],
+      "blocks": [
+        {
+          "id": "C1",
+          "type": "circuit",
+          "format": "amrap",
+          "name": "Final",
+          "minutes": 12,
+          "stations": [
+            { "exerciseName": "Burpees", "quantity": 10, "unit": "reps" },
+            { "exerciseName": "Remo en máquina", "quantity": 200, "unit": "meters" }
+          ]
+        }
       ]
     }
   ]
 }
 ```
+
+En el día C, el circuito no tiene `at`, así que queda al final, después de la Subida a cajón.
