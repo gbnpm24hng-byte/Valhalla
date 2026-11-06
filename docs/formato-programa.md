@@ -31,6 +31,7 @@ Los nombres de los campos son los mismos que usa el armador. Un campo con un nom
 |---|---|---|
 | `name` | sí | Nombre libre (hasta 80 caracteres). Para que **Modo Grupo** elija el día solo, empiézalo con el día de la semana: `"Lunes — A"`, `"Miércoles — B"`, `"Vie - C"`. |
 | `exercises` | sí | Lista de 1 a 30 ejercicios. |
+| `blocks` | no | (v0.9.44) Superseries del día: lista de `{ "id", "type": "superset", "rounds", "restSeconds"? }`. `id` es un nombre corto (por ejemplo `"A"`) que usan los ejercicios en `block`; `rounds` son las vueltas (1 a 10) y `restSeconds` el descanso al final de cada vuelta (0 a 900; si falta, 90). Los circuitos (`"circuit"`) todavía no existen. |
 
 ### Ejercicio
 
@@ -45,14 +46,18 @@ Los nombres de los campos son los mismos que usa el armador. Un campo con un nom
 | `zone` | no | Zona, por ejemplo `"Salón A"`. |
 | `approximations` | no | Series de aproximación: lista de `{ "label"?, "weight", "reps" }`. |
 | `effectiveSets` | no | Series efectivas detalladas: lista de `{ "label"?, "weight", "reps", "rir" }` (`rir` de 0 a 10 o `null`). |
+| `measure` | no | (v0.9.44) `"time"` para un ejercicio por tiempo (plancha, rueda abdominal…): se anotan segundos, sin kilos ni repeticiones. Sin el campo (o `"reps"`), es por repeticiones como siempre. Con `"time"` no van `repMin` ni `repMax`. |
+| `durationSeconds` | con `"time"` | Segundos por serie (1 a 1000), por ejemplo `40` para "3 × 40 s". |
+| `block` | no | (v0.9.44) `id` de una superserie de `blocks` del día. De 2 a 4 ejercicios **seguidos** por bloque (quedan A1, A2…). Sus series son las vueltas del bloque, así que `sets` puede faltar. |
 
 `weight` acepta un número o `null`. `reps` acepta un entero o `null`. Si falta `label`, se numera
 como A1, A2… o S1, S2…
 
 ## Lo que el formato no tiene (y cómo escribirlo)
 
-- **Biseries:** pon los dos ejercicios seguidos y anótalo en `notes` (`"Biserie 1A con…"`). Si
-  quieres, pon `restSeconds: 0` en el primero.
+- **Biseries:** desde v0.9.44 usa una superserie (`blocks` en el día y `block` en cada ejercicio).
+  Los archivos anteriores, con los ejercicios seguidos y la nota en `notes`, se siguen importando igual.
+- **Circuitos (EMOM, AMRAP…):** todavía no; llegan en la fase 2.
 - **Repeticiones distintas por semana o bloque, y semana de descarga:** escríbelas en `notes`, por
   ejemplo `"S1-3: 3×10 · S4-6: 4×8 · S7-8: 5×6 · S9 descarga: 2×8 liviano"`.
 

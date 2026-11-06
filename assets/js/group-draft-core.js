@@ -6,7 +6,8 @@
 
   const KEY_PREFIX = 'valhalla_group_draft:';
   const SCHEMA = 1;
-  const DRAFT_FIELDS = /^(warmups|rir|decision|proposedWeight|s\d{1,2}(Weight|Reps))$/;
+  // v0.9.44: s1Seconds… y s1Done (serie por tiempo marcada con "✓ S1 hecha") y measure ('time').
+  const DRAFT_FIELDS = /^(warmups|rir|decision|proposedWeight|measure|s\d{1,2}(Weight|Reps|Seconds|Done))$/;
 
   function storageKey(ownerId) {
     return `${KEY_PREFIX}${ownerId || 'local'}`;
@@ -55,7 +56,7 @@
     if (entry.comment || String(entry.warmups || '').trim() || String(entry.rir ?? '').trim()) {
       return true;
     }
-    return Object.keys(entry).some((key) => /^s\d+(Weight|Reps)$/.test(key) && String(entry[key] ?? '').trim() !== '');
+    return Object.keys(entry).some((key) => /^s\d+(Weight|Reps|Seconds)$/.test(key) && String(entry[key] ?? '').trim() !== '');
   }
 
   function hasUnconfirmedData(snapshot) {
@@ -151,7 +152,10 @@
   // las casillas. Peso o repeticiones sin dato quedan ''.
   function lastSetValues(effectiveSets) {
     const text = (value) => (value === null || value === undefined || value === '' || !Number.isFinite(Number(value)) ? '' : String(Number(value)));
-    return (Array.isArray(effectiveSets) ? effectiveSets : []).map((setEntry) => ({ weight: text(setEntry?.weight), reps: text(setEntry?.reps) }));
+    // Serie por tiempo: sus segundos (sin kilos ni reps).
+    return (Array.isArray(effectiveSets) ? effectiveSets : []).map((setEntry) => (setEntry && setEntry.seconds !== undefined && setEntry.seconds !== null
+      ? { seconds: text(setEntry.seconds) }
+      : { weight: text(setEntry?.weight), reps: text(setEntry?.reps) }));
   }
 
   // "Repetir última vez": copia los valores de la última vez solo a las casillas vacías de
@@ -165,8 +169,8 @@
     next.setCount = Math.min(maxSets, Math.max(currentCount, values.length));
     let filled = 0;
     values.forEach((value, index) => {
-      ['weight', 'reps'].forEach((part) => {
-        const key = `s${index + 1}${part === 'weight' ? 'Weight' : 'Reps'}`;
+      ['weight', 'reps', 'seconds'].forEach((part) => {
+        const key = `s${index + 1}${part === 'weight' ? 'Weight' : part === 'reps' ? 'Reps' : 'Seconds'}`;
         if (String(next[key] ?? '').trim() === '' && value?.[part]) {
           next[key] = value[part];
           filled += 1;

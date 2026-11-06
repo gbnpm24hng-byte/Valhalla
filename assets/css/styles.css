@@ -5101,3 +5101,31 @@ button.client-back {
 .gv-only-today { color: var(--gv-muted); font-size: 0.82rem; font-weight: 600; }
 .gv-round-ask p { margin: 0 0 8px; }
 .group-mode-view--compact .gv-round-back { justify-self: center; }
+
+/* v0.9.44 · Bloques fase 1: ejercicios por tiempo y superseries. */
+.pr-time-tag { padding: 1px 7px; border-radius: 6px; background: var(--pr-yellow); color: #0E0E0C; font-size: 0.7rem; font-weight: 800; letter-spacing: 0.04em; }
+.pr-block { display: grid; gap: 6px; padding: 8px 0 8px 10px; border-left: 4px solid var(--pr-yellow); border-radius: 4px 12px 12px 4px; background: rgba(255, 204, 26, 0.04); }
+.pr-block-head { display: flex; align-items: stretch; gap: 6px; }
+.pr-block-head .pr-ex-tools { flex-direction: row; border-left: 0; }
+.pr-block-title { flex: 1 1 auto; min-width: 0; min-height: 40px; padding: 0 4px; border: 0; background: none; color: var(--pr-yellow); font-size: 0.78rem; font-weight: 800; letter-spacing: 0.03em; text-align: left; cursor: pointer; }
+.pr-member-label { flex: 0 0 auto; display: inline-grid; place-items: center; min-width: 32px; height: 28px; border-radius: 8px; background: var(--pr-yellow); color: #0E0E0C; font-weight: 800; font-size: 0.85rem; }
+.pr-tool--text { font-size: 0.72rem; font-weight: 700; color: var(--text); }
+.pr-pick-help { margin: -4px 0 10px; color: var(--pr-muted); font-size: 0.85rem; }
+.pr-sheet-title { margin: 0 0 4px; }
+.pr-add-options { display: grid; gap: 8px; }
+.pr-add-option { display: grid; gap: 2px; min-height: 56px; padding: 10px 14px; border: 1px solid var(--pr-line, #2B2922); border-radius: 14px; background: #1C1B17; color: var(--text); text-align: left; cursor: pointer; }
+.pr-add-option span { color: #8F8B80; font-size: 0.85rem; }
+.pr-add-option:disabled { opacity: 0.5; cursor: default; }
+.pr-sheet-field { display: grid; gap: 4px; font-weight: 600; }
+.pr-sheet-actions { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.routine-measure { display: flex; gap: 6px; }
+.gv-set--time, .gv-set-head--time { grid-template-columns: 30px minmax(0, 1fr); }
+.gv-block-tag { border-color: var(--gv-yellow, #FFCC1A); color: var(--gv-yellow, #FFCC1A); font-weight: 700; }
+.gv-rir-none { display: inline-grid; place-items: center; min-width: 44px; min-height: 44px; color: var(--gv-muted, #8F8B80); font-weight: 800; }
+.gv-round-member { display: inline-block; padding: 0 6px; border-radius: 6px; background: var(--gv-yellow, #FFCC1A); color: #0E0E0C; font-weight: 800; font-size: 0.75rem; }
+.sv-block { list-style: none; display: grid; gap: 6px; padding: 8px 0 8px 10px; border-left: 4px solid var(--sv-accent); border-radius: 4px 12px 12px 4px; }
+.sv-block-title { margin: 0; color: var(--sv-accent); font-size: 0.82rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.03em; }
+.sv-block-list { display: grid; gap: 8px; margin: 0; padding: 0; }
+.sv-member-label { display: inline-block; padding: 0 6px; border-radius: 6px; background: var(--sv-accent); color: #0E0E0C; font-size: 0.78rem; font-weight: 800; }
+.sv-block-line { margin: 0; color: var(--sv-accent); font-size: 0.82rem; font-weight: 800; text-transform: uppercase; }
+.auth-gate--student .sv-log-row--time, .auth-gate--student .sv-log-head--time { grid-template-columns: 24px minmax(0, 1fr) 52px; }

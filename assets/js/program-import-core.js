@@ -7,8 +7,13 @@
   const FORMAT = 'valhalla-programa';
   const FORMAT_VERSION = 1;
   const PROGRAM_KEYS = ['format', 'formatVersion', 'name', 'objective', 'durationWeeks', 'weeklyFrequency', 'days'];
-  const DAY_KEYS = ['name', 'exercises'];
-  const EXERCISE_KEYS = ['exerciseName', 'sets', 'repMin', 'repMax', 'targetWeight', 'restSeconds', 'notes', 'zone', 'approximations', 'effectiveSets'];
+  // v0.9.44 (opcionales; los archivos anteriores siguen valiendo igual): en el día, blocks
+  // (superseries); en el ejercicio, measure ("time"), durationSeconds y block (id del bloque).
+  const DAY_KEYS = ['name', 'exercises', 'blocks'];
+  const EXERCISE_KEYS = ['exerciseName', 'sets', 'repMin', 'repMax', 'targetWeight', 'restSeconds', 'notes', 'zone', 'approximations', 'effectiveSets', 'measure', 'durationSeconds', 'block'];
+  const BLOCK_KEYS = ['id', 'type', 'rounds', 'restSeconds'];
+  const SUPERSET_MIN = 2;
+  const SUPERSET_MAX = 4;
   const APPROXIMATION_KEYS = ['label', 'weight', 'reps'];
   const EFFECTIVE_SET_KEYS = ['label', 'weight', 'reps', 'rir'];
   const MAX_DAYS = 7;
@@ -135,10 +140,27 @@
       fail(`${where}: debe ser un objeto.`);
     }
     checkKeys(raw, EXERCISE_KEYS, where);
+    // Por tiempo: measure "time" y durationSeconds (segundos por serie), sin repeticiones.
+    let timed = {};
+    if (has(raw, 'measure') && raw.measure !== null && raw.measure !== 'reps') {
+      if (raw.measure !== 'time') {
+        fail(`${where}: "measure" debe ser "time" (por tiempo) o "reps".`);
+      }
+      if ((has(raw, 'repMin') && raw.repMin !== null) || (has(raw, 'repMax') && raw.repMax !== null)) {
+        fail(`${where}: un ejercicio por tiempo no lleva "repMin" ni "repMax" (usa "durationSeconds").`);
+      }
+      timed = { measure: 'time', durationSeconds: integer(raw, 'durationSeconds', where, { min: 1, max: 1000, required: true }) };
+    } else if (has(raw, 'durationSeconds') && raw.durationSeconds !== null) {
+      fail(`${where}: "durationSeconds" solo vale con "measure": "time".`);
+    }
+    const block = has(raw, 'block') && raw.block !== null ? text(raw, 'block', where, { required: true, max: 40 }) : '';
     return {
       exerciseName: text(raw, 'exerciseName', where, { required: true, max: 120 }),
-      sets: integer(raw, 'sets', where, { min: 1, max: 20, required: true }),
+      // En una superserie las series son las vueltas del bloque: "sets" puede faltar.
+      sets: integer(raw, 'sets', where, { min: 1, max: 20, required: !block, fallback: 1 }),
       ...reps(raw, where),
+      ...timed,
+      ...(block ? { block } : {}),
       targetWeight: weight(raw, 'targetWeight', where, 0),
       restSeconds: integer(raw, 'restSeconds', where, { min: 0, max: 900, fallback: 90 }),
       notes: text(raw, 'notes', where, { max: 500 }),
@@ -171,10 +193,49 @@
     if (raw.exercises.length > MAX_EXERCISES_PER_DAY) {
       fail(`${dayWhere}: tiene más de ${MAX_EXERCISES_PER_DAY} ejercicios.`);
     }
-    return {
-      name,
-      exercises: raw.exercises.map((exercise, exerciseIndex) => readExercise(exercise, `${dayWhere}, ejercicio ${exerciseIndex + 1}`))
-    };
+    const exercises = raw.exercises.map((exercise, exerciseIndex) => readExercise(exercise, `${dayWhere}, ejercicio ${exerciseIndex + 1}`));
+    const blocks = readBlocks(raw, dayWhere, exercises);
+    return blocks.length ? { name, exercises, blocks } : { name, exercises };
+  }
+
+  // Superseries del día: "blocks": [{ "id": "A", "type": "superset", "rounds": 3, "restSeconds": 60 }]
+  // y en cada ejercicio "block": "A". De 2 a 4 ejercicios seguidos por bloque.
+  function readBlocks(raw, where, exercises) {
+    const blocks = list(raw, 'blocks', where, BLOCK_KEYS, (item, itemWhere) => {
+      const type = text(item, 'type', itemWhere, { required: true, max: 20 });
+      if (type === 'circuit') {
+        fail(`${itemWhere}: los circuitos (EMOM, AMRAP…) todavía no están disponibles. Por ahora solo "superset".`);
+      }
+      if (type !== 'superset') {
+        fail(`${itemWhere}: "type" debe ser "superset".`);
+      }
+      return {
+        id: text(item, 'id', itemWhere, { required: true, max: 40 }),
+        type,
+        rounds: integer(item, 'rounds', itemWhere, { min: 1, max: 10, required: true }),
+        restSeconds: integer(item, 'restSeconds', itemWhere, { min: 0, max: 900, fallback: 90 })
+      };
+    });
+    const ids = blocks.map((block) => block.id);
+    const repeated = ids.find((id, index) => ids.indexOf(id) !== index);
+    if (repeated) {
+      fail(`${where}: el bloque "${repeated}" está repetido en "blocks".`);
+    }
+    exercises.forEach((exercise, index) => {
+      if (exercise.block && !ids.includes(exercise.block)) {
+        fail(`${where}, ejercicio ${index + 1}: "block": "${exercise.block}" no está en "blocks" del día.`);
+      }
+    });
+    blocks.forEach((block) => {
+      const positions = exercises.map((exercise, index) => (exercise.block === block.id ? index : -1)).filter((index) => index >= 0);
+      if (positions.length < SUPERSET_MIN || positions.length > SUPERSET_MAX) {
+        fail(`${where}: la superserie "${block.id}" debe tener de ${SUPERSET_MIN} a ${SUPERSET_MAX} ejercicios (tiene ${positions.length}).`);
+      }
+      if (positions[positions.length - 1] - positions[0] !== positions.length - 1) {
+        fail(`${where}: los ejercicios de la superserie "${block.id}" deben ir seguidos.`);
+      }
+    });
+    return blocks;
   }
 
   // Valida el archivo. Devuelve { file } con los datos limpios o { error } con un mensaje claro.
@@ -234,16 +295,21 @@
     });
     const now = deps.now || new Date().toISOString();
     const missing = [];
-    const days = file.days.map((day, dayIndex) => ({
-      id: deps.createId('program-day'),
-      name: day.name,
-      order: dayIndex + 1,
-      exercises: day.exercises.map((exercise, exerciseIndex) => {
+    const days = file.days.map((day, dayIndex) => {
+      // Superseries: ids nuevos para los bloques (solo en días que los traen).
+      const blockIds = new Map((day.blocks || []).map((block) => [block.id, deps.createId('program-block')]));
+      const built = {
+        id: deps.createId('program-day'),
+        name: day.name,
+        order: dayIndex + 1,
+        exercises: day.exercises.map((exercise, exerciseIndex) => {
         const match = byName.get(fold(exercise.exerciseName)) || null;
         if (!match && !missing.some((name) => fold(name) === fold(exercise.exerciseName))) {
           missing.push(exercise.exerciseName);
         }
         return {
+          ...(exercise.measure === 'time' ? { measure: 'time', durationSeconds: exercise.durationSeconds } : {}),
+          ...(exercise.block ? { blockId: blockIds.get(exercise.block) } : {}),
           id: deps.createId('program-exercise'),
           libraryExerciseId: match ? match.id : '',
           exerciseName: match ? match.name : exercise.exerciseName,
@@ -261,8 +327,20 @@
           approximations: exercise.approximations.map((item) => ({ ...item, id: deps.createId('program-approximation') })),
           effectiveSets: exercise.effectiveSets.map((item) => ({ ...item, id: deps.createId('program-set') }))
         };
-      })
-    }));
+        })
+      };
+      if (blockIds.size) {
+        built.blocks = day.blocks.map((block) => ({ id: blockIds.get(block.id), type: block.type, rounds: block.rounds, restSeconds: block.restSeconds }));
+        // Las series de cada ejercicio de la superserie son las vueltas del bloque.
+        built.exercises.forEach((exercise) => {
+          const block = built.blocks.find((item) => item.id === exercise.blockId);
+          if (block) {
+            exercise.sets = block.rounds;
+          }
+        });
+      }
+      return built;
+    });
     const draft = {
       id: deps.createId('program'),
       name: file.name,
@@ -280,15 +358,33 @@
       name: program.name,
       durationWeeks: program.durationWeeks,
       weeklyFrequency: program.weeklyFrequency,
-      days: program.days.map((day) => ({
-        name: day.name,
-        exercises: day.exercises.map((exercise) => ({
-          name: exercise.exerciseName,
-          sets: exercise.sets,
-          reps: exercise.repMin === null ? null : (exercise.repMin === exercise.repMax ? String(exercise.repMin) : `${exercise.repMin}-${exercise.repMax}`),
-          linked: Boolean(exercise.libraryExerciseId)
-        }))
-      })),
+      days: program.days.map((day) => {
+        // Superseries: "A1", "A2"… (letra por orden de aparición en el día).
+        const letters = new Map();
+        const counts = new Map();
+        return {
+          name: day.name,
+          exercises: day.exercises.map((exercise) => {
+            const item = {
+              name: exercise.exerciseName,
+              sets: exercise.sets,
+              reps: exercise.repMin === null || exercise.repMin === undefined ? null : (exercise.repMin === exercise.repMax ? String(exercise.repMin) : `${exercise.repMin}-${exercise.repMax}`),
+              linked: Boolean(exercise.libraryExerciseId)
+            };
+            if (exercise.measure === 'time') {
+              item.seconds = exercise.durationSeconds ?? null;
+            }
+            if (exercise.blockId) {
+              if (!letters.has(exercise.blockId)) {
+                letters.set(exercise.blockId, String.fromCharCode(65 + letters.size));
+              }
+              counts.set(exercise.blockId, (counts.get(exercise.blockId) || 0) + 1);
+              item.superset = `${letters.get(exercise.blockId)}${counts.get(exercise.blockId)}`;
+            }
+            return item;
+          })
+        };
+      }),
       exerciseCount: program.days.reduce((sum, day) => sum + day.exercises.length, 0),
       missing
     };

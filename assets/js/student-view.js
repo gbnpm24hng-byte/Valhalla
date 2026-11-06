@@ -136,6 +136,7 @@
   // Serie: muestra solo lo que tiene dato ("60 kg", sin "× 0 reps").
   function setLine(set) {
     const parts = [];
+    if (hasValue(set.seconds)) parts.push(`${Number(set.seconds)} s`);
     if (hasValue(set.weight)) parts.push(`${Number(set.weight)} kg`);
     if (hasValue(set.reps)) parts.push(`${Number(set.reps)} reps`);
     let line = parts.join(' × ') || 'por definir';
@@ -144,16 +145,73 @@
   }
 
   // Lo mismo para las pantallas del alumno: sin la palabra RIR (se muestra cómo se sintió).
+  // v0.9.44: una serie por tiempo se ve en segundos ("40 s"), nunca con kilos.
   function studentSetLine(set) {
     const parts = [];
-    if (hasValue(set.weight)) parts.push(`${formatNumber(Number(set.weight))} kg`);
-    if (hasValue(set.reps)) parts.push(`${Number(set.reps)} reps`);
+    if (hasValue(set.seconds)) {
+      parts.push(`${Number(set.seconds)} s`);
+    } else {
+      if (hasValue(set.weight)) parts.push(`${formatNumber(Number(set.weight))} kg`);
+      if (hasValue(set.reps)) parts.push(`${Number(set.reps)} reps`);
+    }
     const feel = feelFromRir(set.rir);
     return `${parts.join(' × ') || 'por definir'}${feel ? ` · ${feel}` : ''}`;
   }
 
   function setHasData(set) {
-    return hasValue(set?.weight) || hasValue(set?.reps);
+    return hasValue(set?.weight) || hasValue(set?.reps) || hasValue(set?.seconds);
+  }
+
+  // v0.9.44 · Bloques: ejercicio por tiempo (measure: 'time'). En student_sets los segundos van
+  // en la columna reps; en esta pantalla, la casilla "reps" de un ejercicio por tiempo son segundos.
+  function isTimed(exercise) {
+    return exercise?.measure === 'time';
+  }
+
+  // Superserie publicada: day.blocks y blockId en cada ejercicio (seguidos). Letra por orden de
+  // aparición en el día (A, B…) y posición dentro del bloque (A1, A2…).
+  function dayBlockMap(day) {
+    const blocks = new Map((Array.isArray(day?.blocks) ? day.blocks : []).filter((block) => block && block.id && block.type === 'superset').map((block) => [block.id, block]));
+    const letters = new Map();
+    (day?.exercises || []).forEach((exercise) => {
+      if (exercise?.blockId && blocks.has(exercise.blockId) && !letters.has(exercise.blockId)) {
+        letters.set(exercise.blockId, String.fromCharCode(65 + letters.size));
+      }
+    });
+    return { blocks, letters };
+  }
+
+  // { label: 'A1', rounds, next: 'A2' | '' } o null si el ejercicio no está en una superserie.
+  function memberInfo(day, exercise) {
+    const { blocks, letters } = dayBlockMap(day);
+    const block = exercise?.blockId ? blocks.get(exercise.blockId) : null;
+    if (!block) return null;
+    const members = (day.exercises || []).filter((item) => item.blockId === block.id);
+    const position = members.findIndex((item) => item.id === exercise.id) + 1;
+    const letter = letters.get(block.id);
+    return {
+      label: `${letter}${position}`,
+      rounds: Number(block.rounds) || Number(exercise.sets) || 0,
+      next: position < members.length ? `${letter}${position + 1}` : ''
+    };
+  }
+
+  // Tramos del día: [{ exercise }] suelto o [{ block, letter, items: [exercise…] }].
+  function daySegments(day, exercises) {
+    const { blocks, letters } = dayBlockMap(day);
+    const out = [];
+    (exercises || []).forEach((exercise) => {
+      const block = exercise?.blockId ? blocks.get(exercise.blockId) : null;
+      const last = out[out.length - 1];
+      if (block && last?.block && last.block.id === block.id) {
+        last.items.push(exercise);
+      } else if (block) {
+        out.push({ block, letter: letters.get(block.id), items: [exercise] });
+      } else {
+        out.push({ exercise });
+      }
+    });
+    return out;
   }
 
   function repsRange(exercise) {
@@ -167,6 +225,7 @@
   function exerciseScheme(exercise) {
     const sets = hasValue(exercise.sets) ? Math.floor(Number(exercise.sets)) : 0;
     if (!sets) return 'Series por definir';
+    if (isTimed(exercise)) return `${sets} × ${hasValue(exercise.durationSeconds) ? `${Number(exercise.durationSeconds)} s` : 'tiempo por definir'}`;
     if (!hasValue(exercise.repMin)) return `${sets} × reps por definir`;
     const reps = hasValue(exercise.repMax) && Number(exercise.repMax) !== Number(exercise.repMin)
       ? `${Number(exercise.repMin)}-${Number(exercise.repMax)}`
@@ -337,7 +396,7 @@
   function renderExercise(exercise) {
     const summary = [
       hasValue(exercise.sets) ? `${Number(exercise.sets)} ${Number(exercise.sets) === 1 ? 'serie' : 'series'}` : '',
-      repsRange(exercise),
+      isTimed(exercise) ? (hasValue(exercise.durationSeconds) ? `${Number(exercise.durationSeconds)} s` : 'tiempo por definir') : repsRange(exercise),
       hasValue(exercise.targetWeight) ? `${Number(exercise.targetWeight)} kg objetivo` : ''
     ].filter(Boolean).join(' · ');
     // Aproximaciones sin peso ni repeticiones no se muestran.
@@ -476,8 +535,11 @@
       const date = row.session_date || row.data?.date;
       if (!date || byDate.has(date) || !name) return;
       (row.data?.exercises || []).filter((item) => foldText(item.name) === name).forEach((item) => {
+        // v0.9.44: por tiempo solo cuenta lo hecho por tiempo (y con kilos, lo hecho con kilos);
+        // los segundos van como "reps", igual que en student_sets.
+        if (isTimed(exercise) !== (item.measure === 'time')) return;
         (item.sets || []).filter((set) => (set.type || set.setType || 'S') === 'S').forEach((set, index) => {
-          put(date, Number(set.setNumber) || index + 1, set.weight, set.reps, set.rir);
+          put(date, Number(set.setNumber) || index + 1, isTimed(exercise) ? null : set.weight, isTimed(exercise) ? set.seconds : set.reps, set.rir);
         });
       });
     });
@@ -488,11 +550,18 @@
     return sets.reduce((max, set) => (hasValue(set.weight) ? Math.max(max, Number(set.weight)) : max), 0);
   }
 
+  // Lo que se compara para el récord: kilos o, por tiempo, segundos (que van en reps).
+  function maxValue(exercise, sets) {
+    return isTimed(exercise)
+      ? sets.reduce((max, set) => (hasValue(set.reps) ? Math.max(max, Number(set.reps)) : max), 0)
+      : maxWeight(sets);
+  }
+
   // Récord anterior (máximo de las fechas antes de `date`) y la última vez antes de `date`.
   function exerciseReference(ctx, exercise, date) {
     const before = exerciseHistory(ctx, exercise).filter((entry) => entry.date < date && entry.sets.some(setHasData));
     return {
-      record: before.reduce((max, entry) => Math.max(max, maxWeight(entry.sets)), 0),
+      record: before.reduce((max, entry) => Math.max(max, maxValue(exercise, entry.sets)), 0),
       last: before.length ? before[before.length - 1] : null
     };
   }
@@ -506,9 +575,9 @@
       seen.add(exercise.id);
       let best = 0;
       exerciseHistory(ctx, exercise).forEach((entry) => {
-        const top = maxWeight(entry.sets);
+        const top = maxValue(exercise, entry.sets);
         if (best > 0 && top > best && dates.has(entry.date)) {
-          records.push({ date: entry.date, name: exercise.name || 'Ejercicio', weight: top });
+          records.push({ date: entry.date, name: exercise.name || 'Ejercicio', weight: top, unit: isTimed(exercise) ? 's' : 'kg' });
         }
         best = Math.max(best, top);
       });
@@ -519,6 +588,11 @@
   // Valores que aparecen en una serie sin registrar: la última vez, si no lo planificado
   // por el entrenador para esa serie, si no el objetivo.
   function prefillValues(exercise, setType, setNumber, last) {
+    // v0.9.44: por tiempo, solo segundos (en "reps"): la última vez o los del entrenador.
+    if (isTimed(exercise)) {
+      const previousTime = last?.sets.find((set) => set.setNumber === setNumber);
+      return { weight: null, reps: hasValue(previousTime?.reps) ? previousTime.reps : (hasValue(exercise.durationSeconds) ? exercise.durationSeconds : null) };
+    }
     if (setType === 'A') {
       const planned = (exercise.approximations || [])[setNumber - 1];
       return planned && setHasData(planned) ? { weight: hasValue(planned.weight) ? planned.weight : null, reps: hasValue(planned.reps) ? planned.reps : null } : { weight: null, reps: null };
@@ -630,7 +704,7 @@
       <div class="sv-chips sv-days" role="group" aria-label="Día del programa">
         ${days.map((item, index) => `<button type="button" class="sv-chip${item.id === day?.id ? ' is-active' : ''}" data-sv-day="${escapeHtml(item.id || '')}" aria-pressed="${item.id === day?.id}">${escapeHtml(item.name || `Día ${index + 1}`)}</button>`).join('')}
       </div>` : '<p class="sv-meta">Este programa aún no tiene días.</p>';
-    const cards = exercises.map((exercise) => {
+    const card = (exercise, memberLabel = '') => {
       const can = ctx.canLog && loggable(exercise);
       const progress = can ? exerciseProgress(ctx, day.id, exercise) : null;
       const complete = progress && progress.done === progress.planned;
@@ -643,11 +717,23 @@
             ${figure}
             <span class="sv-ex-card-text">
               ${zoneTag ? `<span class="sv-zone-tag" data-sv-zone-tag>${escapeHtml(zoneTag)}</span>` : ''}
-              <strong>${escapeHtml(exercise.name || 'Ejercicio')}${videoFor(exercise) ? ' <span class="sv-video-mark" data-sv-video-mark role="img" aria-label="Tiene video">▶</span>' : ''}</strong>
-              <span class="sv-meta">${escapeHtml(exerciseScheme(exercise))}</span>
+              <strong>${memberLabel ? `<span class="sv-member-label" data-sv-member-label>${escapeHtml(memberLabel)}</span> ` : ''}${escapeHtml(exercise.name || 'Ejercicio')}${videoFor(exercise) ? ' <span class="sv-video-mark" data-sv-video-mark role="img" aria-label="Tiene video">▶</span>' : ''}</strong>
+              <span class="sv-meta">${escapeHtml(memberLabel && isTimed(exercise) ? `${Number(exercise.durationSeconds) || '—'} s` : memberLabel ? exerciseScheme(exercise).replace(/^\d+ × /, '') : exerciseScheme(exercise))}</span>
             </span>
             ${progress ? `<span class="sv-ex-progress${complete ? ' is-complete' : ''}" data-sv-progress>${complete ? '<span class="sv-check" aria-label="Completo">✓</span>' : `${progress.done}/${progress.planned}`}</span>` : ''}
           </button>
+        </li>`;
+    };
+    // v0.9.44: A1 y A2 juntos bajo "Superserie · 3 vueltas".
+    const cards = daySegments(day, exercises).map((segment) => {
+      if (!segment.block) {
+        return card(segment.exercise);
+      }
+      const rest = Number(segment.block.restSeconds);
+      return `
+        <li class="sv-block" data-sv-block="${escapeHtml(segment.block.id)}">
+          <p class="sv-block-title">Superserie · ${escapeHtml(plural(Number(segment.block.rounds) || 0, 'vuelta', 'vueltas'))}${rest > 0 ? ` <span class="sv-meta">· descanso ${rest} s al final</span>` : ''}</p>
+          <ul class="sv-exercises sv-block-list">${segment.items.map((exercise, index) => card(exercise, `${segment.letter}${index + 1}`)).join('')}</ul>
         </li>`;
     }).join('');
     let next = '';
@@ -694,12 +780,17 @@
         ${locked ? '' : `<button type="button" class="sv-step-btn" data-sv-adjust="${field}" data-sv-delta="${step}" aria-label="Más ${unit}">+</button>`}
       </div>`;
     const feel = isLastEffective && done ? feelFromRir(state.rir) : '';
+    // v0.9.44: por tiempo una sola casilla de segundos (de a 5 s); viaja como "reps".
+    const timed = isTimed(exercise);
+    const fields = timed
+      ? stepper('reps', 'segundos', 5, values.reps, 'numeric')
+      : `${stepper('weight', 'kg', 2.5, values.weight, 'decimal')}
+        ${stepper('reps', 'repeticiones', 1, values.reps, 'numeric')}`;
     return `
-      <div class="sv-log-row${done ? ' is-saved' : ''}${state.status === 'rejected' ? ' is-rejected' : ''}" data-set-type="${setType}" data-set-number="${setNumber}" data-key="${escapeHtml(key)}"${locked ? ' data-locked' : ''}${isLastEffective ? ' data-last-effective' : ''}
+      <div class="sv-log-row${timed ? ' sv-log-row--time' : ''}${done ? ' is-saved' : ''}${state.status === 'rejected' ? ' is-rejected' : ''}" data-set-type="${setType}"${timed ? ' data-timed' : ''} data-set-number="${setNumber}" data-key="${escapeHtml(key)}"${locked ? ' data-locked' : ''}${isLastEffective ? ' data-last-effective' : ''}
         data-saved-weight="${escapeHtml(stored ? formatNumber(state.weight) : '')}" data-saved-reps="${escapeHtml(stored ? formatNumber(state.reps) : '')}" data-saved-rir="${escapeHtml(state.rir ?? '')}" data-status="${state.status}">
         <span class="sv-set-label">${setType}${setNumber}</span>
-        ${stepper('weight', 'kg', 2.5, values.weight, 'decimal')}
-        ${stepper('reps', 'repeticiones', 1, values.reps, 'numeric')}
+        ${fields}
         <button type="button" class="sv-check-btn" data-sv-check aria-label="Guardar ${label.toLowerCase()}"${locked ? ' disabled' : ''}>✓</button>
         <div class="sv-row-foot">
           <span class="sv-log-status" data-status="${state.status}">${escapeHtml(STATUS_TEXT[state.status] || '')}</span>
@@ -714,7 +805,9 @@
   function renderPlanRow(exercise, setType, setNumber) {
     const values = prefillValues(exercise, setType, setNumber, null);
     const planned = setType === 'S' ? (exercise.effectiveSets || [])[setNumber - 1] : null;
-    const line = studentSetLine({ weight: values.weight, reps: values.reps, rir: planned?.rir });
+    const line = isTimed(exercise)
+      ? studentSetLine({ seconds: values.reps, rir: planned?.rir })
+      : studentSetLine({ weight: values.weight, reps: values.reps, rir: planned?.rir });
     return `
       <div class="sv-plan-row">
         <span class="sv-set-label">${setType}${setNumber}</span>
@@ -742,12 +835,18 @@
     const note = noteForStudent(exercise.techniqueNotes);
     const effective = selfLog ? selfLog.plannedEffectiveSets(exercise) : (hasValue(exercise.sets) ? Math.floor(Number(exercise.sets)) : 0);
     const approximations = Array.isArray(exercise.approximations) ? exercise.approximations.length : 0;
+    const timed = isTimed(exercise);
+    const unit = timed ? 's' : 'kg';
     const lastText = reference.last
-      ? reference.last.sets.filter(setHasData).map((set) => `${hasValue(set.weight) ? `${formatNumber(Number(set.weight))}` : '—'}×${hasValue(set.reps) ? Number(set.reps) : '—'}`).join(', ')
+      ? (timed
+        ? `${reference.last.sets.filter((set) => hasValue(set.reps)).map((set) => Number(set.reps)).join(', ')} s`
+        : reference.last.sets.filter(setHasData).map((set) => `${hasValue(set.weight) ? `${formatNumber(Number(set.weight))}` : '—'}×${hasValue(set.reps) ? Number(set.reps) : '—'}`).join(', '))
       : '';
+    // v0.9.44: superserie: "A1 · Superserie · 3 vueltas" (lo siguiente es A2, sin descanso).
+    const blockInfo = memberInfo(day, exercise);
     const refBox = `
       <div class="sv-ref" data-sv-ref>
-        <div class="sv-ref-cell"><span class="sv-ref-label">Récord</span><strong data-sv-record-value>${reference.record ? `${formatNumber(reference.record)} kg` : '—'}</strong></div>
+        <div class="sv-ref-cell"><span class="sv-ref-label">Récord</span><strong data-sv-record-value>${reference.record ? `${formatNumber(reference.record)} ${unit}` : '—'}</strong></div>
         <div class="sv-ref-cell"><span class="sv-ref-label">Última vez</span><strong>${reference.last ? escapeHtml(formatDate(reference.last.date)) : '—'}</strong>${lastText ? `<span class="sv-meta">${escapeHtml(lastText)}</span>` : ''}</div>
       </div>`;
     let body;
@@ -770,8 +869,10 @@
       }).join('');
       const approxRows = Array.from({ length: approximations }, (_, index) => renderLogRow(ctx, day.id, exercise, 'A', index + 1, null, false)).join('');
       body = `
-        <div class="sv-log" data-sv-log data-day-id="${escapeHtml(day.id)}" data-exercise-id="${escapeHtml(exercise.id)}" data-prior-record="${reference.record || 0}">
-          <div class="sv-log-head" aria-hidden="true"><span></span><span>kg</span><span>reps</span><span></span></div>
+        <div class="sv-log" data-sv-log data-day-id="${escapeHtml(day.id)}" data-exercise-id="${escapeHtml(exercise.id)}" data-prior-record="${reference.record || 0}"${timed ? ' data-timed' : ''}>
+          ${timed
+            ? '<div class="sv-log-head sv-log-head--time" aria-hidden="true"><span></span><span>segundos</span><span></span></div>'
+            : '<div class="sv-log-head" aria-hidden="true"><span></span><span>kg</span><span>reps</span><span></span></div>'}
           ${rows}
           ${approxRows ? `<details class="sv-approx"><summary>Aproximaciones (opcional)</summary><div class="sv-approx-rows">${approxRows}</div></details>` : ''}
           <p class="sv-log-msg hidden" role="alert" data-sv-log-msg></p>
@@ -790,10 +891,11 @@
           <span class="sv-ex-count" data-sv-ex-count>${exerciseIndex + 1} de ${total}</span>
           <button type="button" class="sv-ghost" data-sv-step="1"${exerciseIndex >= total - 1 ? ' disabled' : ''}>Siguiente ▶</button>
         </nav>
+        ${blockInfo ? `<p class="sv-block-line" data-sv-block-line>${escapeHtml(`${blockInfo.label} · Superserie · ${plural(blockInfo.rounds, 'vuelta', 'vueltas')}`)}${blockInfo.next ? ` · sigue ${escapeHtml(blockInfo.next)}` : ''}</p>` : ''}
         <h2 class="sv-ex-name">${escapeHtml(exercise.name || 'Ejercicio')}</h2>
         ${renderExerciseMuscles(exercise)}
         ${video ? `<a class="sv-video-btn" data-sv-video href="${escapeHtml(video)}" target="_blank" rel="noopener noreferrer">▶ Ver cómo se hace</a>` : ''}
-        <p class="sv-meta sv-ex-scheme">${escapeHtml(exerciseScheme(exercise))}${hasValue(exercise.targetWeight) ? ` · objetivo ${escapeHtml(formatNumber(Number(exercise.targetWeight)))} kg` : ''}${ctx.canLog && plannedFeel(exercise) ? ` · <span data-sv-planned-feel>objetivo: ${escapeHtml(plannedFeel(exercise))}</span>` : ''}</p>
+        <p class="sv-meta sv-ex-scheme">${escapeHtml(exerciseScheme(exercise))}${hasValue(exercise.targetWeight) && !timed ? ` · objetivo ${escapeHtml(formatNumber(Number(exercise.targetWeight)))} kg` : ''}${ctx.canLog && plannedFeel(exercise) ? ` · <span data-sv-planned-feel>objetivo: ${escapeHtml(plannedFeel(exercise))}</span>` : ''}</p>
         ${note ? `<p class="sv-note">${escapeHtml(note)}</p>` : ''}
         ${refBox}
         ${body}
@@ -827,7 +929,7 @@
     const records = findRecords(ctx, allExercises, week);
     const today = records.filter((record) => record.date === ctx.date);
     const rest = records.filter((record) => record.date !== ctx.date);
-    const recordList = (items) => `<ul class="sv-records">${items.map((record) => `<li><span class="sv-check" aria-hidden="true">✓</span> ${escapeHtml(record.name)} <strong>${escapeHtml(formatNumber(record.weight))} kg</strong>${record.date !== ctx.date ? ` <span class="sv-meta">${escapeHtml(formatDate(record.date))}</span>` : ''}</li>`).join('')}</ul>`;
+    const recordList = (items) => `<ul class="sv-records">${items.map((record) => `<li><span class="sv-check" aria-hidden="true">✓</span> ${escapeHtml(record.name)} <strong>${escapeHtml(formatNumber(record.weight))} ${record.unit || 'kg'}</strong>${record.date !== ctx.date ? ` <span class="sv-meta">${escapeHtml(formatDate(record.date))}</span>` : ''}</li>`).join('')}</ul>`;
     return `
       <section class="sv-screen sv-summary" data-student-program data-sv-screen="summary" data-assignment-id="${escapeHtml(program.assignment_id || '')}">
         <p class="sv-summary-kicker">¡Hazaña cumplida!</p>
@@ -855,7 +957,7 @@
     return [
       `¡Hazaña cumplida! ${selection.day?.name || 'Día'} terminado.`,
       `${plural(stats.exercises, 'ejercicio', 'ejercicios')} · ${plural(stats.sets, 'serie', 'series')} · ${formatKg(stats.kg)} kg movidos.`,
-      records.length ? `Récords: ${records.map((record) => `${record.name} ${formatNumber(record.weight)} kg`).join(', ')}.` : '',
+      records.length ? `Récords: ${records.map((record) => `${record.name} ${formatNumber(record.weight)} ${record.unit || 'kg'}`).join(', ')}.` : '',
       'by Vikingos Radical'
     ].filter(Boolean).join('\n');
   }
@@ -1048,11 +1150,13 @@
     row.classList.toggle('is-edited', DONE.has(status) && !matches);
     const log = row.closest('[data-sv-log]');
     const prior = Number(log?.getAttribute('data-prior-record') || 0);
-    const weight = selfLog.parseDecimal(weightText);
+    // v0.9.44: por tiempo el récord compara segundos (que van en "reps").
+    const timed = row.hasAttribute('data-timed');
+    const weight = selfLog.parseDecimal(timed ? repsText : weightText);
     const pill = row.querySelector('[data-sv-record]');
     if (pill) {
       const isRecord = row.getAttribute('data-set-type') === 'S' && prior > 0 && Number.isFinite(weight) && weight > prior;
-      pill.textContent = isRecord ? `¡Récord! ${formatNumber(weight)} kg` : '';
+      pill.textContent = isRecord ? `¡Récord! ${formatNumber(weight)} ${timed ? 's' : 'kg'}` : '';
       pill.classList.toggle('hidden', !isRecord);
     }
   }
@@ -1123,7 +1227,7 @@
       return;
     }
     if (!entries.length) {
-      showFormMessage(form, 'Escribe el peso o las repeticiones de esta serie.', 'bad');
+      showFormMessage(form, row.hasAttribute('data-timed') ? 'Escribe los segundos de esta serie.' : 'Escribe el peso o las repeticiones de esta serie.', 'bad');
       return;
     }
     const base = { ownerId: cache.ownerId, clientId: cache.clientId, assignmentId, sessionDate: logState.date, dayId, exerciseId };

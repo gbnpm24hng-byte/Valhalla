@@ -164,16 +164,44 @@
       picked.primaryMuscle = text(muscles.primaryMuscle, 40);
       picked.secondaryMuscles = muscles.secondaryMuscles.map((item) => text(item, 40));
     }
+    // v0.9.44: por tiempo (measure y durationSeconds) y superserie (blockId). Solo si los tiene:
+    // un ejercicio de repeticiones suelto se publica igual que antes.
+    if (exercise?.measure === 'time') {
+      picked.measure = 'time';
+      const seconds = numberOrNull(exercise?.durationSeconds);
+      if (seconds !== null) {
+        picked.durationSeconds = seconds;
+      }
+    }
+    if (exercise?.blockId) {
+      picked.blockId = text(exercise.blockId, 120);
+    }
     return picked;
   }
 
-  function pickProgramDay(day, index, library) {
+  // Bloque del día (superserie): id, tipo, vueltas y descanso al final.
+  const PUBLISHABLE_BLOCK_TYPES = ['superset'];
+  function pickBlock(block) {
     return {
+      id: text(block?.id, 120),
+      type: text(block?.type, 20),
+      rounds: numberOrNull(block?.rounds),
+      restSeconds: numberOrNull(block?.restSeconds)
+    };
+  }
+
+  function pickProgramDay(day, index, library) {
+    const picked = {
       id: text(day?.id, 120),
       name: text(day?.name, 120) || `Día ${index + 1}`,
       order: numberOrNull(day?.order) ?? index + 1,
       exercises: list(day?.exercises).map((exercise) => pickProgramExercise(exercise, library))
     };
+    const blocks = list(day?.blocks).filter((block) => block && block.id && PUBLISHABLE_BLOCK_TYPES.includes(block.type)).map(pickBlock);
+    if (blocks.length) {
+      picked.blocks = blocks;
+    }
+    return picked;
   }
 
   // Programa publicado a partir de una asignación (días, ejercicios, series, cargas).
@@ -199,14 +227,20 @@
           omittedSets += 1;
           return;
         }
-        sets.push({
+        const published = {
           setNumber: numberOrNull(entry?.setNumber) ?? index + 1,
           type,
           weight: numberOrNull(entry?.weight),
           reps: numberOrNull(entry?.reps),
           rir: numberOrNull(entry?.rir),
           completed: entry?.completed !== false
-        });
+        };
+        // v0.9.44: serie por tiempo (solo si tiene segundos).
+        const seconds = numberOrNull(entry?.seconds);
+        if (seconds !== null) {
+          published.seconds = seconds;
+        }
+        sets.push(published);
       });
       const record = {
         name: text(exercise?.exerciseName, 120),
@@ -214,6 +248,9 @@
         techniqueNotes: studentNote(exercise?.coachNotes),
         sets
       };
+      if (exercise?.measure === 'time') {
+        record.measure = 'time';
+      }
       // Solo si el entrenador lo marcó visible (y no es "Interno:"). Sin comentario, el
       // registro queda igual que antes.
       const comment = publishableComment(exercise?.comment);

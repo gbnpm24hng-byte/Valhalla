@@ -19,6 +19,9 @@ Guarda primero en localStorage y sincroniza con Supabase (coach_state + tablas d
   clave propia valhalla_group_draft:<cuenta>, fuera del estado; no sube a la nube ni sale en respaldos.
 - group-round-core.js — Modo Grupo compacto v2: series hechas (peso y reps), −/+ (2,5 kg / 1 rep), coma decimal,
   siguiente alumno en orden circular, vuelta y Cierre de ronda. Solo arma valores del borrador; el peso propuesto lo da getGroupProposedWeight (app.js).
+- blocks-core.js — Bloques fase 1 (v0.9.44): ejercicio por tiempo (measure 'time', durationSeconds; series con seconds;
+  en student_sets los segundos van en reps) y superseries (day.blocks + blockId, de 2 a 4 seguidos, series = vueltas).
+  Todo opcional. Fase 2 (circuitos) = otro type en BLOCK_TYPES. Se carga antes de data.js.
 - student-import-core.js — "Traer registros" (B3.3): junta student_sets en las sesiones sin pisar lo del entrenador.
 - coach-sets-core.js — B3.4: Modo Grupo prellena con lo del alumno; al confirmar escribe en student_sets solo lo
   corregido o no registrado (coach_validated). Lo pendiente vive en valhalla_coach_sets:<cuenta>, fuera del estado.
@@ -29,7 +32,8 @@ Guarda primero en localStorage y sincroniza con Supabase (coach_state + tablas d
 
 ## Reglas fijas
 - No hacer commit ni push sin confirmación explícita.
-- Nunca tocar seed-data/ (datos reales, en .gitignore). Leerlo solo si se pide, sin subir nada.
+- Nunca tocar ni leer seed-data/ (datos reales, en .gitignore), por ningún motivo: tampoco para buscar nombres.
+  La búsqueda de nombres reales antes del commit se hace solo sobre el diff, con una lista genérica de nombres.
 - Agregar archivos uno por uno; nunca `git add -A`.
 - Antes del commit: correr la suite y las baterías; mostrar `git status` y `git diff --cached --stat`;
   buscar secretos (sb_secret, service_role, password, contraseña, JWT) y nombres de clientes.

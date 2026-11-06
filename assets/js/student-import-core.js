@@ -33,18 +33,35 @@
 
   // Una serie "tiene datos" si tiene peso o repeticiones.
   function setHasData(entry) {
+    if (numberOrNull(entry?.seconds) !== null && Number(entry.seconds) > 0) return true;
     return Number(entry?.weight || 0) > 0 || (entry?.reps !== null && entry?.reps !== undefined && Number(entry.reps) > 0);
   }
 
-  function sameValues(entry, row) {
+  // v0.9.44: en un ejercicio por tiempo (measure: 'time' en el programa), student_sets trae los
+  // segundos en la columna reps: en la sesión quedan en `seconds` (sin peso ni reps).
+  function sameValues(entry, row, timed = false) {
+    if (timed) {
+      return numberOrNull(entry.seconds) === numberOrNull(row.reps) && numberOrNull(entry.rir) === numberOrNull(row.rir);
+    }
     return Number(entry.weight || 0) === Number(numberOrNull(row.weight) ?? 0)
       && numberOrNull(entry.reps) === numberOrNull(row.reps)
       && numberOrNull(entry.rir) === numberOrNull(row.rir);
   }
 
-  function applyRow(entry, row) {
-    entry.weight = Number(numberOrNull(row.weight) ?? 0);
-    entry.reps = numberOrNull(row.reps);
+  function applyRow(entry, row, timed = false) {
+    if (timed) {
+      entry.weight = 0;
+      entry.reps = null;
+      const seconds = numberOrNull(row.reps);
+      if (seconds === null) {
+        delete entry.seconds;
+      } else {
+        entry.seconds = seconds;
+      }
+    } else {
+      entry.weight = Number(numberOrNull(row.weight) ?? 0);
+      entry.reps = numberOrNull(row.reps);
+    }
     entry.rir = numberOrNull(row.rir);
     entry.completed = row.completed !== false;
   }
@@ -113,6 +130,7 @@
       if (pendingCoach.has(row)) continue;
       const id = rowId(row);
       const plan = findPlan(state, row);
+      const timed = plan.exercise?.measure === 'time';
 
       // Sesión del mismo alumno, día y fecha (la de esa asignación primero).
       const candidates = sessions.filter((session) => session.clientId === row.client_id && session.date === row.session_date && session.programDayId === row.day_id);
@@ -153,6 +171,8 @@
           targetWeight: Number(plan.exercise?.targetWeight || 0),
           restSeconds: Number(plan.exercise?.restSeconds || 90),
           coachNotes: '',
+          ...(timed ? { measure: 'time', ...(plan.exercise.durationSeconds ? { plannedSeconds: plan.exercise.durationSeconds } : {}) } : {}),
+          ...(plan.exercise?.blockId ? { blockId: plan.exercise.blockId } : {}),
           sets: []
         };
         session.exercises.push(exercise);
@@ -163,8 +183,8 @@
       // Ya traída antes: solo se actualiza si sigue siendo del alumno y cambió.
       const known = sets.find((entry) => entry.studentSetId === id);
       if (known) {
-        if (known.loggedBy === STUDENT && !sameValues(known, row)) {
-          applyRow(known, row);
+        if (known.loggedBy === STUDENT && !sameValues(known, row, timed)) {
+          applyRow(known, row, timed);
           // B3.4: si el entrenador ya la había revisado, el cambio del alumno se vuelve a revisar.
           known.coachValidated = false;
           summary.updated += 1;
@@ -184,7 +204,7 @@
         continue;
       }
       if (target && !target.studentSetId) {
-        applyRow(target, row); // Serie vacía del entrenador: se llena.
+        applyRow(target, row, timed); // Serie vacía del entrenador: se llena.
         target.setType = row.set_type;
         target.loggedBy = STUDENT;
         target.studentSetId = id;
@@ -206,7 +226,7 @@
         loggedBy: STUDENT,
         studentSetId: id
       };
-      applyRow(entry, row);
+      applyRow(entry, row, timed);
       sets.push(entry);
       summary.added += 1;
     }

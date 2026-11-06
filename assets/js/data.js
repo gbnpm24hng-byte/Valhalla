@@ -369,6 +369,12 @@
     return Object.keys(extra).length ? { ...extra, ...normalized } : normalized;
   }
 
+  // v0.9.44 · Bloques (blocks-core.js): ejercicios por tiempo y superseries. Campos opcionales:
+  // sin ellos el resultado es el mismo de siempre. Sin el módulo cargado, keepUnknown los conserva.
+  function blocksApi() {
+    return (typeof window !== 'undefined' && window.VALHALLA && window.VALHALLA.blocksCore) || null;
+  }
+
   function normalizeTrainingSet(setEntry, index) {
     const rawType = String(setEntry.setType || setEntry.set_type || 'S').trim().toUpperCase();
     const setType = rawType === 'A' || rawType === 'T' || rawType === 'S' ? rawType : 'S';
@@ -381,6 +387,11 @@
     }
     if (setEntry.studentSetId) {
       origin.studentSetId = String(setEntry.studentSetId);
+    }
+    // Serie de un ejercicio por tiempo: segundos (solo si los tiene).
+    const seconds = blocksApi() ? blocksApi().cleanSeconds(setEntry.seconds) : null;
+    if (seconds !== null) {
+      origin.seconds = seconds;
     }
     return keepUnknown(setEntry, {
       ...origin,
@@ -417,10 +428,31 @@
       restSeconds: Number(exercise.restSeconds || 90),
       coachNotes: exercise.coachNotes || exercise.techniqueNotes || '',
       ...(comment ? { comment } : {}),
+      ...sessionExerciseBlockFields(exercise),
       sets: Array.isArray(exercise.sets)
         ? exercise.sets.map((setEntry, setIndex) => normalizeTrainingSet(setEntry, setIndex))
         : []
     }, ['reps', 'weight', 'exercise', 'techniqueNotes', 'comment']);
+  }
+
+  // Ejercicio hecho por tiempo o dentro de una superserie: measure, plannedSeconds y blockId.
+  function sessionExerciseBlockFields(exercise) {
+    const api = blocksApi();
+    if (!api) {
+      return {};
+    }
+    const out = {};
+    if (api.isTimed(exercise)) {
+      out.measure = api.TIME;
+      const seconds = api.cleanSeconds(exercise.plannedSeconds);
+      if (seconds !== null) {
+        out.plannedSeconds = seconds;
+      }
+    }
+    if (exercise.blockId) {
+      out.blockId = String(exercise.blockId);
+    }
+    return out;
   }
 
   // Comentario del entrenador en un ejercicio de una sesión (Modo Grupo). Privado salvo
@@ -507,19 +539,34 @@
       zone: exercise.zone || '',
       weightConvention: exercise.weightConvention || 'external',
       approximations,
-      effectiveSets
+      effectiveSets,
+      ...(blocksApi() ? blocksApi().normalizeExerciseFields(exercise) : {})
     }, ['library_exercise_id', 'name', 'weight', 'plannedSets', 'planned_sets', 'plannedRepMin', 'plannedRepMax', 'rep_min', 'rep_max']);
   }
 
   function normalizeTrainingProgramDay(day, index) {
+    const exercises = Array.isArray(day.exercises)
+      ? day.exercises.map((exercise, exerciseIndex) => normalizeTrainingProgramExercise(exercise, exerciseIndex))
+      : [];
+    // Superseries (blocks-core.js): solo si el día trae blocks o algún ejercicio con blockId.
+    // Sin eso, el día queda exactamente como siempre (sin la clave blocks).
+    const api = blocksApi();
+    const usesBlocks = Array.isArray(day.blocks) || exercises.some((exercise) => exercise.blockId);
+    let finalExercises = exercises;
+    let blockFields = {};
+    if (api && usesBlocks) {
+      const result = api.normalizeDayBlocks(exercises, day.blocks);
+      finalExercises = result.exercises;
+      blockFields = result.blocks.length ? { blocks: result.blocks } : {};
+    }
+    // Con el módulo cargado, blocks lo decide el normalizador (un bloque deshecho no vuelve).
     return keepUnknown(day, {
       id: day.id || createId('program-day'),
       name: day.name || `Día ${index + 1}`,
       order: Number(day.order || index + 1),
-      exercises: Array.isArray(day.exercises)
-        ? day.exercises.map((exercise, exerciseIndex) => normalizeTrainingProgramExercise(exercise, exerciseIndex))
-        : []
-    });
+      exercises: finalExercises,
+      ...blockFields
+    }, api && usesBlocks ? ['blocks'] : []);
   }
 
   function normalizeTrainingProgram(program) {

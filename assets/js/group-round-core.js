@@ -6,6 +6,13 @@
 
   const WEIGHT_STEP = 2.5;
   const REPS_STEP = 1;
+  // v0.9.44: ejercicio por tiempo (draft.measure === 'time'): una casilla de segundos por serie
+  // (s1Seconds…), de a 5 s, en vez de kilos y repeticiones.
+  const SECONDS_STEP = 5;
+
+  function isTimeDraft(draft) {
+    return draft?.measure === 'time';
+  }
 
   const blank = (value) => value === null || value === undefined || String(value).trim() === '';
 
@@ -29,8 +36,12 @@
     return number === null ? '' : String(Math.round(number * 100) / 100).replace('.', ',');
   }
 
-  // Una serie está hecha cuando tiene peso y repeticiones.
+  // Una serie está hecha cuando tiene peso y repeticiones. Por tiempo hay una sola casilla: tocar
+  // −/+ no la da por hecha; queda hecha con "✓ S1 hecha" (marca s1Done) o si la registró el alumno.
   function isSetDone(draft, n) {
+    if (isTimeDraft(draft)) {
+      return parseNumber(draft?.[`s${n}Seconds`]) !== null && draft?.[`s${n}Done`] === '1';
+    }
     return parseNumber(draft?.[`s${n}Weight`]) !== null && parseNumber(draft?.[`s${n}Reps`]) !== null;
   }
 
@@ -95,6 +106,11 @@
 
   // "40 × 12, 12, 11"; si cambia el peso: "40 × 12 / 42,5 × 10". Reps sin dato: "—".
   function summarizeSets(entries) {
+    // Por tiempo: "40, 40, 35 s" (nunca mezcla kilos con segundos).
+    if ((entries || []).some((entry) => entry && 'seconds' in entry)) {
+      const seconds = entries.map((entry) => parseNumber(entry?.seconds)).filter((value) => value !== null);
+      return seconds.length ? `${seconds.map(formatNumber).join(', ')} s` : '';
+    }
     const groups = [];
     (entries || []).forEach((entry) => {
       const weight = parseNumber(entry?.weight);
@@ -115,6 +131,10 @@
 
   // Series de la sesión de hoy escritas en el borrador (con peso).
   function draftEntries(draft) {
+    if (isTimeDraft(draft)) {
+      return Array.from({ length: setCountOf(draft) }, (_, index) => ({ seconds: draft?.[`s${index + 1}Seconds`] }))
+        .filter((entry) => parseNumber(entry.seconds) !== null);
+    }
     return Array.from({ length: setCountOf(draft) }, (_, index) => ({
       weight: draft?.[`s${index + 1}Weight`],
       reps: draft?.[`s${index + 1}Reps`]
@@ -140,6 +160,8 @@
   window.VALHALLA.groupRoundCore = {
     WEIGHT_STEP,
     REPS_STEP,
+    SECONDS_STEP,
+    isTimeDraft,
     parseNumber,
     normalizeWeightText,
     formatNumber,

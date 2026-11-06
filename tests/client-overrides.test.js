@@ -203,7 +203,7 @@ function buildHistory(sessions, sessionDate) {
   const factory = new Function('groupSessionUi', 'getTrainingSessionsByClient', 'labelsApi', `
     ${['sortSessionsByDateAsc', 'getSessionExercises', 'getExerciseSets', 'getSetType', 'countExerciseSets', 'formatGroupShortDate',
     'getGroupSessionsBefore', 'getGroupEffectiveSets', 'findLastGroupPerformance', 'formatGroupSetsSummary', 'formatLastGroupPerformance',
-    'getPreviousGroupDaySessions'].map(extractFunction).join('\n')}
+    'getPreviousGroupDaySessions', 'isTimedExercise'].map(extractFunction).join('\n')}
     return { findLastGroupPerformance, formatLastGroupPerformance, getPreviousGroupDaySessions, formatGroupShortDate };`);
   return factory({ sessionDate }, (clientId) => sessions.filter((session) => session.clientId === clientId), globalThis.VALHALLA.labels);
 }

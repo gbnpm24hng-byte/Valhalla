@@ -22,6 +22,12 @@
   const groupDraftApi = window.VALHALLA.groupDraftCore;
   // Modo Grupo compacto v2: series hechas, rotación entre alumnos y cierre de ronda (group-round-core.js).
   const groupRoundApi = window.VALHALLA.groupRoundCore;
+  // v0.9.44 · Bloques fase 1: ejercicios por tiempo y superseries (blocks-core.js).
+  const blocksApi = window.VALHALLA.blocksCore;
+  // Ejercicio (del programa o hecho en una sesión) por tiempo: measure 'time'.
+  function isTimedExercise(exercise) {
+    return exercise?.measure === 'time';
+  }
 
   const state = dataApi.loadState();
   const currentSessionMonth = getTodayLocalDate().slice(0, 7);
@@ -143,6 +149,7 @@
     pickSearch: '',
     pickZone: 'all',
     picked: [],
+    pickMode: 'exercise', // v0.9.44: 'exercise' | 'superset' (la galería arma una superserie de 2 a 4)
     // Días de la semana elegidos para un programa sin alumnos (el programa no tiene ese campo:
     // se usan al asignar y se pierden al cerrar la app).
     weekdays: {}
@@ -1264,7 +1271,19 @@
         error: ''
       };
     }
-    return groupSessionUi.drafts[key];
+    // v0.9.44: un ejercicio por tiempo se anota en segundos (s1Seconds…); group-round-core lo lee de aquí.
+    const draft = groupSessionUi.drafts[key];
+    if (isTimedExercise(planExercise)) {
+      draft.measure = 'time';
+    } else if (draft.measure) {
+      delete draft.measure;
+    }
+    return draft;
+  }
+
+  // v0.9.44: ¿el cierre de ronda pide RIR? Un ejercicio por tiempo, solo si el programa lo pide.
+  function groupAsksRir(planExercise) {
+    return !isTimedExercise(planExercise) || Boolean(getProgramExerciseRirRange(planExercise));
   }
 
   function getGroupSessionId() {
@@ -1369,9 +1388,12 @@
   function findLastGroupPerformance(clientId, planExercise, beforeDate) {
     const libraryId = planExercise?.libraryExerciseId || '';
     const name = labelsApi.fold(planExercise?.exerciseName);
+    // v0.9.44: por tiempo solo se compara con lo hecho por tiempo (y viceversa).
+    const timed = isTimedExercise(planExercise);
     for (const session of getGroupSessionsBefore(clientId, beforeDate)) {
       const matches = getSessionExercises(session).filter((exercise) =>
         ((libraryId && exercise.libraryExerciseId === libraryId) || (name && labelsApi.fold(exercise.exerciseName) === name))
+        && isTimedExercise(exercise) === timed
         && countExerciseSets(exercise) > 0);
       if (matches.length) {
         return { session, exercise: matches[matches.length - 1] };
@@ -1384,6 +1406,10 @@
   // cambia: "60 kg × 8 / 65 kg × 6". Repeticiones sin dato: "—".
   function formatGroupSetsSummary(exercise) {
     const sets = getGroupEffectiveSets(exercise);
+    if (isTimedExercise(exercise)) {
+      const withRirTime = sets.slice().reverse().find((setEntry) => setEntry.rir !== null && setEntry.rir !== undefined && setEntry.rir !== '' && Number.isFinite(Number(setEntry.rir)));
+      return `${blocksApi.summarizeSeconds(sets.map((setEntry) => setEntry.seconds)) || '—'}${withRirTime ? ` · RIR ${Number(withRirTime.rir)}` : ''}`;
+    }
     const groups = [];
     sets.forEach((setEntry) => {
       const weight = Number(setEntry.weight || 0);
@@ -1505,7 +1531,7 @@
       return false;
     }
     return Boolean(draft.comment) || String(draft.warmups || '').trim() !== '' || Array.from({ length: draft.setCount }, (_, index) => index + 1)
-      .some((n) => String(draft[`s${n}Weight`] ?? '').trim() !== '' || String(draft[`s${n}Reps`] ?? '').trim() !== '');
+      .some((n) => [`s${n}Weight`, `s${n}Reps`, `s${n}Seconds`].some((key) => String(draft[key] ?? '').trim() !== ''));
   }
 
   function renderGroupPicker(clientId, context) {
@@ -1817,7 +1843,7 @@
       <div class="group-ex-head">
         <strong>${confirmed ? '✓ ' : ''}${index + 1}. ${escapeHtml(planExercise.exerciseName || 'Ejercicio')}</strong>
         ${tag}
-        <span class="meta">Objetivo: ${Number(planExercise.targetWeight || 0)} kg × ${escapeHtml(getGroupRepsLabel(planExercise))}${formatProgramExerciseRir(planExercise) ? ` · <span data-group-rir>${escapeHtml(formatProgramExerciseRir(planExercise))}</span>` : ''}</span>
+        <span class="meta">Objetivo: ${isTimedExercise(planExercise) ? `${escapeHtml(blocksApi.formatTarget(planExercise))} por serie` : `${Number(planExercise.targetWeight || 0)} kg × ${escapeHtml(getGroupRepsLabel(planExercise))}`}${formatProgramExerciseRir(planExercise) ? ` · <span data-group-rir>${escapeHtml(formatProgramExerciseRir(planExercise))}</span>` : ''}</span>
         ${lastTime ? `<span class="meta group-last-time" data-group-last-time>${escapeHtml(lastTime)}</span>` : ''}
       </div>`;
     const comment = pickerHere ? null : renderGroupComment(clientId, planExercise, confirmed, attrs);
@@ -1839,10 +1865,11 @@
       return `
         <div class="group-exercise group-exercise--done" data-group-exercise="${pid}">
           ${heading}
-          <p class="group-saved">Guardado: ${escapeHtml(getClientFirstName(client))}, ${escapeHtml(confirmed.exercise.exerciseName || planExercise.exerciseName || 'Ejercicio')}.${onlyToday ? '' : ` Próxima sesión: ${Number(planExercise.targetWeight || 0)} kg`}</p>
+          <p class="group-saved">Guardado: ${escapeHtml(getClientFirstName(client))}, ${escapeHtml(confirmed.exercise.exerciseName || planExercise.exerciseName || 'Ejercicio')}.${onlyToday || isTimedExercise(planExercise) ? '' : ` Próxima sesión: ${Number(planExercise.targetWeight || 0)} kg`}</p>
           ${changeButton}
         </div>`;
     }
+    const timedRow = isTimedExercise(planExercise);
     const prefill = getGroupStudentPrefill(clientId, context, planExercise);
     const draft = getResolvedGroupDraft(clientId, context, planExercise);
     const studentLogged = renderGroupStudentLogged(client, prefill);
@@ -1852,7 +1879,7 @@
     const field = (name, label, type, extra = '') => `<label>${label}<input type="${type}" ${extra} data-group-field="${name}" ${attrs} value="${escapeHtml(draft[name] ?? '')}"></label>`;
     const setNumbers = Array.from({ length: draft.setCount }, (_, index) => index + 1);
     // Un ejercicio de "solo hoy" no está en el programa: no hay próxima sesión que decidir.
-    const nextSession = onlyToday ? '' : `
+    const nextSession = onlyToday || timedRow ? '' : `
         <div class="group-decisions" role="group" aria-label="Decisión">
           ${decisionLabels.map(([value, label]) => `<button class="${draft.decision === value ? 'primary' : 'secondary'} small" type="button" data-group-decision="${value}" ${attrs} aria-pressed="${draft.decision === value}">${label}</button>`).join('')}
         </div>`;
@@ -1862,13 +1889,17 @@
         ${studentLogged.line}
         ${lastSets.length ? `<button class="secondary group-repeat-last" type="button" data-group-repeat-last ${attrs}>Repetir última vez</button>` : ''}
         <div class="group-set-grid">
-          ${field('warmups', 'Aproximaciones', 'text', 'inputmode="text" placeholder="30/40 kg"')}
-          ${setNumbers.map((n) => `
+          ${timedRow ? '' : field('warmups', 'Aproximaciones', 'text', 'inputmode="text" placeholder="30/40 kg"')}
+          ${setNumbers.map((n) => (timedRow ? `
+            <div class="group-set">
+              <span class="group-set-label">S${n}</span>
+              ${field(`s${n}Seconds`, `<span class="sr-only">S${n} segundos</span>`, 'number', `min="0" step="5" inputmode="numeric" placeholder="${lastSets[n - 1]?.seconds ? `${escapeHtml(lastSets[n - 1].seconds)} s` : 'seg'}"`)}
+            </div>` : `
             <div class="group-set">
               <span class="group-set-label">S${n}</span>
               ${field(`s${n}Weight`, `<span class="sr-only">S${n} peso en kg</span>`, 'number', `min="0" step="0.5" inputmode="decimal" placeholder="${lastSets[n - 1]?.weight ? `${escapeHtml(lastSets[n - 1].weight)} kg` : 'kg'}"`)}
               ${field(`s${n}Reps`, `<span class="sr-only">S${n} repeticiones</span>`, 'number', `min="0" step="1" inputmode="numeric" placeholder="${lastSets[n - 1]?.reps ? `${escapeHtml(lastSets[n - 1].reps)} reps` : 'reps'}"`)}
-            </div>`).join('')}
+            </div>`)).join('')}
           ${field('rir', 'RIR final', 'number', 'min="0" max="10" step="1" inputmode="numeric"')}
           ${studentLogged.feel}
         </div>
@@ -1878,7 +1909,7 @@
         </div>
         ${nextSession}
         <div class="group-confirm-row">
-          ${onlyToday ? '' : `<label>Próxima sesión · ${escapeHtml(planExercise.exerciseName || 'Ejercicio')}<input type="number" min="0" step="2.5" inputmode="decimal" data-group-field="proposedWeight" ${attrs} value="${escapeHtml(draft.proposedWeight)}">kg</label>`}
+          ${onlyToday || timedRow ? '' : `<label>Próxima sesión · ${escapeHtml(planExercise.exerciseName || 'Ejercicio')}<input type="number" min="0" step="2.5" inputmode="decimal" data-group-field="proposedWeight" ${attrs} value="${escapeHtml(draft.proposedWeight)}">kg</label>`}
           <div class="group-confirm-action">
             <button class="primary" type="button" data-group-confirm="${escapeHtml(clientId)}" data-plan-exercise-id="${pid}">Confirmar</button>
             <p class="group-confirm-error${draft.error ? '' : ' hidden'}" role="alert">${escapeHtml(draft.error)}</p>
@@ -2005,12 +2036,15 @@
   // Gris de una serie: lo de la última vez; si no hay, la serie anterior de hoy; si no, el objetivo.
   function getGroupSetGhost(draft, planExercise, lastSets, n) {
     const last = lastSets[n - 1] || {};
-    const previous = n > 1 ? { weight: draft[`s${n - 1}Weight`], reps: draft[`s${n - 1}Reps`] } : {};
+    const previous = n > 1 ? { weight: draft[`s${n - 1}Weight`], reps: draft[`s${n - 1}Reps`], seconds: draft[`s${n - 1}Seconds`] } : {};
     const repMin = Number(planExercise.repMin ?? planExercise.repRangeMin);
     const pick = (...values) => {
       const value = values.find((item) => groupRoundApi.parseNumber(item) !== null);
       return value === undefined ? '' : String(groupRoundApi.parseNumber(value));
     };
+    if (isTimedExercise(planExercise)) {
+      return { seconds: pick(last.seconds, previous.seconds, planExercise.durationSeconds) };
+    }
     return {
       weight: pick(last.weight, previous.weight, planExercise.targetWeight),
       reps: pick(last.reps, previous.reps, Number.isFinite(repMin) && repMin > 0 ? repMin : '')
@@ -2143,13 +2177,22 @@
   // RÉCORD: el mismo cálculo de la ficha (Progreso): la mejor serie de todas las sesiones.
   function getGroupRecordText(clientId, planExercise) {
     const key = String(planExercise.exerciseName || '').trim().toLowerCase();
-    const item = key ? getProgressExercises(clientId).find((entry) => entry.name.trim().toLowerCase() === key) : null;
+    // Por tiempo compara segundos; nunca mezcla con los kilos del mismo nombre.
+    const timed = isTimedExercise(planExercise);
+    const item = key ? getProgressExercises(clientId).find((entry) => entry.name.trim().toLowerCase() === key && Boolean(entry.timed) === timed) : null;
     return item ? formatProgressSet(item, getProgressRecordEntry(item).top) : '—';
   }
 
   // Botón grande: "✓ S2 hecha · ir a NOMBRE". Si el alumno ya terminó sus series: "Ir a NOMBRE" o
   // "Cerrar ronda" cuando nadie tiene series pendientes.
-  function renderGroupDoneButton(clientId, states, progress, attrs) {
+  function renderGroupDoneButton(clientId, states, progress, attrs, day = null, planExercise = null) {
+    // v0.9.44: dentro de una superserie, la serie de A1 pasa a A2 del mismo alumno; después del
+    // último del bloque, al siguiente alumno (como siempre).
+    const step = progress?.pending && day && planExercise?.blockId && blocksApi ? blocksApi.supersetStep(day, planExercise.id) : null;
+    if (step && !step.endOfRound) {
+      const label = blocksApi.memberLabel(day, step.nextId);
+      return `<button class="gv-done" type="button" data-gv-done data-gv-set-number="${progress.current}" ${attrs}>✓ S${progress.current} hecha · ir a ${escapeHtml(label)}</button>`;
+    }
     if (progress?.pending) {
       const after = states.map((item) => (item.clientId === clientId
         ? { ...item, done: item.done + 1, pending: item.done + 1 < item.total }
@@ -2190,6 +2233,15 @@
     const moreOpen = !pickerHere && Boolean(groupSessionUi.moreOpen[clientId]);
     const moreHasData = Boolean(String(draft?.warmups || '').trim());
     const feel = window.VALHALLA.studentView?.format?.plannedFeel?.(planExercise) || formatProgramExerciseRir(planExercise);
+    // v0.9.44: por tiempo ("Objetivo 40 s") y superserie ("A1 · Superserie A · 3 vueltas").
+    const timed = isTimedExercise(planExercise);
+    const blockInfo = planExercise.blockId && blocksApi ? blocksApi.blockOf(context.day, planExercise.id) : null;
+    const targetText = timed
+      ? `Objetivo ${blocksApi.formatTarget(planExercise)} por serie`
+      : `Objetivo ${groupRoundApi.formatNumber(planExercise.targetWeight || 0)} kg × ${getGroupRepsLabel(planExercise)}`;
+    const blockTag = blockInfo
+      ? `<span class="tag gv-block-tag" data-gv-block-tag>${escapeHtml(`${blockInfo.letter}${blockInfo.position} · Superserie ${blockInfo.letter} · ${prPlural(blockInfo.block.rounds, 'vuelta', 'vueltas')}`)}</span>`
+      : '';
     const map = prMuscleMap();
     const figure = map ? map.figureHtml(prZones(prLibraryItem(planExercise), planExercise.exerciseName), 'gv') : '';
     const nav = `
@@ -2202,8 +2254,8 @@
         </div>
         <button class="gv-icon" type="button" data-group-ex-step="1" data-client-id="${cid}" aria-label="Ejercicio siguiente" ${exercises.length < 2 ? 'disabled' : ''}>▶</button>
       </div>
-      <p class="gv-target" data-gv-target>Objetivo ${escapeHtml(groupRoundApi.formatNumber(planExercise.targetWeight || 0))} kg × ${escapeHtml(getGroupRepsLabel(planExercise))}${feel ? ` · <span data-group-rir>${escapeHtml(feel)}</span>` : ''}</p>
-      ${tag || studentLogged.line || studentLogged.feel ? `<div class="gv-tags">${tag}${studentLogged.line}${studentLogged.feel}</div>` : ''}`;
+      <p class="gv-target" data-gv-target>${escapeHtml(targetText)}${feel ? ` · <span data-group-rir>${escapeHtml(feel)}</span>` : ''}</p>
+      ${blockTag || tag || studentLogged.line || studentLogged.feel ? `<div class="gv-tags">${blockTag}${tag}${studentLogged.line}${studentLogged.feel}</div>` : ''}`;
     if (pickerHere) {
       return `<div class="group-exercise group-exercise--compact gv-exercise" data-group-exercise="${pid}">${nav}${renderGroupPicker(clientId, context)}</div>`;
     }
@@ -2222,7 +2274,7 @@
     const field = (name, label, type, extra = '') => `<label>${label}<input type="${type}" ${extra} data-group-field="${name}" ${attrs} value="${escapeHtml(draft?.[name] ?? '')}"></label>`;
     const more = moreOpen ? `
       <div class="group-compact-more gv-more-panel" data-group-more-panel>
-        ${draft ? field('warmups', 'Aproximaciones', 'text', 'inputmode="text" placeholder="30/40 kg"') : ''}
+        ${draft && !timed ? field('warmups', 'Aproximaciones', 'text', 'inputmode="text" placeholder="30/40 kg"') : ''}
         <div class="gv-more-actions">
           ${draft ? `<button class="gv-chip" type="button" data-group-set-remove ${attrs} ${draft.setCount <= 1 ? 'disabled' : ''}>− serie</button>` : ''}
           <button class="gv-chip" type="button" data-group-history-open data-client-id="${cid}" ${previousCount ? '' : 'disabled'} title="${previousCount ? 'Ver su sesión anterior de este día' : 'No hay sesiones anteriores de este día'}">◀ Sesión anterior</button>
@@ -2245,7 +2297,7 @@
       return `
         <div class="group-exercise group-exercise--compact group-exercise--done gv-exercise" data-group-exercise="${pid}">
           ${nav}
-          <p class="group-saved">Guardado: ${escapeHtml(getClientFirstName(client))}, ${escapeHtml(confirmed.exercise.exerciseName || planExercise.exerciseName || 'Ejercicio')}.${onlyToday ? '' : ` Próxima sesión: ${escapeHtml(groupRoundApi.formatNumber(planExercise.targetWeight || 0))} kg`}</p>
+          <p class="group-saved">Guardado: ${escapeHtml(getClientFirstName(client))}, ${escapeHtml(confirmed.exercise.exerciseName || planExercise.exerciseName || 'Ejercicio')}.${onlyToday || timed ? '' : ` Próxima sesión: ${escapeHtml(groupRoundApi.formatNumber(planExercise.targetWeight || 0))} kg`}</p>
           ${renderGroupDoneButton(clientId, states, null, attrs)}
           ${links}
         </div>`;
@@ -2260,6 +2312,13 @@
           <input class="gv-value" type="text" inputmode="${mode}" autocomplete="off" data-group-field="${key}" ${attrs} value="${escapeHtml(groupRoundApi.formatNumber(value))}" placeholder="${escapeHtml(groupRoundApi.formatNumber(ghostValue))}" aria-label="S${n} ${label}">
           <button class="gv-step" type="button" data-gv-step="${key}" data-gv-delta="${delta}" ${attrs} aria-label="Más ${label} en S${n}">+</button>
         </div>`;
+      if (timed) {
+        return `
+        <div class="gv-set gv-set--time${n === progress.current ? ' is-current' : ''}" data-gv-set="${n}">
+          <span class="gv-set-mark${done ? ' is-done' : ''}">${done ? '✓' : `S${n}`}</span>
+          ${stepper(`s${n}Seconds`, draft[`s${n}Seconds`], ghost.seconds, groupRoundApi.SECONDS_STEP, 'segundos', 'numeric')}
+        </div>`;
+      }
       return `
         <div class="gv-set${n === progress.current ? ' is-current' : ''}" data-gv-set="${n}">
           <span class="gv-set-mark${done ? ' is-done' : ''}">${done ? '✓' : `S${n}`}</span>
@@ -2272,7 +2331,9 @@
         ${nav}
         ${boxes}
         <div class="gv-sets">
-          <div class="gv-set-head" aria-hidden="true"><span></span><span>kg</span><span>reps</span></div>
+          ${timed
+            ? '<div class="gv-set-head gv-set-head--time" aria-hidden="true"><span></span><span>segundos</span></div>'
+            : '<div class="gv-set-head" aria-hidden="true"><span></span><span>kg</span><span>reps</span></div>'}
           ${setRows}
         </div>
         <div class="gv-tools">
@@ -2280,7 +2341,7 @@
           <button class="gv-chip" type="button" data-group-set-add ${attrs} ${draft.setCount >= GROUP_MAX_SETS ? 'disabled' : ''}>+ serie</button>
         </div>
         <p class="group-confirm-error${draft.error ? '' : ' hidden'}" role="alert">${escapeHtml(draft.error)}</p>
-        ${renderGroupDoneButton(clientId, states, progress, attrs)}
+        ${renderGroupDoneButton(clientId, states, progress, attrs, context.day, planExercise)}
         ${links}
       </div>`;
   }
@@ -2290,7 +2351,18 @@
   // Se abre con los que tienen al menos una serie anotada en su ejercicio actual.
   function openGroupRound() {
     const states = getGroupSetStates();
-    const items = states.filter((item) => item.active && item.done > 0).map((item) => ({ clientId: item.clientId, planExerciseId: item.planExerciseId }));
+    // v0.9.44: en una superserie, una fila por cada ejercicio del bloque con series anotadas.
+    const items = states.filter((item) => item.active && item.done > 0).flatMap((item) => {
+      const context = getGroupDayContext(item.clientId);
+      const info = context && blocksApi ? blocksApi.blockOf(context.day, item.planExerciseId) : null;
+      if (!info) {
+        return [{ clientId: item.clientId, planExerciseId: item.planExerciseId }];
+      }
+      return info.members
+        .filter((member) => !findConfirmedGroupExercise(item.clientId, member.id)
+          && groupRoundApi.setProgress(getResolvedGroupDraft(item.clientId, context, member)).done > 0)
+        .map((member) => ({ clientId: item.clientId, planExerciseId: member.id }));
+    });
     if (!items.length) {
       groupSessionUi.message = 'Todavía no hay series anotadas para cerrar la ronda.';
       return false;
@@ -2316,6 +2388,11 @@
     return groupRoundApi.parseNumber(draft?.rir) !== null;
   }
 
+  // Lista para guardar: tiene RIR, o es por tiempo y el programa no lo pide.
+  function groupRoundReady(row) {
+    return groupRoundHasRir(row.draft) || !groupAsksRir(row.planExercise);
+  }
+
   function renderGroupRound() {
     const round = groupSessionUi.round;
     const rows = round.items.map((item) => ({ item, row: getGroupRoundRow(item) })).filter((entry) => entry.row);
@@ -2324,13 +2401,20 @@
       const { planExercise, draft, stored } = row;
       const attrs = `data-client-id="${escapeHtml(item.clientId)}" data-plan-exercise-id="${escapeHtml(planExercise.id)}"`;
       const onlyToday = planExercise.overrideScope === 'today';
+      const timed = isTimedExercise(planExercise);
       const rir = groupRoundApi.parseNumber(draft.rir);
-      const rirButtons = [0, 1, 2, 3].map((value) => {
-        const pressed = rir !== null && (value === 3 ? rir >= 3 : rir === value);
-        return `<button class="gv-rir${pressed ? ' is-on' : ''}" type="button" data-gv-rir="${value}" ${attrs} aria-pressed="${pressed}" aria-label="RIR ${value === 3 ? '3 o más' : value}">${value === 3 ? '3+' : value}</button>`;
-      }).join('');
+      // v0.9.44: por tiempo solo el RIR (si el programa lo pide; si no, "—") y sin decisión.
+      const rirButtons = !groupAsksRir(planExercise)
+        ? '<span class="gv-rir-none" data-gv-rir-none aria-label="Sin RIR">—</span>'
+        : [0, 1, 2, 3].map((value) => {
+          const pressed = rir !== null && (value === 3 ? rir >= 3 : rir === value);
+          return `<button class="gv-rir${pressed ? ' is-on' : ''}" type="button" data-gv-rir="${value}" ${attrs} aria-pressed="${pressed}" aria-label="RIR ${value === 3 ? '3 o más' : value}">${value === 3 ? '3+' : value}</button>`;
+        }).join('');
+      const blockInfo = planExercise.blockId && blocksApi ? blocksApi.blockOf(row.day, planExercise.id) : null;
       let decision;
-      if (onlyToday) {
+      if (timed) {
+        decision = '';
+      } else if (onlyToday) {
         decision = '<span class="gv-only-today">Solo hoy</span>';
       } else if (rir === null || !draft.decision) {
         decision = `<button class="gv-decision" type="button" data-gv-decision ${attrs} ${rir === null ? 'disabled' : ''}>—</button>`;
@@ -2341,7 +2425,7 @@
         <div class="gv-round-row" data-gv-round-row="${escapeHtml(item.clientId)}">
           <div class="gv-round-who">
             <strong>${escapeHtml(getGroupShortName(item.clientId))}</strong>
-            <span class="gv-round-ex">${escapeHtml(planExercise.exerciseName || 'Ejercicio')}</span>
+            <span class="gv-round-ex">${blockInfo ? `<span class="gv-round-member" data-gv-round-member>${escapeHtml(`${blockInfo.letter}${blockInfo.position}`)}</span> ` : ''}${escapeHtml(planExercise.exerciseName || 'Ejercicio')}</span>
             <span class="gv-round-summary" data-gv-round-summary>${escapeHtml(groupRoundApi.summarizeSets(groupRoundApi.draftEntries(draft)) || '—')}</span>
           </div>
           <div class="gv-round-controls">
@@ -2351,9 +2435,9 @@
           ${stored.error ? `<p class="group-confirm-error" role="alert">${escapeHtml(stored.error)}</p>` : ''}
         </div>`;
     }).join('');
-    const withoutRir = rows.filter(({ row }) => !groupRoundHasRir(row.draft));
+    const withoutRir = rows.filter(({ row }) => !groupRoundReady(row));
     const withRir = rows.length - withoutRir.length;
-    const missingNames = joinGroupNames(withoutRir.map(({ item }) => getGroupShortName(item.clientId)));
+    const missingNames = joinGroupNames([...new Set(withoutRir.map(({ item }) => getGroupShortName(item.clientId)))]);
     const ask = round.ask && withoutRir.length ? `
       <div class="notice warn gv-round-ask" data-gv-round-ask role="alert">
         <p>${escapeHtml(missingNames)} sin RIR. Hoy un ejercicio no se puede confirmar sin RIR: ${withoutRir.length === 1 ? 'queda pendiente' : 'quedan pendientes'} aquí.${withRir ? ` ¿Guardar los otros ${withRir}?` : ''}</p>
@@ -2387,7 +2471,7 @@
     const previousRir = resolved.rir;
     stored.rir = String(value);
     stored.error = '';
-    if (planExercise.overrideScope === 'today') {
+    if (planExercise.overrideScope === 'today' || isTimedExercise(planExercise)) {
       return;
     }
     const manual = resolved.decision && resolved.decision !== getGroupSuggestedDecision(previousRir);
@@ -2397,7 +2481,7 @@
 
   function cycleGroupRoundDecision(clientId, planExerciseId) {
     const row = findGroupPlanExercise(clientId, planExerciseId);
-    if (!row || row.planExercise.overrideScope === 'today') {
+    if (!row || row.planExercise.overrideScope === 'today' || isTimedExercise(row.planExercise)) {
       return;
     }
     const stored = getGroupDraft(clientId, row.planExercise);
@@ -2418,25 +2502,30 @@
       return;
     }
     const rows = round.items.map((item) => ({ item, row: getGroupRoundRow(item) })).filter((entry) => entry.row);
-    const missing = rows.filter(({ row }) => !groupRoundHasRir(row.draft));
+    const missing = rows.filter(({ row }) => !groupRoundReady(row));
     if (missing.length && !onlyWithRir) {
       round.ask = true;
       renderTrainingGroupMode();
       return;
     }
-    const saved = [];
-    rows.filter(({ row }) => groupRoundHasRir(row.draft)).forEach(({ item }) => {
+    // v0.9.44: una superserie da varias filas por alumno: se lleva la cuenta por fila.
+    const savedKeys = new Set();
+    const savedClients = [];
+    rows.filter(({ row }) => groupRoundReady(row)).forEach(({ item }) => {
       confirmGroupExercise(item.clientId, item.planExerciseId);
       if (findConfirmedGroupExercise(item.clientId, item.planExerciseId)) {
-        saved.push(item.clientId);
+        savedKeys.add(`${item.clientId}::${item.planExerciseId}`);
+        if (!savedClients.includes(item.clientId)) {
+          savedClients.push(item.clientId);
+        }
       }
     });
     if (!groupSessionUi.round) {
       return;
     }
-    groupSessionUi.round.items = round.items.filter((item) => !saved.includes(item.clientId));
+    groupSessionUi.round.items = round.items.filter((item) => !savedKeys.has(`${item.clientId}::${item.planExerciseId}`));
     groupSessionUi.round.ask = false;
-    const savedText = saved.length ? `✓ Guardado: ${joinGroupNames(saved.map(getGroupShortName))}.` : '';
+    const savedText = savedClients.length ? `✓ Guardado: ${joinGroupNames(savedClients.map(getGroupShortName))}.` : '';
     if (!groupSessionUi.round.items.length) {
       groupSessionUi.round = null;
       groupSessionUi.activeClientId = groupSessionUi.selectedClientIds[0] || '';
@@ -2457,16 +2546,41 @@
     const stored = getGroupDraft(clientId, planExercise);
     const resolved = getResolvedGroupDraft(clientId, row, planExercise);
     const ghost = getGroupSetGhost(resolved, planExercise, getGroupLastSets(clientId, planExercise).sets, n);
-    const weight = groupRoundApi.parseNumber(resolved[`s${n}Weight`]) ?? groupRoundApi.parseNumber(ghost.weight);
-    const reps = groupRoundApi.parseNumber(resolved[`s${n}Reps`]) ?? groupRoundApi.parseNumber(ghost.reps);
-    if (weight === null || reps === null) {
-      stored.error = `Pon los kilos y las repeticiones de S${n}`;
-      renderTrainingGroupMode();
-      return;
+    if (isTimedExercise(planExercise)) {
+      // Por tiempo: solo los segundos (lo escrito o el gris).
+      const seconds = groupRoundApi.parseNumber(resolved[`s${n}Seconds`]) ?? groupRoundApi.parseNumber(ghost.seconds);
+      if (seconds === null) {
+        stored.error = `Pon los segundos de S${n}`;
+        renderTrainingGroupMode();
+        return;
+      }
+      stored[`s${n}Seconds`] = String(Math.round(seconds));
+      stored[`s${n}Done`] = '1';
+    } else {
+      const weight = groupRoundApi.parseNumber(resolved[`s${n}Weight`]) ?? groupRoundApi.parseNumber(ghost.weight);
+      const reps = groupRoundApi.parseNumber(resolved[`s${n}Reps`]) ?? groupRoundApi.parseNumber(ghost.reps);
+      if (weight === null || reps === null) {
+        stored.error = `Pon los kilos y las repeticiones de S${n}`;
+        renderTrainingGroupMode();
+        return;
+      }
+      stored[`s${n}Weight`] = String(weight);
+      stored[`s${n}Reps`] = String(reps);
     }
-    stored[`s${n}Weight`] = String(weight);
-    stored[`s${n}Reps`] = String(reps);
     stored.error = '';
+    // v0.9.44: superserie: A1 -> A2 del mismo alumno; tras el último del bloque, vuelve a A1 y
+    // pasa al siguiente alumno.
+    const step = planExercise.blockId && blocksApi ? blocksApi.supersetStep(row.day, planExercise.id) : null;
+    if (step) {
+      const nextIndex = row.exercises.findIndex((exercise) => exercise.id === step.nextId);
+      if (nextIndex >= 0) {
+        groupSessionUi.focus[clientId] = { id: step.nextId, index: nextIndex };
+      }
+      if (!step.endOfRound) {
+        renderTrainingGroupMode();
+        return;
+      }
+    }
     const states = getGroupSetStates();
     const next = groupRoundApi.nextClient(states, clientId);
     if (next) {
@@ -2481,7 +2595,7 @@
   // −/+ de kilos (2,5) o reps (1): sin valor escrito parte del gris.
   function stepGroupSetValue(clientId, planExerciseId, key, delta) {
     const row = findGroupPlanExercise(clientId, planExerciseId);
-    const match = String(key || '').match(/^s(\d+)(Weight|Reps)$/);
+    const match = String(key || '').match(/^s(\d+)(Weight|Reps|Seconds)$/);
     if (!row || !match) {
       return;
     }
@@ -2489,7 +2603,8 @@
     const stored = getGroupDraft(clientId, planExercise);
     const resolved = getResolvedGroupDraft(clientId, row, planExercise);
     const ghost = getGroupSetGhost(resolved, planExercise, getGroupLastSets(clientId, planExercise).sets, Number(match[1]));
-    stored[key] = groupRoundApi.stepValue(resolved[key], match[2] === 'Weight' ? ghost.weight : ghost.reps, Number(delta));
+    const ghostValue = match[2] === 'Weight' ? ghost.weight : match[2] === 'Reps' ? ghost.reps : ghost.seconds;
+    stored[key] = groupRoundApi.stepValue(resolved[key], ghostValue, Number(delta));
     stored.error = '';
     renderTrainingGroupMode();
   }
@@ -2916,13 +3031,14 @@
       draft.setCount = Math.min(GROUP_MAX_SETS, resolved.setCount + 1);
     } else if (resolved.setCount > 1) {
       const last = resolved.setCount;
-      const hasData = [resolved[`s${last}Weight`], resolved[`s${last}Reps`]].some((value) => String(value ?? '').trim() !== '');
+      const hasData = [resolved[`s${last}Weight`], resolved[`s${last}Reps`], resolved[`s${last}Seconds`]].some((value) => String(value ?? '').trim() !== '');
       if (hasData) {
         draft.error = `La serie ${last} tiene datos: bórralos antes de quitarla`;
       } else {
         // Si el alumno tenía datos en esa serie (y el entrenador los borró), queda vacía a propósito.
         const prefill = getGroupStudentPrefill(clientId, row, row.planExercise)?.values || {};
-        [`s${last}Weight`, `s${last}Reps`].forEach((key) => {
+        delete draft[`s${last}Done`];
+        [`s${last}Weight`, `s${last}Reps`, `s${last}Seconds`].forEach((key) => {
           if (prefill[key]) {
             draft[key] = '';
           } else {
@@ -2954,6 +3070,12 @@
 
   // Series efectivas escritas en el borrador (las que tienen peso).
   function getGroupDraftEffectiveEntries(draft) {
+    // v0.9.44: por tiempo, las que tienen segundos.
+    if (groupRoundApi.isTimeDraft(draft)) {
+      return Array.from({ length: draft.setCount }, (_, index) => index + 1)
+        .map((n) => ({ seconds: String(draft[`s${n}Seconds`] ?? '').trim().replace(',', '.') }))
+        .filter((entry) => entry.seconds !== '' && Number.isFinite(Number(entry.seconds)));
+    }
     return Array.from({ length: draft.setCount }, (_, index) => index + 1)
       .map((n) => ({ weight: String(draft[`s${n}Weight`] ?? '').trim(), reps: String(draft[`s${n}Reps`] ?? '').trim() }))
       .filter((entry) => entry.weight !== '' && Number.isFinite(Number(entry.weight)));
@@ -2972,6 +3094,19 @@
       completed: true
     }));
     effective.forEach((entry, index) => {
+      if (entry.seconds !== undefined) {
+        // Serie por tiempo: segundos, sin kilos ni repeticiones.
+        sets.push({
+          setNumber: sets.length + 1,
+          weight: 0,
+          reps: null,
+          seconds: Math.round(Number(entry.seconds)),
+          setType: 'S',
+          rir: index === effective.length - 1 ? rir : null,
+          completed: true
+        });
+        return;
+      }
       sets.push({
         setNumber: sets.length + 1,
         weight: Number(entry.weight),
@@ -3014,6 +3149,16 @@
       coachNotes: planExercise.notes || '',
       sets
     };
+    // v0.9.44: por tiempo y dentro de una superserie (solo si lo es).
+    if (isTimedExercise(planExercise)) {
+      performed.measure = 'time';
+      if (planExercise.durationSeconds) {
+        performed.plannedSeconds = Number(planExercise.durationSeconds);
+      }
+    }
+    if (planExercise.blockId) {
+      performed.blockId = planExercise.blockId;
+    }
     if (session) {
       session.exercises = [...getSessionExercises(session), performed];
     } else {
@@ -3066,7 +3211,10 @@
     const stored = getGroupDraft(clientId, planExercise);
     // Lo que se ve: lo del alumno con lo que tocó el entrenador encima (B3.4).
     const draft = getResolvedGroupDraft(clientId, row, planExercise);
-    const onlyToday = planExercise.overrideScope === 'today';
+    // v0.9.44: un ejercicio por tiempo no decide Subir/Mantener/Bajar ni cambia el peso objetivo
+    // (se guarda como "solo hoy"); el RIR solo se exige si el programa lo pide.
+    const timed = isTimedExercise(planExercise);
+    const onlyToday = planExercise.overrideScope === 'today' || timed;
     const fail = (message) => {
       stored.error = message;
       renderTrainingGroupMode();
@@ -3077,10 +3225,10 @@
     }
     const effective = getGroupDraftEffectiveEntries(draft);
     if (!effective.length) {
-      fail('Registra el peso de al menos una serie');
+      fail(timed ? 'Registra los segundos de al menos una serie' : 'Registra el peso de al menos una serie');
       return;
     }
-    if (String(draft.rir ?? '').trim() === '' || !Number.isFinite(Number(draft.rir))) {
+    if (groupAsksRir(planExercise) && (String(draft.rir ?? '').trim() === '' || !Number.isFinite(Number(draft.rir)))) {
       fail('Falta el RIR final');
       return;
     }
@@ -3207,7 +3355,7 @@
       const previousRir = draft.rir;
       // Kilos con coma o punto: en el borrador siempre con punto ("22,5" -> "22.5").
       draft[field] = /^s\d+Weight$/.test(field) ? groupRoundApi.normalizeWeightText(event.target.value) : event.target.value;
-      const setField = field.match(/^s(\d+)(Weight|Reps)$/);
+      const setField = field.match(/^s(\d+)(Weight|Reps|Seconds)$/);
       if (setField && groupSessionUi.layout === 'compact') {
         updateGroupSetMark(event.target, clientId, row, Number(setField[1]));
       }
@@ -4690,6 +4838,9 @@
   // Repeticiones de un ejercicio del armador: "8-12", "10" o "sin repeticiones" (series por
   // tiempo; antes se veía "0-0").
   function formatPlanningReps(exercise) {
+    if (isTimedExercise(exercise)) {
+      return blocksApi.formatTarget(exercise); // "40 s"
+    }
     const min = Number(exercise?.repMin ?? exercise?.repRangeMin ?? 0);
     const max = Number(exercise?.repMax ?? exercise?.repRangeMax ?? 0);
     if (!(min > 0)) {
@@ -4787,6 +4938,8 @@
   function resetRoutineBuilderDraft() {
     routineBuilder.draft = {
       sets: 3,
+      measure: 'reps', // v0.9.44: 'reps' | 'time'
+      seconds: 30,
       repMin: 8,
       repMax: 12,
       targetWeight: '',
@@ -4810,6 +4963,8 @@
     routineBuilder.exerciseId = exercise.libraryExerciseId || exercise.id || null;
     routineBuilder.draft = {
       sets: Number(exercise.sets || exercise.plannedSets || 3),
+      measure: isTimedExercise(exercise) ? 'time' : 'reps',
+      seconds: Number(exercise.durationSeconds || 30),
       repMin: Number(exercise.repMin || exercise.repRangeMin || exercise.plannedRepMin || 8),
       repMax: Number(exercise.repMax || exercise.repRangeMax || exercise.plannedRepMax || Number(exercise.repMin || exercise.repRangeMin || exercise.plannedRepMin || 8)),
       targetWeight: Number(exercise.targetWeight || 0) > 0 ? String(exercise.targetWeight) : '',
@@ -4947,16 +5102,16 @@
       || { id: routineBuilder.exerciseId || dataApi.createId('library-exercise'), name: 'Ejercicio', category: routineBuilder.category || 'PIERNAS' };
     const selectedName = getRoutineExerciseName();
     const approx = Array.isArray(routineBuilder.draft.approximations) ? routineBuilder.draft.approximations : [];
-
-    els.routineBuilderRoot.innerHTML = `
-      <div class="planning-panel-box">
-        <div class="section-title compact">
-          ${programOpen
-            ? `<button class="ghost small" type="button" data-routine-action="back-day">‹ ${escapeHtml(day?.name || 'Día')}</button>`
-            : `<button class="ghost small" type="button" data-routine-action="back-exercise-list">← ${escapeHtml((routineBuilder.category || 'PIERNAS'))}</button>`}
-          <strong>${escapeHtml(String(selectedName).toUpperCase())}</strong>
-        </div>
-
+    // v0.9.44: medida (Reps / Tiempo) y, si el ejercicio está en una superserie, sus series son
+    // las vueltas del bloque (se cambian en el título del bloque).
+    const timed = routineBuilder.draft.measure === 'time';
+    const editingExercise = routineBuilder.editingIndex !== null && routineBuilder.editingIndex !== undefined ? day?.exercises?.[routineBuilder.editingIndex] : null;
+    const blockInfo = editingExercise?.blockId && blocksApi ? blocksApi.blockOf(day, editingExercise.id) : null;
+    const setsField = blockInfo ? `
+        <div class="planning-field-inline" data-routine-block-sets>
+          <label>SERIES</label>
+          <span class="meta">${escapeHtml(`${blockInfo.letter}${blockInfo.position} · ${prPlural(blockInfo.block.rounds, 'vuelta', 'vueltas')} de la superserie`)}</span>
+        </div>` : `
         <div class="planning-field-inline">
           <label>SERIES</label>
           <div class="planning-stepper-counter">
@@ -4964,8 +5119,21 @@
             <span>${Number(routineBuilder.draft.sets || 3)}</span>
             <button class="ghost small" type="button" data-routine-action="increase-sets" ${Number(routineBuilder.draft.sets || 3) >= 10 ? 'disabled' : ''}>+</button>
           </div>
+        </div>`;
+    const measureField = `
+        <div class="planning-field-inline">
+          <label>MEDIDA</label>
+          <div class="routine-measure" role="group" aria-label="Medida">
+            <button class="${timed ? 'ghost' : 'primary'} small" type="button" data-routine-action="set-measure" data-measure="reps" aria-pressed="${!timed}">Reps</button>
+            <button class="${timed ? 'primary' : 'ghost'} small" type="button" data-routine-action="set-measure" data-measure="time" aria-pressed="${timed}">Tiempo</button>
+          </div>
+        </div>`;
+    const amountFields = timed ? `
+        <div class="planning-field-inline">
+          <label for="routineSecondsInput">SEGUNDOS</label>
+          <input id="routineSecondsInput" type="number" min="5" max="1000" step="5" inputmode="numeric" data-routine-field="seconds" value="${Number(routineBuilder.draft.seconds || 30)}">
         </div>
-
+        <p class="meta" data-routine-time-help>Cada serie: ${escapeHtml(`${Number(routineBuilder.draft.sets || 3)} × ${Number(routineBuilder.draft.seconds || 30)} s`)}. Sin kilos ni repeticiones.</p>` : `
         <div class="planning-field-inline">
           <label>REPETICIONES</label>
           <div class="planning-range-inline">
@@ -4978,7 +5146,20 @@
         <div class="planning-field-inline">
           <label>PESO OBJETIVO</label>
           <input type="number" min="0" step="0.5" data-routine-field="targetWeight" value="${routineBuilder.draft.targetWeight === '' ? '' : Number(routineBuilder.draft.targetWeight || 0)}" placeholder="kg">
+        </div>`;
+
+    els.routineBuilderRoot.innerHTML = `
+      <div class="planning-panel-box">
+        <div class="section-title compact">
+          ${programOpen
+            ? `<button class="ghost small" type="button" data-routine-action="back-day">‹ ${escapeHtml(day?.name || 'Día')}</button>`
+            : `<button class="ghost small" type="button" data-routine-action="back-exercise-list">← ${escapeHtml((routineBuilder.category || 'PIERNAS'))}</button>`}
+          <strong>${escapeHtml(String(selectedName).toUpperCase())}</strong>
         </div>
+
+        ${setsField}
+        ${measureField}
+        ${amountFields}
 
         <div class="planning-field-inline">
           <label for="routineRirInput">RIR</label>
@@ -5015,7 +5196,7 @@
           </div>
         ` : ''}
 
-        <div class="planning-field-block">
+        ${timed ? '' : `<div class="planning-field-block">
           <label>APROXIMACIONES</label>
           <div class="planning-approx-list">
             ${approx.length ? approx.map((item, index) => `
@@ -5035,7 +5216,7 @@
             `).join('') : '<div class="muted">Sin aproximaciones.</div>'}
           </div>
           <button class="ghost small" type="button" data-routine-action="add-approximation" ${approx.length >= 3 ? 'disabled' : ''}>+ AGREGAR APROXIMACIÓN</button>
-        </div>
+        </div>`}
 
         <div class="inline-actions">
           <button class="primary" type="button" data-routine-action="save-exercise">GUARDAR EJERCICIO</button>
@@ -5087,6 +5268,23 @@
       order: 1,
       category: routineBuilder.category || 'PIERNAS'
     };
+    // v0.9.44: por tiempo = segundos por serie, sin repeticiones, kilos ni aproximaciones. Al volver
+    // a Reps, measure y durationSeconds quedan sin valor (el normalizador no los guarda).
+    if (routineBuilder.draft.measure === 'time') {
+      const seconds = Math.min(1000, Math.max(1, Math.round(Number(routineBuilder.draft.seconds) || 30)));
+      Object.assign(payload, {
+        measure: 'time',
+        durationSeconds: seconds,
+        repMin: null,
+        repMax: null,
+        repRangeMin: null,
+        repRangeMax: null,
+        targetWeight: 0,
+        approximations: []
+      });
+    } else {
+      Object.assign(payload, { measure: undefined, durationSeconds: undefined });
+    }
 
     const normalizedDayExercises = Array.isArray(day.exercises) ? day.exercises : [];
     const replacementIndex = routineBuilder.editingIndex !== null && routineBuilder.editingIndex !== undefined ? routineBuilder.editingIndex : null;
@@ -5681,32 +5879,135 @@
       return;
     }
     const items = Array.isArray(day.exercises) ? day.exercises : [];
-    els.routineBuilderRoot.innerHTML = `
-      <div class="pr-exercises">
-        ${items.length ? items.map((exercise, index) => {
-          const libraryItem = prLibraryItem(exercise);
-          const zones = prZones(libraryItem, exercise.exerciseName);
-          const rir = formatProgramExerciseRir(exercise) ? ` · ${formatProgramExerciseRir(exercise)}` : '';
-          const name = exercise.exerciseName || 'Ejercicio';
-          return `
-          <div class="pr-ex" data-pr-exercise="${escapeHtml(exercise.id || '')}">
+    // v0.9.44: el día en tramos (blocks-core.js): ejercicios sueltos y superseries. ↑ y ↓ de un
+    // ejercicio suelto o de un bloque mueven el tramo entero (nunca mete uno suelto en un bloque).
+    const parts = blocksApi ? blocksApi.segments(day) : items.map((exercise, index) => ({ kind: 'single', exercise, index }));
+    const exerciseRow = (exercise, index, { label = '', tools = '' } = {}) => {
+      const libraryItem = prLibraryItem(exercise);
+      const zones = prZones(libraryItem, exercise.exerciseName);
+      const rir = formatProgramExerciseRir(exercise) ? ` · ${formatProgramExerciseRir(exercise)}` : '';
+      const name = exercise.exerciseName || 'Ejercicio';
+      const timed = isTimedExercise(exercise);
+      return `
+          <div class="pr-ex${label ? ' pr-ex--member' : ''}" data-pr-exercise="${escapeHtml(exercise.id || '')}">
             <button class="pr-ex-main" type="button" data-routine-action="edit-exercise" data-exercise-index="${index}" aria-label="Editar ${escapeHtml(name)}">
+              ${label ? `<span class="pr-member-label" data-pr-member-label>${escapeHtml(label)}</span>` : ''}
               ${prFigure(zones)}
               <span class="pr-ex-text">
                 <strong>${escapeHtml(name)}</strong>
-                <span class="pr-ex-plan">${Number(exercise.sets || exercise.plannedSets || 0)} × ${escapeHtml(formatPlanningReps(exercise))}${rir}</span>
-                <span class="pr-ex-tags"><span class="pr-zone">${escapeHtml(prZoneLabel(libraryItem, zones))}</span><span class="pr-video${prVideoUrl(libraryItem) ? ' has-video' : ''}">${prVideoUrl(libraryItem) ? '▶ video' : 'sin video'}</span></span>
+                <span class="pr-ex-plan" data-pr-ex-plan>${label ? '' : `${Number(exercise.sets || exercise.plannedSets || 0)} × `}${escapeHtml(formatPlanningReps(exercise))}${rir}</span>
+                <span class="pr-ex-tags">${timed ? '<span class="pr-time-tag" data-pr-time-tag>TIEMPO</span>' : ''}<span class="pr-zone">${escapeHtml(prZoneLabel(libraryItem, zones))}</span><span class="pr-video${prVideoUrl(libraryItem) ? ' has-video' : ''}">${prVideoUrl(libraryItem) ? '▶ video' : 'sin video'}</span></span>
               </span>
             </button>
-            <div class="pr-ex-tools">
-              <button class="pr-tool" type="button" data-routine-action="move-up" data-exercise-index="${index}" aria-label="Subir" ${index === 0 ? 'disabled' : ''}>↑</button>
-              <button class="pr-tool" type="button" data-routine-action="move-down" data-exercise-index="${index}" aria-label="Bajar" ${index === items.length - 1 ? 'disabled' : ''}>↓</button>
-              <button class="pr-tool pr-tool--danger" type="button" data-routine-action="delete-exercise" data-exercise-index="${index}" aria-label="Eliminar ${escapeHtml(name)}">✕</button>
-            </div>
+            <div class="pr-ex-tools">${tools}</div>
           </div>`;
-        }).join('') : '<p class="pr-empty">Este día no tiene ejercicios todavía.</p>'}
-        <button class="pr-add" type="button" data-pr-add>+ Agregar ejercicio de la galería</button>
+    };
+    const moveTools = (segment, count) => `
+              <button class="pr-tool" type="button" data-pr-move="-1" data-pr-segment="${segment}" aria-label="Subir" ${segment === 0 ? 'disabled' : ''}>↑</button>
+              <button class="pr-tool" type="button" data-pr-move="1" data-pr-segment="${segment}" aria-label="Bajar" ${segment === count - 1 ? 'disabled' : ''}>↓</button>`;
+    const html = parts.map((part, segment) => {
+      if (part.kind === 'single') {
+        const name = part.exercise.exerciseName || 'Ejercicio';
+        return exerciseRow(part.exercise, part.index, {
+          tools: `${moveTools(segment, parts.length)}
+              <button class="pr-tool pr-tool--danger" type="button" data-routine-action="delete-exercise" data-exercise-index="${part.index}" aria-label="Eliminar ${escapeHtml(name)}">✕</button>`
+        });
+      }
+      const { block, letter } = part;
+      const title = `SUPERSERIE ${letter} · ${prPlural(block.rounds, 'VUELTA', 'VUELTAS')} · descanso ${block.restSeconds} s al final`;
+      return `
+          <div class="pr-block" data-pr-block="${escapeHtml(block.id)}">
+            <div class="pr-block-head">
+              <button class="pr-block-title" type="button" data-pr-block-edit="${escapeHtml(block.id)}" aria-label="Cambiar vueltas y descanso de la superserie ${escapeHtml(letter)}">${escapeHtml(title)}</button>
+              <div class="pr-ex-tools">${moveTools(segment, parts.length)}</div>
+            </div>
+            ${part.items.map((item) => {
+              const name = item.exercise.exerciseName || 'Ejercicio';
+              return exerciseRow(item.exercise, item.index, {
+                label: `${letter}${item.position}`,
+                tools: `
+              <button class="pr-tool" type="button" data-pr-member-move="-1" data-pr-member="${escapeHtml(item.exercise.id)}" aria-label="Subir dentro de la superserie" ${item.position === 1 ? 'disabled' : ''}>↑</button>
+              <button class="pr-tool" type="button" data-pr-member-move="1" data-pr-member="${escapeHtml(item.exercise.id)}" aria-label="Bajar dentro de la superserie" ${item.position === part.items.length ? 'disabled' : ''}>↓</button>
+              <button class="pr-tool pr-tool--text" type="button" data-pr-block-out="${escapeHtml(item.exercise.id)}" aria-label="Sacar ${escapeHtml(name)} de la superserie">Sacar</button>
+              <button class="pr-tool pr-tool--danger" type="button" data-routine-action="delete-exercise" data-exercise-index="${item.index}" aria-label="Eliminar ${escapeHtml(name)}">✕</button>`
+              });
+            }).join('')}
+          </div>`;
+    }).join('');
+    els.routineBuilderRoot.innerHTML = `
+      <div class="pr-exercises">
+        ${items.length ? html : '<p class="pr-empty">Este día no tiene ejercicios todavía.</p>'}
+        <button class="pr-add" type="button" data-pr-add>+ Agregar al día</button>
       </div>`;
+  }
+
+  // v0.9.44: "+ Agregar al día": Ejercicio / Superserie / Circuito (fase 2, desactivado).
+  function prOpenAddSheet() {
+    const overlay = prOpenModal('prAddSheet', `
+      <h3 class="pr-sheet-title">Agregar al día</h3>
+      <div class="pr-add-options" role="group" aria-label="Qué agregar">
+        <button class="pr-add-option" type="button" data-pr-add-kind="exercise"><strong>Ejercicio</strong><span>Uno de la galería, con sus series</span></button>
+        <button class="pr-add-option" type="button" data-pr-add-kind="superset"><strong>Superserie</strong><span>2 a 4 ejercicios seguidos, sin descanso entre ellos</span></button>
+        <button class="pr-add-option" type="button" data-pr-add-kind="circuit" disabled aria-disabled="true"><strong>Circuito</strong><span>Próximamente</span></button>
+      </div>
+      <button class="pr-link" type="button" data-pr-sheet-close>Cancelar</button>`);
+    overlay.addEventListener('click', (event) => {
+      const kind = event.target.closest('[data-pr-add-kind]')?.getAttribute('data-pr-add-kind');
+      if (event.target === overlay || event.target.closest('[data-pr-sheet-close]')) {
+        prCloseModal('prAddSheet');
+        return;
+      }
+      if (kind === 'exercise' || kind === 'superset') {
+        prCloseModal('prAddSheet');
+        Object.assign(programsUi, { view: 'pick', pickMode: kind, picked: [], pickSearch: '', pickZone: 'all' });
+        renderProgramsScreen();
+        window.scrollTo(0, 0);
+      }
+    });
+  }
+
+  // Vueltas y descanso al final de una superserie.
+  function prOpenBlockSheet(blockId) {
+    const program = prCurrentProgram();
+    const day = program?.days?.[programsUi.dayIndex];
+    const block = blocksApi?.findBlock(day, blockId);
+    if (!block) {
+      return;
+    }
+    const letter = blocksApi.blockLetters(day)[block.id] || '';
+    const overlay = prOpenModal('prBlockSheet', `
+      <h3 class="pr-sheet-title">Superserie ${escapeHtml(letter)}</h3>
+      <label class="pr-sheet-field">Vueltas<input type="number" min="1" max="10" step="1" inputmode="numeric" data-pr-block-field="rounds" value="${block.rounds}"></label>
+      <label class="pr-sheet-field">Descanso al final (s)<input type="number" min="0" max="900" step="5" inputmode="numeric" data-pr-block-field="restSeconds" value="${block.restSeconds}"></label>
+      <p class="meta">Las series de cada ejercicio del bloque son las vueltas.</p>
+      <div class="pr-sheet-actions">
+        <button class="pr-link" type="button" data-pr-sheet-close>Cancelar</button>
+        <button class="pr-cta" type="button" data-pr-block-save>Guardar</button>
+      </div>`);
+    overlay.addEventListener('click', (event) => {
+      if (event.target === overlay || event.target.closest('[data-pr-sheet-close]')) {
+        prCloseModal('prBlockSheet');
+        return;
+      }
+      if (event.target.closest('[data-pr-block-save]')) {
+        const value = (field) => overlay.querySelector(`[data-pr-block-field="${field}"]`)?.value;
+        const rounds = Math.min(10, Math.max(1, Math.round(Number(value('rounds'))) || block.rounds));
+        const restSeconds = Math.min(900, Math.max(0, Math.round(Number(value('restSeconds'))) || 0));
+        prCloseModal('prBlockSheet');
+        prReplaceDay(blocksApi.updateBlock(day, block.id, { rounds, restSeconds }));
+      }
+    });
+  }
+
+  // Reemplaza el día abierto (resultado de blocks-core) y guarda.
+  function prReplaceDay(nextDay) {
+    const program = prCurrentProgram();
+    if (!program || !nextDay) {
+      return;
+    }
+    program.days[programsUi.dayIndex] = nextDay;
+    prSaveProgram(program);
+    renderPrProgram();
   }
 
   function renderPrFooter() {
@@ -6102,8 +6403,9 @@
     root.innerHTML = `
       <div class="pr-pick-head">
         <button class="pr-back" type="button" data-pr-pick-back>‹ ${escapeHtml(prDayLabel(day, programsUi.dayIndex))}</button>
-        <h2 class="pr-title">ELIGE EJERCICIOS</h2>
+        <h2 class="pr-title">${programsUi.pickMode === 'superset' ? 'SUPERSERIE · ELIGE 2 A 4' : 'ELIGE EJERCICIOS'}</h2>
       </div>
+      ${programsUi.pickMode === 'superset' ? '<p class="pr-pick-help" data-pr-pick-help>Márcalos en el orden en que se hacen (A1, A2…). Después ajustas vueltas, reps o tiempo.</p>' : ''}
       <input class="pr-search" type="search" data-pr-pick-search value="${escapeHtml(programsUi.pickSearch)}" placeholder="Buscar en la galería" autocomplete="off" aria-label="Buscar en la galería">
       <div class="pr-zones" role="group" aria-label="Filtrar por zona">${PR_ZONE_FILTERS.map((filter) => `<button class="pr-zone-chip" type="button" data-pr-zone="${filter.key}">${escapeHtml(filter.label)}</button>`).join('')}</div>
       <div class="pr-pick-list" data-pr-pick></div>
@@ -6128,8 +6430,10 @@
       .filter((entry) => !query || entry.searchText.includes(query))
       .filter((entry) => !filter.zones || entry.zones.main.some((zone) => filter.zones.includes(zone)));
     const picked = new Set(programsUi.picked);
+    const superset = programsUi.pickMode === 'superset';
     list.innerHTML = entries.length ? entries.map((entry) => {
       const on = picked.has(entry.item.id);
+      const order = superset && on ? `A${programsUi.picked.indexOf(entry.item.id) + 1}` : '';
       const video = prVideoUrl(entry.item);
       return `
         <button class="pr-pick-item${on ? ' is-picked' : ''}" type="button" data-pr-pick-item="${escapeHtml(entry.item.id)}" aria-pressed="${on}">
@@ -6138,12 +6442,18 @@
             <strong>${escapeHtml(entry.item.name || 'Ejercicio')}</strong>
             <span class="pr-pick-meta">${escapeHtml(prSentence(prZoneLabel(entry.item, entry.zones)))} · ${video ? '<span class="pr-video has-video">▶ video</span>' : 'sin video'}</span>
           </span>
-          <span class="pr-check" aria-hidden="true">${on ? '✓' : ''}</span>
+          <span class="pr-check" aria-hidden="true">${order || (on ? '✓' : '')}</span>
         </button>`;
     }).join('') : `<p class="pr-empty">${(state.exerciseLibrary || []).length ? 'Ningún ejercicio de la galería con ese filtro.' : 'La galería está vacía. Agrega ejercicios en la pestaña Galería.'}</p>`;
     const confirm = root.querySelector('[data-pr-pick-confirm]');
     if (confirm) {
       const count = programsUi.picked.length;
+      if (superset) {
+        const min = blocksApi?.SUPERSET_MIN || 2;
+        confirm.disabled = count < min;
+        confirm.textContent = count >= min ? `Crear superserie de ${count}` : `Marca ${min - count === 1 ? '1 más' : `${min - count} más`}`;
+        return;
+      }
       confirm.disabled = !count;
       confirm.textContent = count ? `Agregar ${prPlural(count, 'ejercicio', 'ejercicios')}` : 'Agregar ejercicios';
     }
@@ -6159,6 +6469,32 @@
     }
     const library = Array.isArray(state.exerciseLibrary) ? state.exerciseLibrary : [];
     day.exercises = Array.isArray(day.exercises) ? day.exercises : [];
+    // v0.9.44: superserie de 2 a 4 (3 vueltas, descanso 90 s al final; cada uno 8 a 12 reps).
+    if (programsUi.pickMode === 'superset' && blocksApi) {
+      const fresh = programsUi.picked.map((libraryId) => library.find((entry) => entry.id === libraryId)).filter(Boolean).map((item) => ({
+        id: dataApi.createId('program-exercise'),
+        libraryExerciseId: item.id,
+        exerciseName: item.name || 'Ejercicio',
+        sets: 3,
+        repMin: 8,
+        repMax: 12,
+        targetWeight: 0,
+        approximations: [],
+        zone: '',
+        restSeconds: 0,
+        notes: '',
+        category: getVisualExerciseCategory(item)
+      }));
+      const nextDay = blocksApi.addSuperset(day, fresh, { id: dataApi.createId('program-block'), rounds: 3, restSeconds: 90 });
+      if (!nextDay) {
+        return;
+      }
+      program.days[programsUi.dayIndex] = nextDay;
+      Object.assign(programsUi, { view: 'program', picked: [], pickSearch: '', pickZone: 'all', pickMode: 'exercise' });
+      prSaveProgram(program);
+      window.scrollTo(0, 0);
+      return;
+    }
     programsUi.picked.forEach((libraryId) => {
       const item = library.find((entry) => entry.id === libraryId);
       if (!item) {
@@ -6247,9 +6583,32 @@
       return;
     }
     if (target.closest('[data-pr-add]')) {
-      Object.assign(programsUi, { view: 'pick', picked: [], pickSearch: '', pickZone: 'all' });
-      renderProgramsScreen();
-      window.scrollTo(0, 0);
+      prOpenAddSheet();
+      return;
+    }
+    // v0.9.44: mover un tramo (ejercicio suelto o superserie entera), mover dentro del bloque,
+    // sacar del bloque y cambiar vueltas/descanso.
+    const moveButton = target.closest('[data-pr-move]');
+    if (moveButton && blocksApi) {
+      const day = prCurrentProgram()?.days?.[programsUi.dayIndex];
+      prReplaceDay(day ? blocksApi.moveSegment(day, Number(moveButton.getAttribute('data-pr-segment')), Number(moveButton.getAttribute('data-pr-move'))) : null);
+      return;
+    }
+    const memberMove = target.closest('[data-pr-member-move]');
+    if (memberMove && blocksApi) {
+      const day = prCurrentProgram()?.days?.[programsUi.dayIndex];
+      prReplaceDay(day ? blocksApi.moveWithinBlock(day, memberMove.getAttribute('data-pr-member'), Number(memberMove.getAttribute('data-pr-member-move'))) : null);
+      return;
+    }
+    const outId = target.closest('[data-pr-block-out]')?.getAttribute('data-pr-block-out');
+    if (outId && blocksApi) {
+      const day = prCurrentProgram()?.days?.[programsUi.dayIndex];
+      prReplaceDay(day ? blocksApi.removeFromBlock(day, outId) : null);
+      return;
+    }
+    const blockEditId = target.closest('[data-pr-block-edit]')?.getAttribute('data-pr-block-edit');
+    if (blockEditId) {
+      prOpenBlockSheet(blockEditId);
       return;
     }
     if (target.closest('[data-pr-publish]')) {
@@ -6257,7 +6616,7 @@
       return;
     }
     if (target.closest('[data-pr-pick-back]')) {
-      Object.assign(programsUi, { view: 'program', picked: [] });
+      Object.assign(programsUi, { view: 'program', picked: [], pickMode: 'exercise' });
       renderProgramsScreen();
       return;
     }
@@ -6269,7 +6628,12 @@
     }
     const pickId = target.closest('[data-pr-pick-item]')?.getAttribute('data-pr-pick-item');
     if (pickId) {
-      programsUi.picked = programsUi.picked.includes(pickId) ? programsUi.picked.filter((id) => id !== pickId) : [...programsUi.picked, pickId];
+      const max = programsUi.pickMode === 'superset' ? (blocksApi?.SUPERSET_MAX || 4) : Infinity;
+      if (programsUi.picked.includes(pickId)) {
+        programsUi.picked = programsUi.picked.filter((id) => id !== pickId);
+      } else if (programsUi.picked.length < max) {
+        programsUi.picked = [...programsUi.picked, pickId];
+      }
       renderPrPickList();
       return;
     }
@@ -7239,7 +7603,7 @@
     const exercisesLabel = (count) => `${count} ${count === 1 ? 'ejercicio' : 'ejercicios'}`;
     const daysMarkup = preview.days.map((day) => `
       <li><strong>${escapeHtml(day.name)}</strong> · ${exercisesLabel(day.exercises.length)}
-        <ul>${day.exercises.map((exercise) => `<li>${escapeHtml(exercise.name)} <span class="muted">· ${exercise.sets} × ${exercise.reps === null ? 'sin repeticiones' : escapeHtml(exercise.reps)}</span>${exercise.linked ? '' : ' <span class="pill">no está en la galería</span>'}</li>`).join('')}</ul>
+        <ul>${day.exercises.map((exercise) => `<li>${exercise.superset ? `<span class="pill">${escapeHtml(exercise.superset)}</span> ` : ''}${escapeHtml(exercise.name)} <span class="muted">· ${exercise.sets} × ${exercise.seconds !== undefined ? `${escapeHtml(exercise.seconds ?? '—')} s` : exercise.reps === null ? 'sin repeticiones' : escapeHtml(exercise.reps)}</span>${exercise.linked ? '' : ' <span class="pill">no está en la galería</span>'}</li>`).join('')}</ul>
       </li>`).join('');
     const missingMarkup = preview.missing.length
       ? `<p><strong>${exercisesLabel(preview.missing.length)}</strong> ${preview.missing.length === 1 ? 'no está en la galería y quedará' : 'no están en la galería y quedarán'} sin enlace (no se crean): ${preview.missing.map((name) => escapeHtml(name)).join(', ')}.</p>`
@@ -8487,7 +8851,7 @@
           <div class="student-set-item">
             <div>
               <strong>${escapeHtml(getSetDisplayLabel(exercise, setEntry))}</strong>
-              <div class="meta">${Number(setEntry.weight || 0)} kg${setEntry.reps === null || setEntry.reps === undefined ? '' : ` × ${Number(setEntry.reps)}`}</div>
+              <div class="meta">${Number(setEntry.seconds) > 0 ? `${Number(setEntry.seconds)} s` : `${Number(setEntry.weight || 0)} kg${setEntry.reps === null || setEntry.reps === undefined ? '' : ` × ${Number(setEntry.reps)}`}`}</div>
               <div class="meta">${setEntry.personalRecord ? '🏆 Posible nuevo récord' : ''}</div>
             </div>
             <button class="secondary small" type="button" data-student-set-edit="${Number(setEntry.setNumber || 0)}">Corregir</button>
@@ -9234,15 +9598,22 @@
       getSessionExercises(session).forEach((exercise) => {
         seq += 1;
         const name = String(exercise.exerciseName || '').trim();
-        const key = name.toLowerCase();
-        const sets = getExerciseSets(exercise)
-          .filter((setEntry) => setEntry.completed !== false)
-          .map((setEntry) => ({ weight: Number(setEntry.weight) || 0, reps: Number(setEntry.reps) || 0 }))
-          .filter((setEntry) => setEntry.weight > 0 || setEntry.reps > 0);
-        if (!key || !sets.length) {
+        // v0.9.44: por tiempo va en su propia ficha (segundos); nunca se mezcla con kilos.
+        const timed = isTimedExercise(exercise);
+        const key = timed ? `${name.toLowerCase()}::time` : name.toLowerCase();
+        const sets = timed
+          ? getExerciseSets(exercise)
+            .filter((setEntry) => setEntry.completed !== false && getSetType(setEntry) === 'S')
+            .map((setEntry) => ({ weight: 0, reps: 0, seconds: Number(setEntry.seconds) || 0 }))
+            .filter((setEntry) => setEntry.seconds > 0)
+          : getExerciseSets(exercise)
+            .filter((setEntry) => setEntry.completed !== false)
+            .map((setEntry) => ({ weight: Number(setEntry.weight) || 0, reps: Number(setEntry.reps) || 0 }))
+            .filter((setEntry) => setEntry.weight > 0 || setEntry.reps > 0);
+        if (!name || !sets.length) {
           return;
         }
-        const item = byKey.get(key) || { name, entries: [] };
+        const item = byKey.get(key) || { name, entries: [], ...(timed ? { timed: true } : {}) };
         const previous = item.entries[item.entries.length - 1];
         if (previous && previous.sessionId === session.id) {
           previous.sets.push(...sets);
@@ -9257,8 +9628,13 @@
     });
     const list = [...byKey.values()];
     list.forEach((item) => {
-      item.usesWeight = item.entries.some((entry) => entry.sets.some((setEntry) => setEntry.weight > 0));
+      item.usesWeight = !item.timed && item.entries.some((entry) => entry.sets.some((setEntry) => setEntry.weight > 0));
       item.entries.forEach((entry) => {
+        if (item.timed) {
+          entry.top = entry.sets.reduce((best, setEntry) => (!best || setEntry.seconds > best.seconds ? setEntry : best), null);
+          entry.value = entry.top.seconds;
+          return;
+        }
         entry.top = entry.sets.reduce((best, setEntry) => {
           if (!best) return setEntry;
           if (item.usesWeight) {
@@ -9279,6 +9655,7 @@
 
   function formatProgressSet(item, setEntry) {
     if (!setEntry) return '—';
+    if (item.timed) return `${pgNumber(setEntry.seconds)} s`;
     if (!item.usesWeight) return `${setEntry.reps} reps`;
     return setEntry.reps ? `${pgNumber(setEntry.weight)} × ${setEntry.reps}` : `${pgNumber(setEntry.weight)} kg`;
   }
@@ -9300,7 +9677,7 @@
     const line = points.map((point, index) => `${index ? 'L' : 'M'}${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(' ');
     const last = points[points.length - 1];
     const area = `${line} L${last.x.toFixed(1)} ${height} L${points[0].x.toFixed(1)} ${height} Z`;
-    const label = `${item.usesWeight ? 'Peso máximo' : 'Repeticiones máximas'} por sesión, de ${pgNumber(values[0])} a ${pgNumber(last.value)}`;
+    const label = `${item.timed ? 'Segundos máximos' : item.usesWeight ? 'Peso máximo' : 'Repeticiones máximas'} por sesión, de ${pgNumber(values[0])} a ${pgNumber(last.value)}`;
     return `
           <svg class="pg-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(label)}">
             <defs><linearGradient id="pgChartFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFCC1A" stop-opacity="0.28"/><stop offset="1" stop-color="#FFCC1A" stop-opacity="0"/></linearGradient></defs>
@@ -9317,7 +9694,7 @@
     const last = entries[entries.length - 1];
     const record = getProgressRecordEntry(item);
     const diff = Math.round((last.value - first.value) * 100) / 100;
-    const unit = item.usesWeight ? 'kg' : 'reps';
+    const unit = item.timed ? 's' : item.usesWeight ? 'kg' : 'reps';
     const up = entries.length > 1 && diff > 0;
     const deltaText = entries.length < 2
       ? 'Una sola sesión registrada'
@@ -9350,10 +9727,13 @@
     const ids = new Set();
     sortSessionsByDateAsc(sessions).forEach((session) => {
       getSessionExercises(session).forEach((exercise) => {
-        const key = String(exercise.exerciseName || '').trim().toLowerCase();
+        const name = String(exercise.exerciseName || '').trim().toLowerCase();
+        // v0.9.44: por tiempo compara segundos, aparte de los kilos.
+        const timed = isTimedExercise(exercise);
+        const key = timed && name ? `${name}::time` : name;
         const top = getExerciseSets(exercise).reduce((max, setEntry) => {
-          const weight = Number(setEntry.weight);
-          return setEntry.completed !== false && Number.isFinite(weight) && weight > 0 ? Math.max(max, weight) : max;
+          const value = Number(timed ? setEntry.seconds : setEntry.weight);
+          return setEntry.completed !== false && Number.isFinite(value) && value > 0 ? Math.max(max, value) : max;
         }, 0);
         if (!key || !top) return;
         const previous = best.get(key) || 0;
@@ -9416,8 +9796,10 @@
     const streakFn = window.VALHALLA.studentView?.format?.weekStreak;
     const streak = streakFn ? streakFn(stats.dates, today) : 0;
     const exercises = getProgressExercises(clientId);
-    const current = exercises.find((item) => item.name === progressUi.exercise) || exercises[0] || null;
-    progressUi.exercise = current ? current.name : '';
+    // v0.9.44: el mismo nombre por tiempo y con kilos son dos chips distintos ("Plancha · tiempo").
+    const chipKey = (item) => (item.timed ? `${item.name}::time` : item.name);
+    const current = exercises.find((item) => chipKey(item) === progressUi.exercise) || exercises[0] || null;
+    progressUi.exercise = current ? chipKey(current) : '';
     const all = getTrainingSessionsByClient(clientId);
     const recordIds = getProgressRecordSessionIds(all.filter((session) => session.date && session.date <= today && sessionHasWork(session)));
     const sessions = sortSessionsByDateAsc(all.filter((session) => (session.date && session.date <= today) || sessionHasWork(session))).reverse();
@@ -9438,7 +9820,7 @@
         ${current ? `
         <h3 class="pg-label">Ejercicio</h3>
         <div class="pg-chips" role="group" aria-label="Ejercicio">
-          ${exercises.map((item) => `<button class="pg-chip${item === current ? ' is-active' : ''}" type="button" data-progress-exercise="${escapeHtml(item.name)}" aria-pressed="${item === current}">${escapeHtml(item.name)}</button>`).join('')}
+          ${exercises.map((item) => `<button class="pg-chip${item === current ? ' is-active' : ''}" type="button" data-progress-exercise="${escapeHtml(chipKey(item))}" aria-pressed="${item === current}">${escapeHtml(item.name)}${item.timed && exercises.some((other) => other !== item && other.name === item.name) ? ' · tiempo' : ''}</button>`).join('')}
         </div>
         ${renderProgressExercise(current)}` : '<p class="pg-empty">Aún no hay series registradas.</p>'}
         <h3 class="pg-label">Sesiones</h3>
@@ -10717,7 +11099,7 @@
             <div class="training-set-item ${exercise.id === activeExercise?.id ? 'is-active' : ''}">
               <div>
                 <strong>${index + 1}. ${escapeHtml(exercise.exerciseName)}</strong>
-                <div class="meta">${Number(exercise.plannedSets || 0)} × ${exercise.plannedRepMin == null || exercise.plannedRepMax == null ? 'reps por definir' : `${Number(exercise.plannedRepMin)}-${Number(exercise.plannedRepMax)} reps`} · ${Number(exercise.restSeconds || 0)} s</div>
+                <div class="meta">${Number(exercise.plannedSets || 0)} × ${isTimedExercise(exercise) ? escapeHtml(blocksApi.formatSeconds(exercise.plannedSeconds) || 'tiempo') : exercise.plannedRepMin == null || exercise.plannedRepMax == null ? 'reps por definir' : `${Number(exercise.plannedRepMin)}-${Number(exercise.plannedRepMax)} reps`} · ${Number(exercise.restSeconds || 0)} s</div>
                 <div class="meta">${Number(exercise.targetWeight || 0) > 0 ? `${Number(exercise.targetWeight || 0)} kg objetivo` : 'Sin peso objetivo'}${exercise.coachNotes ? ` · ${escapeHtml(exercise.coachNotes)}` : ''}</div>
               </div>
               <div class="inline-actions">
@@ -10760,7 +11142,7 @@
             <div class="training-set-item">
               <div>
                 <strong>${escapeHtml(getSetDisplayLabel(currentExercise, setEntry))}</strong>${studentImportApi?.isStudentSet(setEntry) ? ' <span class="student-logged-tag" data-student-logged>Registrada por el alumno</span>' : ''}
-                <div class="meta">${Number(setEntry.weight || 0)} kg${setEntry.reps === null || setEntry.reps === undefined ? '' : ` × ${Number(setEntry.reps)}`} · ${setEntry.rir == null ? 'RIR pendiente' : `RIR ${Number(setEntry.rir)}`} · ${setEntry.completed !== false ? 'Completada' : 'No completada'}</div>
+                <div class="meta">${Number(setEntry.seconds) > 0 ? `${Number(setEntry.seconds)} s` : `${Number(setEntry.weight || 0)} kg${setEntry.reps === null || setEntry.reps === undefined ? '' : ` × ${Number(setEntry.reps)}`}`} · ${setEntry.rir == null ? 'RIR pendiente' : `RIR ${Number(setEntry.rir)}`} · ${setEntry.completed !== false ? 'Completada' : 'No completada'}</div>
                 <div class="meta">${setEntry.personalRecord ? 'Posible nuevo récord' : ''}</div>
               </div>
               <button class="secondary small" type="button" data-set-edit="${Number(setEntry.setNumber || 0)}">Corregir</button>
@@ -13554,6 +13936,8 @@
       if (match && routineBuilder.editingIndex === null) {
         routineBuilder.draft = {
           sets: 3,
+          measure: 'reps',
+          seconds: 30,
           repMin: 8,
           repMax: 12,
           targetWeight: '',
@@ -13581,6 +13965,15 @@
 
     if (action === 'toggle-more-options') {
       routineBuilder.showMoreOptions = !routineBuilder.showMoreOptions;
+      renderRoutineBuilder();
+      return;
+    }
+
+    if (action === 'set-measure') {
+      routineBuilder.draft.measure = actionTarget.getAttribute('data-measure') === 'time' ? 'time' : 'reps';
+      if (!Number(routineBuilder.draft.seconds)) {
+        routineBuilder.draft.seconds = 30;
+      }
       renderRoutineBuilder();
       return;
     }
@@ -13700,6 +14093,15 @@
 
     if (field === 'targetWeight') {
       routineBuilder.draft.targetWeight = event.target.value === '' ? '' : String(event.target.value);
+      return;
+    }
+
+    if (field === 'seconds') {
+      routineBuilder.draft.seconds = Math.min(1000, Math.max(1, Math.round(Number(event.target.value) || 30)));
+      const help = els.routineBuilderRoot.querySelector('[data-routine-time-help]');
+      if (help) {
+        help.textContent = `Cada serie: ${Number(routineBuilder.draft.sets || 3)} × ${routineBuilder.draft.seconds} s. Sin kilos ni repeticiones.`;
+      }
       return;
     }
 

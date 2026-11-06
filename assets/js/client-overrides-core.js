@@ -90,7 +90,9 @@
       }
       const index = exercises.findIndex((exercise) => exercise.id === override.targetExerciseId);
       if (index >= 0) {
-        exercises[index] = toEffectiveExercise(override);
+        // v0.9.44: el reemplazo de un ejercicio de superserie ocupa su lugar en el bloque (A1, A2…).
+        const blockId = exercises[index].blockId;
+        exercises[index] = blockId ? { ...toEffectiveExercise(override), blockId } : toEffectiveExercise(override);
       }
     });
     return { ...day, exercises };

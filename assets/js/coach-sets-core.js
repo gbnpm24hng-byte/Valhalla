@@ -69,7 +69,17 @@
   function prefillValues(exercise) {
     const values = {};
     const effective = byType(exercise?.sets, 'S');
+    // v0.9.44: ejercicio por tiempo: solo los segundos (s1Seconds…).
+    const timed = exercise?.measure === 'time';
     effective.forEach((entry, index) => {
+      if (timed) {
+        values[`s${index + 1}Seconds`] = repsText(entry.seconds);
+        // Lo registrado por el alumno ya cuenta como serie hecha.
+        if (values[`s${index + 1}Seconds`]) {
+          values[`s${index + 1}Done`] = '1';
+        }
+        return;
+      }
       values[`s${index + 1}Weight`] = weightText(entry.weight);
       values[`s${index + 1}Reps`] = repsText(entry.reps);
     });
@@ -97,7 +107,7 @@
     });
     let count = Math.max(1, Math.round(Number(next.setCount)) || 1);
     Object.keys(next).forEach((key) => {
-      const match = /^s(\d+)(Weight|Reps)$/.exec(key);
+      const match = /^s(\d+)(Weight|Reps|Seconds)$/.exec(key);
       if (match && String(next[key] ?? '').trim() !== '') {
         count = Math.max(count, Number(match[1]));
       }
@@ -117,6 +127,7 @@
   function sameValues(type, before, after) {
     return Number(before.weight || 0) === Number(after.weight || 0)
       && sameNumber(before.reps, after.reps)
+      && sameNumber(before.seconds, after.seconds)
       && (type === 'A' || sameNumber(before.rir, after.rir));
   }
 
@@ -169,7 +180,12 @@
         }
         sets.push(next);
         if (write) {
-          changes.push({ setType: type, setNumber, weight: numberOrNull(next.weight), reps: numberOrNull(next.reps), rir: type === 'S' ? numberOrNull(next.rir) : null });
+          // v0.9.44: student_sets no tiene columna de segundos: una serie por tiempo viaja con los
+          // segundos en reps y sin peso (el ejercicio del programa dice measure: 'time').
+          const seconds = numberOrNull(next.seconds);
+          changes.push(seconds !== null
+            ? { setType: type, setNumber, weight: null, reps: Math.round(seconds), rir: type === 'S' ? numberOrNull(next.rir) : null }
+            : { setType: type, setNumber, weight: numberOrNull(next.weight), reps: numberOrNull(next.reps), rir: type === 'S' ? numberOrNull(next.rir) : null });
         }
       }
     });

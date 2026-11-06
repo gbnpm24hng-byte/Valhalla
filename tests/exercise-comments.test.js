@@ -77,7 +77,7 @@ function extractFunction(name) {
 
 test('"Última vez" muestra el comentario; sin comentario queda igual que antes', () => {
   const factory = new Function('labelsApi', `
-    ${['getExerciseSets', 'getSetType', 'formatGroupShortDate', 'getGroupEffectiveSets', 'formatGroupSetsSummary', 'formatLastGroupPerformance'].map(extractFunction).join('\n')}
+    ${['getExerciseSets', 'getSetType', 'formatGroupShortDate', 'getGroupEffectiveSets', 'formatGroupSetsSummary', 'formatLastGroupPerformance', 'isTimedExercise'].map(extractFunction).join('\n')}
     return formatLastGroupPerformance;`);
   const format = factory(globalThis.VALHALLA.labels);
   const found = (comment) => ({ session: { date: '2026-10-05' }, exercise: session(comment).exercises[0] });
