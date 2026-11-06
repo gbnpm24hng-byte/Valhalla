@@ -17,6 +17,8 @@ Guarda primero en localStorage y sincroniza con Supabase (coach_state + tablas d
   guardados en trainingsV08.clientOverrides y aplicados encima de su asignación (nunca tocan el programa común).
 - group-draft-core.js — borrador de Modo Grupo (lo escrito sin confirmar), solo en el teléfono:
   clave propia valhalla_group_draft:<cuenta>, fuera del estado; no sube a la nube ni sale en respaldos.
+- group-round-core.js — Modo Grupo compacto v2: series hechas (peso y reps), −/+ (2,5 kg / 1 rep), coma decimal,
+  siguiente alumno en orden circular, vuelta y Cierre de ronda. Solo arma valores del borrador; el peso propuesto lo da getGroupProposedWeight (app.js).
 - student-import-core.js — "Traer registros" (B3.3): junta student_sets en las sesiones sin pisar lo del entrenador.
 - coach-sets-core.js — B3.4: Modo Grupo prellena con lo del alumno; al confirmar escribe en student_sets solo lo
   corregido o no registrado (coach_validated). Lo pendiente vive en valhalla_coach_sets:<cuenta>, fuera del estado.
