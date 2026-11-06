@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 
 global.window = global;
 require('../assets/js/publish-core.js');
+require('../assets/js/self-log-core.js'); // la pantalla de registro (canLog) usa sus claves
 require('../assets/js/student-view.js');
 
 const view = globalThis.VALHALLA.studentView.format;
@@ -65,6 +66,22 @@ test('historial: el RIR que anotó el entrenador se muestra como sensación', ()
   assert.equal(view.studentSetLine({ weight: 50, reps: 10, rir: 1 }), '50 kg × 10 reps · Difícil');
   assert.equal(view.studentSetLine({ weight: 50, reps: 10, rir: 2 }), '50 kg × 10 reps · Bien');
   assert.equal(view.studentSetLine({ weight: 50, reps: 10, rir: 4 }), '50 kg × 10 reps · Fácil');
+});
+
+test('v0.9.41: pantalla de registro muestra "objetivo: Bien" junto al esquema (sin decir RIR)', () => {
+  assert.equal(view.plannedFeel({ effectiveSets: [{ rir: 2 }, { rir: 2 }, { rir: 2 }] }), 'Bien');
+  assert.equal(view.plannedFeel({ effectiveSets: [{ rir: 2 }, { rir: 3 }] }), 'Bien y Fácil');
+  assert.equal(view.plannedFeel({ effectiveSets: [{ rir: null }, { weight: 40 }] }), '');
+  assert.equal(view.plannedFeel({}), '');
+  const exercise = { id: 'ex-rir', name: 'Press de prueba', sets: 3, repMin: 8, repMax: 10, targetWeight: 40,
+    effectiveSets: [{ label: 'S1', weight: null, reps: null, rir: 2 }, { label: 'S2', weight: null, reps: null, rir: 2 }, { label: 'S3', weight: null, reps: null, rir: 2 }] };
+  const screen = (canLog, ex = exercise) => view.renderExerciseScreen({ canLog, date: '2026-11-05', dates: ['2026-11-05'], setRows: [], outbox: [], progress: [], serverByKey: new Map(), localByKey: new Map() },
+    { program: { assignment_id: 'a-1' }, day: { id: 'd-1', name: 'Día A', exercises: [ex] }, exercises: [ex], exerciseIndex: 0, exercise: ex });
+  const scheme = (html) => (html.match(/<p class="sv-meta sv-ex-scheme">([\s\S]*?)<\/p>/) || [])[1] || '';
+  assert.match(scheme(screen(true)), /3 × 8-10 · objetivo 40 kg · <span data-sv-planned-feel>objetivo: Bien<\/span>/);
+  assert.doesNotMatch(scheme(screen(true)), /RIR/);
+  assert.doesNotMatch(scheme(screen(false)), /data-sv-planned-feel/, 'solo lectura: ya lo muestra en cada serie del plan');
+  assert.doesNotMatch(scheme(screen(true, { ...exercise, effectiveSets: [] })), /data-sv-planned-feel/, 'sin RIR no se muestra nada');
 });
 
 test('fecha de hoy en hora local del teléfono (no UTC)', () => {

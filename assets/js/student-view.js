@@ -174,6 +174,17 @@
     return `${sets} × ${reps}`;
   }
 
+  // v0.9.41: esfuerzo objetivo que puso el entrenador (RIR de las series efectivas), dicho como
+  // el alumno lo registra: "Fácil", "Bien", "Difícil". Si las series piden distinto, "Bien y Fácil".
+  function plannedFeel(exercise) {
+    const words = [];
+    (Array.isArray(exercise?.effectiveSets) ? exercise.effectiveSets : []).forEach((set) => {
+      const feel = feelFromRir(set?.rir);
+      if (feel && !words.includes(feel)) words.push(feel);
+    });
+    return words.join(' y ');
+  }
+
   // Nota para el alumno: sin frases internas (también en lo que se publicó antes del filtro).
   function noteForStudent(value) {
     return window.VALHALLA.publishCore?.studentNote ? window.VALHALLA.publishCore.studentNote(value) : String(value || '');
@@ -782,7 +793,7 @@
         <h2 class="sv-ex-name">${escapeHtml(exercise.name || 'Ejercicio')}</h2>
         ${renderExerciseMuscles(exercise)}
         ${video ? `<a class="sv-video-btn" data-sv-video href="${escapeHtml(video)}" target="_blank" rel="noopener noreferrer">▶ Ver cómo se hace</a>` : ''}
-        <p class="sv-meta sv-ex-scheme">${escapeHtml(exerciseScheme(exercise))}${hasValue(exercise.targetWeight) ? ` · objetivo ${escapeHtml(formatNumber(Number(exercise.targetWeight)))} kg` : ''}</p>
+        <p class="sv-meta sv-ex-scheme">${escapeHtml(exerciseScheme(exercise))}${hasValue(exercise.targetWeight) ? ` · objetivo ${escapeHtml(formatNumber(Number(exercise.targetWeight)))} kg` : ''}${ctx.canLog && plannedFeel(exercise) ? ` · <span data-sv-planned-feel>objetivo: ${escapeHtml(plannedFeel(exercise))}</span>` : ''}</p>
         ${note ? `<p class="sv-note">${escapeHtml(note)}</p>` : ''}
         ${refBox}
         ${body}
@@ -1368,7 +1379,7 @@
     clearCache,
     format: {
       setLine, studentSetLine, setHasData, repsRange, exerciseScheme, noteForStudent, renderProgram,
-      feelFromRir, FEEL_OPTIONS, weekStart, weekDates, weekStreak, localToday, addDays, renderExerciseScreen, renderToday
+      feelFromRir, plannedFeel, FEEL_OPTIONS, weekStart, weekDates, weekStreak, localToday, addDays, renderExerciseScreen, renderToday
     }
   };
 })();

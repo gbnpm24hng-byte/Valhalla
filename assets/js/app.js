@@ -129,6 +129,8 @@
   // v0.9.38: Programas en 3 pantallas. Solo estado de la pantalla (en memoria); lo que se
   // guarda sigue siendo el programa y sus asignaciones de siempre.
   const programsUi = {
+    showArchived: false, // v0.9.41: "Ver archivados (N)" abierto
+    notice: '', // aviso de una línea arriba de la lista (p. ej. tras archivar)
     view: 'list', // 'list' | 'program' | 'pick'
     tab: 'programs', // 'programs' | 'gallery'
     search: '',
@@ -1141,6 +1143,36 @@
   }
 
   // Repeticiones del plan para Modo Grupo; si faltan, "reps por definir" (no inventa "1-1").
+  // v0.9.41: RIR objetivo de un ejercicio del programa. Vive en cada serie efectiva
+  // (effectiveSets[].rir), que es lo que ya publica publish-core. null si ninguna lo tiene;
+  // { min, max } si lo tienen (iguales o distintos entre series).
+  function getProgramExerciseRirRange(exercise) {
+    const rirs = (Array.isArray(exercise?.effectiveSets) ? exercise.effectiveSets : [])
+      .map((entry) => entry?.rir)
+      .filter((rir) => rir !== null && rir !== undefined && rir !== '' && Number.isFinite(Number(rir)))
+      .map(Number);
+    return rirs.length ? { min: Math.min(...rirs), max: Math.max(...rirs) } : null;
+  }
+
+  function formatProgramExerciseRir(exercise) {
+    const range = getProgramExerciseRirRange(exercise);
+    return range ? `RIR ${range.min === range.max ? range.min : `${range.min}-${range.max}`}` : '';
+  }
+
+  // Series efectivas con el RIR del editor: vacío lo quita de todas; un número lo pone en todas y,
+  // si faltan series efectivas para llegar a las series del ejercicio, las agrega sin peso ni
+  // repeticiones (así la publicación y la vista del alumno lo leen serie por serie).
+  function applyRirToEffectiveSets(effectiveSets, totalSets, rir) {
+    const list = (Array.isArray(effectiveSets) ? effectiveSets : []).map((entry) => ({ ...entry }));
+    if (rir === null) {
+      return list.map((entry) => ({ ...entry, rir: null }));
+    }
+    while (list.length < Math.max(1, Number(totalSets) || 1)) {
+      list.push({ id: dataApi.createId('program-set'), label: `S${list.length + 1}`, weight: null, reps: null });
+    }
+    return list.map((entry) => ({ ...entry, rir }));
+  }
+
   function getGroupRepsLabel(planExercise) {
     const min = Number(planExercise?.repMin ?? planExercise?.repRangeMin);
     const max = Number(planExercise?.repMax ?? planExercise?.repRangeMax);
@@ -1769,7 +1801,7 @@
       <div class="group-ex-head">
         <strong>${confirmed ? '✓ ' : ''}${index + 1}. ${escapeHtml(planExercise.exerciseName || 'Ejercicio')}</strong>
         ${tag}
-        <span class="meta">Objetivo: ${Number(planExercise.targetWeight || 0)} kg × ${escapeHtml(getGroupRepsLabel(planExercise))}</span>
+        <span class="meta">Objetivo: ${Number(planExercise.targetWeight || 0)} kg × ${escapeHtml(getGroupRepsLabel(planExercise))}${formatProgramExerciseRir(planExercise) ? ` · <span data-group-rir>${escapeHtml(formatProgramExerciseRir(planExercise))}</span>` : ''}</span>
         ${lastTime ? `<span class="meta group-last-time" data-group-last-time>${escapeHtml(lastTime)}</span>` : ''}
       </div>`;
     const comment = pickerHere ? null : renderGroupComment(clientId, planExercise, confirmed, attrs);
@@ -2016,7 +2048,7 @@
         ${pickerHere ? '' : `<button class="${moreOpen ? 'primary' : 'secondary'} group-icon-btn group-more-btn${moreHasData ? ' has-data' : ''}" type="button" data-group-more data-client-id="${cid}" aria-expanded="${moreOpen}" aria-label="Más opciones${moreHasData ? ' (tiene datos)' : ''}">⋯</button>`}
       </div>
       <div class="group-compact-meta">
-        <span class="meta">Objetivo: ${Number(planExercise.targetWeight || 0)} kg × ${escapeHtml(getGroupRepsLabel(planExercise))}</span>
+        <span class="meta">Objetivo: ${Number(planExercise.targetWeight || 0)} kg × ${escapeHtml(getGroupRepsLabel(planExercise))}${formatProgramExerciseRir(planExercise) ? ` · <span data-group-rir>${escapeHtml(formatProgramExerciseRir(planExercise))}</span>` : ''}</span>
         ${tag}
         ${lastTime ? `<span class="meta group-last-time" data-group-last-time title="${escapeHtml(lastTime)}">${escapeHtml(lastTime)}</span>` : ''}
       </div>`;
@@ -4293,11 +4325,15 @@
       repMin: 8,
       repMax: 12,
       targetWeight: '',
+      rir: '',
+      rirMixed: '',
+      rirTouched: false,
       approximations: [],
       zone: '',
       restSeconds: 90,
       notes: ''
     };
+    routineBuilder.rirError = '';
     routineBuilder.showMoreOptions = false;
   }
 
@@ -4312,6 +4348,16 @@
       repMin: Number(exercise.repMin || exercise.repRangeMin || exercise.plannedRepMin || 8),
       repMax: Number(exercise.repMax || exercise.repRangeMax || exercise.plannedRepMax || Number(exercise.repMin || exercise.repRangeMin || exercise.plannedRepMin || 8)),
       targetWeight: Number(exercise.targetWeight || 0) > 0 ? String(exercise.targetWeight) : '',
+      // Un solo RIR por ejercicio; si las series traen RIR distintos (p. ej. importado), el campo
+      // queda vacío con "varía" y, si no se toca, se conservan tal cual.
+      ...(() => {
+        const range = getProgramExerciseRirRange(exercise);
+        return {
+          rir: range && range.min === range.max ? String(range.min) : '',
+          rirMixed: range && range.min !== range.max ? `${range.min}-${range.max}` : '',
+          rirTouched: false
+        };
+      })(),
       approximations: Array.isArray(exercise.approximations) ? exercise.approximations.map((item) => ({
         weight: item.weight === undefined || item.weight === null ? '' : String(item.weight),
         reps: Number(item.reps || 8)
@@ -4320,6 +4366,7 @@
       restSeconds: Number(exercise.restSeconds || 90),
       notes: exercise.notes || ''
     };
+    routineBuilder.rirError = '';
     routineBuilder.showMoreOptions = Boolean(routineBuilder.draft.zone || routineBuilder.draft.notes || routineBuilder.draft.restSeconds !== 90);
   }
 
@@ -4468,6 +4515,12 @@
           <input type="number" min="0" step="0.5" data-routine-field="targetWeight" value="${routineBuilder.draft.targetWeight === '' ? '' : Number(routineBuilder.draft.targetWeight || 0)}" placeholder="kg">
         </div>
 
+        <div class="planning-field-inline">
+          <label for="routineRirInput">RIR</label>
+          <input id="routineRirInput" type="number" min="0" max="4" step="1" inputmode="numeric" data-routine-field="rir" value="${escapeHtml(routineBuilder.draft.rir ?? '')}" placeholder="${routineBuilder.draft.rirMixed && !routineBuilder.draft.rirTouched ? `varía (${escapeHtml(routineBuilder.draft.rirMixed)})` : '0 a 4'}" aria-describedby="routineRirHelp">
+        </div>
+        <p id="routineRirHelp" class="${routineBuilder.rirError ? 'planning-inline-message' : 'meta'}" data-routine-rir-msg>${escapeHtml(routineBuilder.rirError || 'Repeticiones en reserva, de 0 a 4. Vacío: sin RIR.')}</p>
+
         <div class="planning-advanced-toggle">
           <button class="secondary small" type="button" data-routine-action="toggle-more-options">⚙ MÁS OPCIONES</button>
         </div>
@@ -4535,6 +4588,16 @@
 
     const exerciseName = getRoutineExerciseName();
 
+    const rirText = String(routineBuilder.draft.rir ?? '').trim();
+    const rirValue = rirText === '' ? null : Number(rirText);
+    if (rirValue !== null && !(Number.isInteger(rirValue) && rirValue >= 0 && rirValue <= 4)) {
+      routineBuilder.rirError = 'El RIR va de 0 a 4 (número entero), o vacío. No se guardó.';
+      renderRoutineBuilder();
+      els.routineBuilderRoot?.querySelector('[data-routine-field="rir"]')?.focus();
+      return;
+    }
+    routineBuilder.rirError = '';
+
     const payload = {
       id: dataApi.createId('program-exercise'),
       libraryExerciseId: routineBuilder.exerciseId || '',
@@ -4562,6 +4625,14 @@
 
     const normalizedDayExercises = Array.isArray(day.exercises) ? day.exercises : [];
     const replacementIndex = routineBuilder.editingIndex !== null && routineBuilder.editingIndex !== undefined ? routineBuilder.editingIndex : null;
+
+    const existingExercise = replacementIndex !== null && replacementIndex >= 0 && replacementIndex < normalizedDayExercises.length
+      ? normalizedDayExercises[replacementIndex]
+      : null;
+    const keepMixedRir = Boolean(routineBuilder.draft.rirMixed) && !routineBuilder.draft.rirTouched;
+    payload.effectiveSets = keepMixedRir
+      ? (existingExercise?.effectiveSets || [])
+      : applyRirToEffectiveSets(existingExercise?.effectiveSets, payload.sets, rirValue);
 
     if (replacementIndex !== null && replacementIndex >= 0 && replacementIndex < normalizedDayExercises.length) {
       const existing = normalizedDayExercises[replacementIndex];
@@ -4828,6 +4899,20 @@
   }
 
   // Alumnos activos cuyo programa actual (asignación activa más reciente) es este.
+  // v0.9.41: Archivar. archivedAt (fecha ISO) en el programa = archivado; sin la clave = activo.
+  // Archivar no borra nada: el programa sigue en state.trainingsV08.programs y en la nube.
+  function prIsArchived(program) {
+    return Boolean(program?.archivedAt);
+  }
+
+  function prActivePrograms() {
+    return getTrainingPrograms().filter((program) => !prIsArchived(program));
+  }
+
+  function prArchivedPrograms() {
+    return getTrainingPrograms().filter(prIsArchived);
+  }
+
   function prAssignmentsFor(programId) {
     return getActiveTrainingClients()
       .map((client) => ({ client, assignment: getActiveTrainingAssignment(client.id) }))
@@ -5019,7 +5104,7 @@
     });
     const count = root.querySelector('[data-pr-count]');
     if (count) {
-      count.textContent = String(getTrainingPrograms().length);
+      count.textContent = String(prActivePrograms().length);
     }
     const search = root.querySelector('[data-pr-search]');
     if (search && search.value !== programsUi.search) {
@@ -5033,12 +5118,28 @@
       return;
     }
     const query = labelsApi.fold(programsUi.search);
-    const programs = getTrainingPrograms().filter((program) => !query || labelsApi.fold(program.name).includes(query));
+    const active = prActivePrograms();
+    const programs = active.filter((program) => !query || labelsApi.fold(program.name).includes(query));
+    const archived = prArchivedPrograms();
+    const notice = programsUi.notice ? `<p class="pr-notice" role="status" data-pr-notice>${escapeHtml(programsUi.notice)}</p>` : '';
+    const emptyText = active.length
+      ? 'Ningún programa con ese nombre.'
+      : archived.length ? 'No hay programas activos. Los archivados están abajo.' : 'Todavía no hay programas. Toca "+ Nuevo" para crear el primero.';
+    const archivedHtml = archived.length ? `
+      <div class="pr-archived" data-pr-archived-box>
+        <button class="pr-link pr-archived-toggle" type="button" data-pr-archived-toggle aria-expanded="${programsUi.showArchived}">${programsUi.showArchived ? 'Ocultar archivados' : 'Ver archivados'} (${archived.length})</button>
+        ${programsUi.showArchived ? archived.map((program) => `
+        <div class="pr-card pr-card--archived" data-pr-archived="${escapeHtml(program.id)}">
+          <span class="pr-card-top"><strong class="pr-card-name">${escapeHtml(program.name || 'Programa')}</strong><span class="pr-tag">Archivado</span></span>
+          <span class="pr-card-meta">${escapeHtml(program.objective || 'Sin objetivo')} · ${prPlural(Number(program.durationWeeks || 0), 'semana', 'semanas')}</span>
+          <span class="pr-card-foot"><span class="pr-card-meta">Archivado ${escapeHtml(formatFichaDate(String(program.archivedAt).slice(0, 10)))}</span><button class="pr-chip" type="button" data-pr-unarchive="${escapeHtml(program.id)}">Desarchivar</button></span>
+        </div>`).join('') : ''}
+      </div>` : '';
     if (!programs.length) {
-      els.prProgramList.innerHTML = `<p class="pr-empty">${getTrainingPrograms().length ? 'Ningún programa con ese nombre.' : 'Todavía no hay programas. Toca "+ Nuevo" para crear el primero.'}</p>`;
+      els.prProgramList.innerHTML = `${notice}<p class="pr-empty">${emptyText}</p>${archivedHtml}`;
       return;
     }
-    els.prProgramList.innerHTML = programs.map((program) => {
+    els.prProgramList.innerHTML = notice + programs.map((program) => {
       const info = prPublishInfo(program.id);
       const students = info.items.length;
       let tag = '';
@@ -5059,7 +5160,7 @@
             <span class="pr-card-students${students ? '' : ' is-muted'}">${students ? prPlural(students, 'alumno', 'alumnos') : 'Sin alumnos'}</span>
           </span>
         </button>`;
-    }).join('');
+    }).join('') + archivedHtml;
   }
 
   // ---- Pantalla 2: programa abierto ----
@@ -5120,8 +5221,7 @@
         ${items.length ? items.map((exercise, index) => {
           const libraryItem = prLibraryItem(exercise);
           const zones = prZones(libraryItem, exercise.exerciseName);
-          const rirs = (exercise.effectiveSets || []).map((entry) => entry?.rir).filter((rir) => rir !== null && rir !== undefined && rir !== '').map(Number);
-          const rir = rirs.length ? ` · RIR ${Math.min(...rirs) === Math.max(...rirs) ? Math.min(...rirs) : `${Math.min(...rirs)}-${Math.max(...rirs)}`}` : '';
+          const rir = formatProgramExerciseRir(exercise) ? ` · ${formatProgramExerciseRir(exercise)}` : '';
           const name = exercise.exerciseName || 'Ejercicio';
           return `
           <div class="pr-ex" data-pr-exercise="${escapeHtml(exercise.id || '')}">
@@ -5176,6 +5276,51 @@
     footer.innerHTML = `
       <span class="pr-footer-status${info.pending && enabled ? ' is-warn' : ''}">${escapeHtml(status)}</span>
       <button class="pr-cta" type="button" data-pr-publish ${enabled ? '' : 'disabled'}>${escapeHtml(label)}</button>`;
+    renderPrArchive(program, total);
+  }
+
+  // "Archivar": solo sin alumnos asignados; si tiene, se explica que primero se quiten.
+  function renderPrArchive(program, studentCount) {
+    const box = document.getElementById('prProgramArchive');
+    if (!box) {
+      return;
+    }
+    box.hidden = routineBuilder.screen !== 'day';
+    box.innerHTML = studentCount
+      ? `<button class="pr-archive-btn" type="button" data-pr-archive disabled>Archivar programa</button>
+         <p class="pr-archive-note" data-pr-archive-note>Para archivarlo, primero quita a ${studentCount === 1 ? 'su alumno' : `sus ${studentCount} alumnos`} con "Asignar". Archivar lo esconde de la lista sin borrarlo.</p>`
+      : `<button class="pr-archive-btn" type="button" data-pr-archive>Archivar programa</button>
+         <p class="pr-archive-note">Lo esconde de la lista sin borrarlo. Puedes desarchivarlo desde "Ver archivados".</p>`;
+  }
+
+  function prArchiveProgram() {
+    const program = prCurrentProgram();
+    if (!program) {
+      return;
+    }
+    if (prAssignmentsFor(program.id).length) {
+      renderPrFooter();
+      return;
+    }
+    program.archivedAt = new Date().toISOString();
+    prSaveProgram(program);
+    Object.assign(programsUi, { view: 'list', programId: '', notice: `"${program.name || 'Programa'}" quedó archivado. Lo encuentras en "Ver archivados".` });
+    Object.assign(routineBuilder, { screen: 'day', editingIndex: null, exerciseId: null });
+    planningUi.draftProgram = null;
+    renderProgramsScreen();
+    window.scrollTo(0, 0);
+  }
+
+  function prUnarchiveProgram(programId) {
+    const program = getTrainingProgramById(programId);
+    if (!program || !prIsArchived(program)) {
+      return;
+    }
+    delete program.archivedAt;
+    prSaveProgram(program);
+    planningUi.draftProgram = null;
+    programsUi.notice = `"${program.name || 'Programa'}" volvió a la lista.`;
+    renderPrList();
   }
 
   function prCloseModal(id) {
@@ -5580,6 +5725,24 @@
     const target = event.target;
     if (target.closest('[data-routine-action]')) {
       return; // lo maneja el armador (handleRoutineBuilderRootClick)
+    }
+    // El aviso de la lista dura hasta la siguiente acción.
+    if (programsUi.notice && !target.closest('[data-pr-notice]')) {
+      programsUi.notice = '';
+    }
+    if (target.closest('[data-pr-archived-toggle]')) {
+      programsUi.showArchived = !programsUi.showArchived;
+      renderPrCards();
+      return;
+    }
+    const unarchiveId = target.closest('[data-pr-unarchive]')?.getAttribute('data-pr-unarchive');
+    if (unarchiveId) {
+      prUnarchiveProgram(unarchiveId);
+      return;
+    }
+    if (target.closest('[data-pr-archive]')) {
+      prArchiveProgram();
+      return;
     }
     const tab = target.closest('[data-pr-tab]')?.getAttribute('data-pr-tab');
     if (tab) {
@@ -12890,6 +13053,12 @@
 
     if (field === 'targetWeight') {
       routineBuilder.draft.targetWeight = event.target.value === '' ? '' : String(event.target.value);
+      return;
+    }
+
+    if (field === 'rir') {
+      routineBuilder.draft.rir = String(event.target.value || '').trim();
+      routineBuilder.draft.rirTouched = true;
       return;
     }
 
