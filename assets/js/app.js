@@ -2300,6 +2300,7 @@
           <button class="gv-chip" type="button" data-group-history-open data-client-id="${cid}" ${previousCount ? '' : 'disabled'} title="${previousCount ? 'Ver su sesión anterior de este día' : 'No hay sesiones anteriores de este día'}">◀ Sesión anterior</button>
           ${planExercise.overrideId ? `<button class="gv-chip group-revert-btn" type="button" data-group-revert="${escapeHtml(planExercise.overrideId)}" ${attrs}>Quitar cambio</button>` : ''}
           <button class="gv-chip group-add-btn" type="button" data-group-add data-client-id="${cid}">+ Agregar ejercicio</button>
+          <button class="gv-chip" type="button" data-group-cancel>Descartar lo no confirmado</button>
         </div>
         ${renderGroupDaySelect(clientId, assignment, day, false)}
       </div>` : '';
@@ -3332,6 +3333,10 @@
       return false;
     }
     renderTrainingGroupMode();
+    // Vista compacta: la confirmación sale bajo el encabezado; se lleva a la vista.
+    if (groupSessionUi.cancelAsk) {
+      els.groupSessionRows?.querySelector('[data-group-cancel-ask]')?.scrollIntoView({ block: 'nearest' });
+    }
     return true;
   }
 
