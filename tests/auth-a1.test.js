@@ -81,6 +81,16 @@ test('la pantalla de acceso se carga antes que la app y no ofrece registro', () 
   assert.ok(html.indexOf('auth-gate.js') > html.indexOf('onboarding.js'), 'auth-gate.js debe ir después de onboarding.js');
   assert.ok(html.indexOf('auth-gate.js') < html.indexOf('app.js'), 'auth-gate.js debe ir antes de app.js');
   const gate = read('assets/js/auth-gate.js');
-  assert.doesNotMatch(gate, /signUp|Crear cuenta|Regístrate|registrarse/i);
+  assert.doesNotMatch(gate, /Regístrate|registrarse/i);
+  // v0.9.49 (B4): crear cuenta existe SOLO en la pantalla del código de invitación, y lo
+  // primero después de crearla es canjear el código (sin código no hay registro abierto).
+  const signUps = gate.match(/authApi\.signUp\(/g) || [];
+  assert.equal(signUps.length, 1, 'un solo lugar crea cuentas');
+  const inviteScreen = gate.slice(gate.indexOf('function renderInviteSignup'), gate.indexOf('function renderInviteCodeOnly'));
+  assert.ok(inviteScreen.includes('authApi.signUp('), 'signUp vive en "Crear cuenta con código"');
+  assert.ok(inviteScreen.includes('validateSignup(') && inviteScreen.indexOf('validateSignup(') < inviteScreen.indexOf('authApi.signUp('), 'sin código válido no se crea la cuenta');
+  assert.ok(inviteScreen.indexOf('redeemAndEnter(') > inviteScreen.indexOf('authApi.signUp('), 'después de crearla se canjea el código');
+  const outside = gate.replace(inviteScreen, '');
+  assert.doesNotMatch(outside, /Crear cuenta</, '"Crear cuenta" solo en la pantalla del código');
   assert.doesNotMatch(gate, /removeItem\(['"]valhalla_v0/);
 });

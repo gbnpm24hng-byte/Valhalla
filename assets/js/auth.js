@@ -97,7 +97,70 @@
     if (['session_expired', 'session_not_found', 'refresh_token_not_found', 'refresh_token_already_used'].includes(code)) {
       return 'Tu sesión expiró. Vuelve a ingresar.';
     }
+    // v0.9.49: registro con código (signUp).
+    if (code === 'signup_disabled' || /signups? not allowed/i.test(message)) {
+      return 'Por ahora no se pueden crear cuentas. Avísale a tu coach.';
+    }
+    if (code === 'weak_password') {
+      return 'La contraseña es muy débil. Usa 8 caracteres o más, mezclando letras y números.';
+    }
+    if (code === 'email_address_invalid' || code === 'validation_failed') {
+      return 'Escribe un correo válido.';
+    }
+    if (code === 'email_address_not_authorized' || code === 'over_email_send_rate_limit') {
+      return 'No se pudo enviar el correo de confirmación. Avísale a tu coach.';
+    }
     return 'No se pudo iniciar sesión. Intenta de nuevo.';
+  }
+
+  // v0.9.49: crear cuenta de alumno (pantalla "Crear cuenta con código").
+  // exists = el correo ya tenía cuenta (Supabase responde con error o, si pide confirmar
+  // correos, con un usuario sin identidades); needsConfirm = se creó pero sin sesión.
+  async function signUp(email, password) {
+    const client = getClient();
+    if (!client) {
+      return { ok: false, error: 'No se pudo cargar el inicio de sesión. Recarga la página.' };
+    }
+    try {
+      const { data, error } = await client.auth.signUp({ email: String(email || '').trim(), password });
+      if (error) {
+        const code = String(error.code || '');
+        if (code === 'user_already_exists' || code === 'email_exists' || /already (been )?registered/i.test(String(error.message || ''))) {
+          return { ok: false, exists: true };
+        }
+        return { ok: false, error: describeAuthError(error), unavailable: isUnavailableError(error) };
+      }
+      if (data?.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+        return { ok: false, exists: true };
+      }
+      if (!data?.session) {
+        return { ok: false, needsConfirm: true };
+      }
+      return { ok: true, session: data.session, user: data.user };
+    } catch (error) {
+      return { ok: false, error: describeAuthError(error), unavailable: isUnavailableError(error) };
+    }
+  }
+
+  // v0.9.49: canjear el código de invitación (función redeem_student_invite de la nube).
+  // Devuelve { ok } o { ok: false, code } con code de la nube, 'missing' u 'offline'.
+  async function redeemInvite(code) {
+    const client = getClient();
+    if (!client) {
+      return { ok: false, code: 'offline' };
+    }
+    try {
+      const { data, error, status } = await client.rpc('redeem_student_invite', { p_code: String(code || '') });
+      if (error) {
+        if (window.VALHALLA.inviteCore?.isMissingCloudError(error, status)) {
+          return { ok: false, code: 'missing' };
+        }
+        return { ok: false, code: isUnavailableError(error, status) ? 'offline' : 'conflict' };
+      }
+      return data?.ok ? { ok: true, displayName: data.display_name || '' } : { ok: false, code: String(data?.error || 'conflict') };
+    } catch (error) {
+      return { ok: false, code: 'offline' };
+    }
   }
 
   // Decide qué puede ver la cuenta según profiles.role y profiles.active.
@@ -210,6 +273,8 @@
     getClient,
     isSdkLoaded: () => Boolean(getClient()),
     signIn,
+    signUp,
+    redeemInvite,
     signOut,
     loadSession,
     getProfile,

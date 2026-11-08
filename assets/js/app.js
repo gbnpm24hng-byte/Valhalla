@@ -10302,6 +10302,7 @@
           </div>
           ${canStudentView ? '' : '<p class="meta">Vista alumno y Progreso: disponibles para alumnos activos.</p>'}
         </div>
+        ${window.VALHALLA.invites ? window.VALHALLA.invites.renderSection(client, { name: getClientDisplayName(client), phone: normalizeChileanPhoneForWhatsApp(client.phone) }) : ''}
         <div class="client-folds">
           ${fold('program', 'data-client-fold="program"', 'Programa actual', renderClientProgramFold(client, assignment), folds.program)}
           ${fold('sports', `data-client-sports="${id}"`, 'Ficha deportiva', renderSportsProfilePanel(client), folds.sports)}
@@ -10327,6 +10328,8 @@
     }
     clientUi.detailId = clientId;
     clientUi.folds = foldKey ? { [foldKey]: true } : {};
+    // v0.9.49: "Cuenta de la app" se vuelve a consultar al abrir la ficha.
+    window.VALHALLA.invites?.refresh?.(clientId);
     renderClients();
     window.scrollTo(0, 0);
   }
@@ -15571,6 +15574,12 @@
   window.addEventListener('valhalla:publish-changed', () => {
     renderClients();
     refreshProgramsPublishState();
+  });
+  // v0.9.49: invitaciones de alumnos (invites.js) -> se redibuja la ficha abierta.
+  window.addEventListener('valhalla:invites-changed', () => {
+    if (clientUi.detailId) {
+      renderClients();
+    }
   });
 
   document.addEventListener('visibilitychange', () => {

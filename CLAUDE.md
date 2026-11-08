@@ -30,8 +30,14 @@ Guarda primero en localStorage y sincroniza con Supabase (coach_state + tablas d
 - monthly-card-core.js — Tarjeta del mes (v0.9.47): trainingsV08.monthlyCards { 'AAAA-MM': { clientId: { message, sentAt } } }
   (sube con trainingsV08) y los números del mes con los cálculos que le pasa app.js. Se carga antes de data.js.
   monthly-card.js — dibujo en canvas 1080 × 1350 y envío (compartir el PNG o descargar + wa.me).
+- invite-core.js — B4 invitaciones (v0.9.49): forma del código (8, sin 0/O/1/I/L), link ?invitacion=, mensaje de
+  WhatsApp y textos de error. invites.js — "Cuenta de la app" en la ficha (Invitar, Copiar mensaje, WhatsApp,
+  Nueva invitación, Anular, Quitar acceso = client_links.active=false). El alumno crea su cuenta con código en
+  auth-gate.js ("Tengo un código"). Nube: supabase/b4_invitaciones.sql (solo agrega); sin ese SQL "Invitar" avisa.
+  El código nunca se guarda en texto (solo su hash en la nube) ni entra al estado local.
 - onboarding.js — formulario público de ingreso (?onboarding=1), sin login.
-- cloud-data.js — capa de tablas antiguas, desactivada. supabase/ — migración A0 y prueba de RLS (SQL).
+- cloud-data.js — capa de tablas antiguas, desactivada. supabase/ — migración A0 y prueba de RLS (SQL);
+  B4: b4_invitaciones.sql, b4_invitaciones_deshacer.sql y b4_prueba_invitaciones.sql (36 pruebas, todo se deshace).
 
 ## Reglas fijas
 - No hacer commit ni push sin confirmación explícita.

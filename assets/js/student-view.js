@@ -12,6 +12,8 @@
   const authApi = window.VALHALLA.auth;
   const selfLog = window.VALHALLA.selfLogCore;
   const CACHE_KEY = 'valhalla_student_cache';
+  // v0.9.49: qué hacer con una cuenta sin vínculo ("Tengo un código"); lo pasa auth-gate.js.
+  let inviteOpts = { onHaveCode: null, inviteCode: '' };
   const TIMEOUT_MS = 15000;
   const RETRY_MS = 20000;
 
@@ -1234,7 +1236,17 @@
       return;
     }
     if (!cache.linked) {
-      content.innerHTML = '<section class="sv-card" data-student-unlinked><h2>Tu cuenta aún no está vinculada</h2><p>Avísale a tu entrenador para que la vincule con tu ficha.</p></section>';
+      // v0.9.49: con invitaciones, el alumno se vincula solo con el código de su coach.
+      const haveCode = typeof inviteOpts.onHaveCode === 'function';
+      content.innerHTML = `<section class="sv-card" data-student-unlinked><h2>Tu cuenta aún no está vinculada</h2>${haveCode
+        ? '<p>Usa el código que te mandó tu coach por WhatsApp. Si no lo tienes, pídele una invitación.</p><button class="sv-primary" type="button" data-sv-have-code>Tengo un código</button>'
+        : '<p>Avísale a tu entrenador para que la vincule con tu ficha.</p>'}</section>`;
+      if (haveCode) {
+        content.querySelector('[data-sv-have-code]').addEventListener('click', () => inviteOpts.onHaveCode());
+        if (inviteOpts.inviteCode && !offline) {
+          inviteOpts.onHaveCode();
+        }
+      }
       return;
     }
     const programs = cache.programs || [];
@@ -1620,8 +1632,9 @@
   }
 
   // Abre la vista. `offline`: Supabase no responde; se muestra lo último cargado.
-  async function render(container, { user, profile, offline = false, onSignOut }) {
+  async function render(container, { user, profile, offline = false, onSignOut, onHaveCode = null, inviteCode = '' }) {
     stopLog();
+    inviteOpts = { onHaveCode, inviteCode };
     logState.offline = offline;
     shell(container, { name: profile?.full_name || '', userId: user.id, onSignOut });
     const cached = readCache(user.id);

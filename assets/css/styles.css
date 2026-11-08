@@ -4726,6 +4726,75 @@ button.client-back {
   gap: 8px;
 }
 .client-ficha-buttons button:disabled { opacity: 0.45; }
+
+/* v0.9.49 (B4): "Cuenta de la app" en la ficha */
+.client-account {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+}
+.client-account h3 { margin: 0; font-size: 0.95rem; }
+.client-account p { margin: 0; }
+.client-account-status { font-weight: 600; }
+.client-account-status .meta { font-weight: 400; overflow-wrap: anywhere; }
+.client-invite-btn {
+  justify-self: start;
+  min-width: 140px;
+  background: var(--sv-accent);
+  color: var(--sv-ink);
+  border-color: var(--sv-accent);
+  font-weight: 700;
+}
+.client-invite-btn:disabled { opacity: 0.55; }
+.client-account-code {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px dashed var(--sv-accent);
+  border-radius: 12px;
+  text-align: center;
+}
+.client-account-code small { color: var(--muted); }
+.client-account-code strong {
+  font-size: 1.5rem;
+  letter-spacing: 0.12em;
+  font-variant-numeric: tabular-nums;
+}
+.client-account-buttons {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.client-account-buttons button:disabled { opacity: 0.45; }
+.client-account .auth-link { justify-self: start; padding-left: 0; }
+.client-account .client-account-danger { color: var(--bad); }
+
+/* v0.9.49 (B4): pantalla de entrada y "Crear cuenta con código" */
+.auth-submit-row {
+  display: grid;
+  gap: 10px;
+}
+.auth-link {
+  justify-self: center;
+  padding: 6px 4px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.auth-link:disabled { opacity: 0.45; cursor: default; }
+.auth-code-input {
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-variant-numeric: tabular-nums;
+}
 .client-folds {
   display: grid;
   border-top: 1px solid var(--border);

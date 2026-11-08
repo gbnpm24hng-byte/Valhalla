@@ -46,6 +46,20 @@
   let signingOut = false;
   let verifySequence = 0;
   let shownBecauseOutage = false;
+  // v0.9.49 (B4): código de invitación que llegó en el link (?invitacion=). Se olvida al canjearlo.
+  const inviteCore = window.VALHALLA.inviteCore;
+  let pendingInviteCode = inviteCore?.readCodeFromSearch(window.location.search) || '';
+
+  function forgetInviteCode() {
+    pendingInviteCode = '';
+    try {
+      if (inviteCore && window.location.search.includes(inviteCore.URL_PARAM)) {
+        window.history.replaceState(null, '', inviteCore.stripCodeFromUrl(window.location.href));
+      }
+    } catch (error) {
+      // Sin historial: recargar volvería a mostrar el código, nada más.
+    }
+  }
 
   function readAccessCache() {
     try {
@@ -233,18 +247,22 @@
           <label for="authPassword">Contraseña</label>
           <input id="authPassword" name="password" type="password" autocomplete="current-password" placeholder="••••••••" required>
         </div>
-        <button class="primary" id="authSubmit" type="submit">Entrar</button>
+        <div class="auth-submit-row">
+          <button class="primary" id="authSubmit" type="submit">Entrar</button>
+          ${inviteCore ? '<button class="auth-link" type="button" data-auth-have-code>Tengo un código</button>' : ''}
+        </div>
         <p id="authMessage" class="notice auth-message hidden" role="alert"></p>
         <div id="authOutageExport" class="auth-outage hidden">
           <p class="auth-footnote">El servidor no responde. Puedes guardar una copia de los datos de este dispositivo mientras tanto.</p>
           <button class="secondary" type="button" data-auth-export>Descargar respaldo de este dispositivo</button>
         </div>
-        <p class="auth-footnote">Las cuentas las crea tu entrenador.</p>
+        <p class="auth-footnote">${inviteCore ? '¿Es tu primera vez? Crea tu cuenta con el código que te mandó tu coach.' : 'Las cuentas las crea tu entrenador.'}</p>
       </form>`);
     setMessage(message, tone);
 
     const form = gateEl.querySelector('#authLoginForm');
     gateEl.querySelector('[data-auth-export]').addEventListener('click', exportLocalBackup);
+    gateEl.querySelector('[data-auth-have-code]')?.addEventListener('click', () => renderInviteSignup(pendingInviteCode));
     if (outage === true || outage === false) {
       setExportVisible(outage);
     } else {
@@ -281,6 +299,142 @@
     gateEl.querySelector('#authEmail')?.focus();
   }
 
+  // ---------------------------------------------------------------------------
+  // v0.9.49 (B4): crear cuenta con el código que manda el entrenador
+  // ---------------------------------------------------------------------------
+
+  // Canjea el código con la sesión ya abierta. Bien (o ya vinculada): abre su vista.
+  // Mal: queda en la pantalla del código con la sesión abierta, para probar otro.
+  async function redeemAndEnter(user, code) {
+    const result = await authApi.redeemInvite(code);
+    if (result.ok || result.code === 'already_linked') {
+      forgetInviteCode();
+      currentUser = null;
+      renderChecking();
+      await verify();
+      return;
+    }
+    renderInviteCodeOnly(user, code, inviteCore.describeRedeemError(result.code));
+  }
+
+  function setBusy(button, busy, idleText, busyText) {
+    button.disabled = busy;
+    button.textContent = busy ? busyText : idleText;
+  }
+
+  // Sin sesión: código, correo y contraseña (dos veces).
+  function renderInviteSignup(code = '', message = '', tone = 'bad') {
+    showGate(`
+      <form id="authInviteForm" class="auth-form" novalidate>
+        <h2 class="auth-heading">Crear cuenta con código</h2>
+        <div>
+          <label for="inviteCode">Código</label>
+          <input id="inviteCode" name="code" class="auth-code-input" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX" maxlength="20" value="${escapeHtml(code)}" required>
+        </div>
+        <div>
+          <label for="inviteEmail">Correo</label>
+          <input id="inviteEmail" name="email" type="email" autocomplete="username" inputmode="email" placeholder="correo@ejemplo.com" required>
+        </div>
+        <div>
+          <label for="invitePassword">Contraseña <span class="muted">(8 o más)</span></label>
+          <input id="invitePassword" name="password" type="password" autocomplete="new-password" minlength="8" required>
+        </div>
+        <div>
+          <label for="invitePassword2">Repetir contraseña</label>
+          <input id="invitePassword2" name="password2" type="password" autocomplete="new-password" minlength="8" required>
+        </div>
+        <button class="primary" id="authSubmit" type="submit">Crear cuenta</button>
+        <p id="authMessage" class="notice auth-message hidden" role="alert"></p>
+        <p class="auth-footnote">Si ya tienes cuenta, escribe tu correo y tu contraseña de siempre: el código se agrega a esa cuenta.</p>
+        <button class="auth-link" type="button" data-auth-back-login>Volver a Entrar</button>
+      </form>`);
+    setMessage(message, tone);
+    const form = gateEl.querySelector('#authInviteForm');
+    gateEl.querySelector('[data-auth-back-login]').addEventListener('click', () => renderLogin(''));
+    form.code.addEventListener('blur', () => { form.code.value = inviteCore.formatCode(form.code.value); });
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const values = {
+        code: form.code.value,
+        email: form.email.value.trim(),
+        password: form.password.value,
+        password2: form.password2.value
+      };
+      const problem = inviteCore.validateSignup(values);
+      if (problem) {
+        setMessage(problem, 'bad');
+        return;
+      }
+      const submit = gateEl.querySelector('#authSubmit');
+      setBusy(submit, true, 'Crear cuenta', 'Creando cuenta…');
+      setMessage('', 'neutral');
+      const code = inviteCore.formatCode(values.code);
+
+      let result = await authApi.signUp(values.email, values.password);
+      if (result.exists) {
+        // El correo ya tiene cuenta: se entra con esa contraseña y se usa el código ahí.
+        result = await authApi.signIn(values.email, values.password);
+        if (!result.ok) {
+          setBusy(submit, false, 'Crear cuenta', 'Creando cuenta…');
+          form.password.value = '';
+          form.password2.value = '';
+          setMessage(result.unavailable
+            ? result.error
+            : 'Este correo ya tiene cuenta y la contraseña no coincide. Escribe la contraseña de esa cuenta.', 'bad');
+          return;
+        }
+      }
+      if (result.needsConfirm) {
+        setBusy(submit, false, 'Crear cuenta', 'Creando cuenta…');
+        setMessage('Tu cuenta se creó, pero la nube pide confirmar el correo antes de entrar. Avísale a tu coach.', 'bad');
+        return;
+      }
+      if (!result.ok) {
+        setBusy(submit, false, 'Crear cuenta', 'Creando cuenta…');
+        setMessage(result.error, 'bad');
+        return;
+      }
+      currentUser = result.user;
+      submit.textContent = 'Usando el código…';
+      await redeemAndEnter(result.user, code);
+    });
+    (code ? form.email : form.code).focus();
+  }
+
+  // Con sesión y sin vínculo (o si el código falló después de crear la cuenta): solo el código.
+  function renderInviteCodeOnly(user, code = '', message = '', tone = 'bad') {
+    currentUser = user;
+    showGate(`
+      <form id="authInviteForm" class="auth-form" novalidate>
+        <h2 class="auth-heading">Tengo un código</h2>
+        <p class="auth-status">Sesión abierta${user?.email ? ` como <strong>${escapeHtml(user.email)}</strong>` : ''}. Escribe el código que te mandó tu coach.</p>
+        <div>
+          <label for="inviteCode">Código</label>
+          <input id="inviteCode" name="code" class="auth-code-input" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX" maxlength="20" value="${escapeHtml(code)}" required>
+        </div>
+        <button class="primary" id="authSubmit" type="submit">Usar código</button>
+        <p id="authMessage" class="notice auth-message hidden" role="alert"></p>
+        <button class="secondary" type="button" data-auth-logout>Cerrar sesión</button>
+      </form>`);
+    setMessage(message, tone);
+    const form = gateEl.querySelector('#authInviteForm');
+    gateEl.querySelector('[data-auth-logout]').addEventListener('click', handleSignOut);
+    form.code.addEventListener('blur', () => { form.code.value = inviteCore.formatCode(form.code.value); });
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if (!inviteCore.isValidCode(form.code.value)) {
+        setMessage('Escribe el código de 8 caracteres que te mandó tu coach.', 'bad');
+        return;
+      }
+      const submit = gateEl.querySelector('#authSubmit');
+      setBusy(submit, true, 'Usar código', 'Usando el código…');
+      setMessage('', 'neutral');
+      await redeemAndEnter(user, inviteCore.formatCode(form.code.value));
+    });
+    form.code.focus();
+  }
+
   function renderNotice(title, message, { retry = false } = {}) {
     showGate(`
       <h2 class="auth-heading">${title}</h2>
@@ -305,7 +459,15 @@
     gateEl.classList.add('auth-gate--student');
     gateEl.innerHTML = '';
     gateEl.classList.remove('hidden');
-    window.VALHALLA.studentView.render(gateEl, { user, profile, offline, onSignOut: handleSignOut });
+    window.VALHALLA.studentView.render(gateEl, {
+      user,
+      profile,
+      offline,
+      onSignOut: handleSignOut,
+      // v0.9.49: cuenta sin vínculo -> "Tengo un código" (si vino por el link, se abre solo).
+      onHaveCode: inviteCore ? () => renderInviteCodeOnly(user, pendingInviteCode, '', 'neutral') : null,
+      inviteCode: inviteCore ? pendingInviteCode : ''
+    });
   }
 
   function renderStudent(profile) {
@@ -419,6 +581,11 @@
         return;
       }
       currentUser = null;
+      if (pendingInviteCode && inviteCore) {
+        // Llegó por el link de la invitación: directo a crear la cuenta, con el código escrito.
+        renderInviteSignup(pendingInviteCode, '', 'neutral');
+        return;
+      }
       renderLogin('', 'bad');
       return;
     }
