@@ -573,59 +573,6 @@ button.small {
 
 .hidden { display: none !important; }
 
-.planning-wizard {
-  display: grid;
-  gap: 18px;
-}
-
-.planning-stepper {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.planning-step {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 8px 10px;
-  border-radius: 12px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  font-size: 0.72rem;
-  text-align: center;
-  color: var(--muted);
-  min-height: 48px;
-}
-
-.planning-step.active {
-  background: rgba(255, 204, 26, 0.12);
-  border-color: var(--accent);
-  color: var(--text);
-  box-shadow: 0 0 0 1px rgba(255, 204, 26, 0.28) inset;
-}
-
-.planning-step.completed {
-  background: rgba(52, 179, 106, 0.10);
-  border-color: rgba(52, 179, 106, 0.50);
-  color: var(--text);
-}
-
-.planning-step.pending {
-  color: var(--muted);
-}
-
-.step-mark {
-  font-weight: 800;
-  font-size: 0.8rem;
-}
-
-.planning-step-panel {
-  display: grid;
-  gap: 16px;
-}
-
 .planning-panel-box {
   display: grid;
   gap: 12px;
@@ -633,52 +580,6 @@ button.small {
   border: 1px solid var(--border);
   border-radius: 16px;
   padding: 14px;
-}
-
-.planning-client-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 10px;
-}
-
-.planning-client-card {
-  border: 1px solid var(--border);
-  background: var(--surface);
-  border-radius: 14px;
-  min-height: 64px;
-  padding: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  color: var(--text);
-}
-
-.planning-client-card.selected {
-  background: rgba(255, 204, 26, 0.12);
-  border-color: var(--accent);
-  color: var(--text);
-}
-
-.planning-summary-inline {
-  color: var(--muted);
-  font-size: 0.94rem;
-}
-
-.planning-program-list {
-  display: grid;
-  gap: 8px;
-}
-
-.planning-program-item {
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--surface);
-  padding: 10px 12px;
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  align-items: center;
 }
 
 .planning-chip-grid {
@@ -724,30 +625,6 @@ button.small {
   width: 100%;
 }
 
-.planning-day-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.planning-day-tab {
-  border: 1px solid var(--border);
-  background: var(--surface-2);
-  border-radius: 10px;
-  padding: 10px 14px;
-  color: var(--text);
-}
-
-.planning-day-tab.active {
-  background: rgba(255, 204, 26, 0.12);
-  border-color: var(--accent);
-}
-
-.planning-exercise-list {
-  display: grid;
-  gap: 10px;
-}
-
 .planning-exercise-item {
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -764,22 +641,10 @@ button.small {
   align-items: center;
 }
 
-.planning-empty-state {
-  display: grid;
-  gap: 10px;
-  justify-items: start;
-  padding: 18px 0 8px;
-}
-
 .planning-inline-message {
   color: var(--warn);
   font-size: 0.82rem;
   margin-bottom: 8px;
-}
-
-.planning-cta-block {
-  display: grid;
-  gap: 8px;
 }
 
 #trainings[data-view="planning"] .training-execution-panel,
@@ -810,11 +675,6 @@ button.small {
 .planning-search-wrap {
   display: grid;
   gap: 6px;
-}
-
-.planning-builder-body {
-  display: grid;
-  gap: 12px;
 }
 
 .planning-field-inline {
@@ -859,20 +719,6 @@ button.small {
   border-radius: 10px;
   background: var(--surface);
   padding: 8px;
-}
-
-.planning-review-summary {
-  display: grid;
-  gap: 12px;
-}
-
-.planning-review-card {
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  background: var(--surface-2);
-  padding: 12px;
-  display: grid;
-  gap: 8px;
 }
 
 .compact {
@@ -1647,13 +1493,6 @@ button.small {
   .student-set-item {
     flex-direction: column;
     align-items: flex-start;
-  }
-  .planning-stepper {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .planning-step {
-    justify-content: flex-start;
-    font-size: 0.7rem;
   }
   .planning-category-grid {
     grid-template-columns: 1fr;
@@ -2795,21 +2634,6 @@ details.group-athlete-row[open] > summary h3::before {
     min-height: 40px;
     padding: 8px 10px;
   }
-}
-
-/* Armador: aviso de lo guardado y "Empezar de nuevo", visibles en todos los pasos. */
-.planning-wizard-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-bottom: 10px;
-}
-
-.planning-wizard-bar .notice {
-  flex: 1 1 220px;
-  margin: 0;
 }
 
 /* Modo Grupo: "Repetir última vez" (llena las casillas vacías con la última vez). */

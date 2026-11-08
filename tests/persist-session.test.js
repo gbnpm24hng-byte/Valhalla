@@ -99,7 +99,7 @@ test('persistProgramInLocalStorage() no descarta cambios en memoria que aún no 
     { trainingsV08: { programs: [] } }
   ));
   const persisted = persistProgramInLocalStorage(dataApi.normalizeTrainingProgram({ id: 'falso-programa-1', name: 'Programa falso', days: [] }));
-  state.trainingsV08 = persisted.trainingsV08 || state.trainingsV08; // igual que hacen saveProgram() y savePlanningProgramAndAssignments()
+  state.trainingsV08 = persisted.trainingsV08 || state.trainingsV08; // igual que hace saveProgram()
 
   assertChangesPresent(state, 'memoria');
   assertChangesPresent(dataApi.loadState(), 'localStorage');

@@ -63,20 +63,12 @@
     programExerciseDraft: null
   };
   const planningUi = {
-    currentStep: 1,
     selectedClientIds: [],
     objective: 'Fuerza',
     duration: 4,
     frequency: 3,
     currentDayIndex: 0,
-    currentDayName: 'Día A',
-    category: 'PIERNAS',
-    selectedCategory: null,
-    exerciseDraft: null,
-    draftProgram: null,
-    baseProgramId: '',
-    moreOptionsOpen: false,
-    weeklyDays: []
+    draftProgram: null
   };
   const groupSessionUi = {
     selectedClientIds: [],
@@ -436,36 +428,7 @@
     saveProgramBtn: document.getElementById('saveProgramBtn'),
     programMessage: document.getElementById('programMessage'),
     programList: document.getElementById('programList'),
-    newProgramBtn: document.getElementById('newProgramBtn'),
-    planningStep1: document.getElementById('planningStep1'),
-    planningStep2: document.getElementById('planningStep2'),
-    planningStep3: document.getElementById('planningStep3'),
-    planningStep4: document.getElementById('planningStep4'),
-    planningWizard: document.getElementById('planningWizard'),
-    planningClientGrid: document.getElementById('planningClientGrid'),
-    planningClientSelectionSummary: document.getElementById('planningClientSelectionSummary'),
-    planningProgramName: document.getElementById('planningProgramName'),
-    planningObjectiveOptions: document.getElementById('planningObjectiveOptions'),
-    planningCustomDuration: document.getElementById('planningCustomDuration'),
-    planningProgramStartDate: document.getElementById('planningProgramStartDate'),
-    planningDayTabs: document.getElementById('planningDayTabs'),
-    planningCurrentDayLabel: document.getElementById('planningCurrentDayLabel'),
-    planningExerciseList: document.getElementById('planningExerciseList'),
-    planningExerciseEmptyState: document.getElementById('planningExerciseEmptyState'),
     routineBuilderRoot: document.getElementById('routineBuilderRoot'),
-    planningReviewSummary: document.getElementById('planningReviewSummary'),
-    planningWizardMessage: document.getElementById('planningWizardMessage'),
-    planningRestartBtn: document.getElementById('planningRestartBtn'),
-    planningSaveProgramWizardBtn: document.getElementById('planningSaveProgramWizardBtn'),
-    planningContinueStep1: document.getElementById('planningContinueStep1'),
-    planningContinueStep2: document.getElementById('planningContinueStep2'),
-    planningContinueStep3: document.getElementById('planningContinueStep3'),
-    planningBackToStep1: document.getElementById('planningBackToStep1'),
-    planningBackToStep2: document.getElementById('planningBackToStep2'),
-    planningBackToStep3: document.getElementById('planningBackToStep3'),
-    planningSavedPrograms: document.getElementById('planningSavedPrograms'),
-    planningBaseProgramSelect: document.getElementById('planningBaseProgramSelect'),
-    planningLoadBaseProgramBtn: document.getElementById('planningLoadBaseProgramBtn'),
     programExerciseForm: document.getElementById('programExerciseForm'),
     programExerciseIdInput: document.getElementById('programExerciseId'),
     programExerciseNameInput: document.getElementById('programExerciseName'),
@@ -4802,33 +4765,6 @@
       : '<div class="muted">Sin series efectivas.</div>';
   }
 
-  function resetProgramDraft() {
-    trainingUi.editingProgramId = '';
-    trainingUi.editingProgramDayId = '';
-    trainingUi.editingProgramExerciseId = '';
-    if (els.programIdInput) {
-      els.programIdInput.value = '';
-    }
-    if (els.programNameInput) {
-      els.programNameInput.value = '';
-    }
-    if (els.programObjectiveInput) {
-      els.programObjectiveInput.value = '';
-    }
-    if (els.programStartDateInput) {
-      els.programStartDateInput.value = getTodayLocalDate();
-    }
-    if (els.programDurationWeeksInput) {
-      els.programDurationWeeksInput.value = '4';
-    }
-    if (els.programWeeklyFrequencyInput) {
-      els.programWeeklyFrequencyInput.value = '3';
-    }
-    if (els.programAssignedClientsInput) {
-      els.programAssignedClientsInput.innerHTML = '';
-    }
-  }
-
   function getProgramDraft() {
     ensureTrainingsV08State();
     const existing = trainingUi.editingProgramId ? getTrainingProgramById(trainingUi.editingProgramId) : null;
@@ -4956,268 +4892,6 @@
     return program;
   }
 
-  function syncPlanningProgramToLegacyForm() {
-    const draft = getPlanningDraftProgram();
-    if (els.programNameInput) els.programNameInput.value = draft.name || '';
-    if (els.programObjectiveInput) els.programObjectiveInput.value = draft.objective || '';
-    if (els.programStartDateInput) els.programStartDateInput.value = draft.startDate || getTodayLocalDate();
-    if (els.programDurationWeeksInput) els.programDurationWeeksInput.value = String(draft.durationWeeks || 4);
-    if (els.programWeeklyFrequencyInput) els.programWeeklyFrequencyInput.value = String(draft.weeklyFrequency || 2);
-    if (els.programAssignedClientsInput) {
-      const selectedIds = new Set(draft.assignedClientIds || []);
-      Array.from(els.programAssignedClientsInput.options).forEach((option) => {
-        option.selected = selectedIds.has(option.value);
-      });
-    }
-    if (els.programIdInput) els.programIdInput.value = draft.id || '';
-  }
-
-  function renderPlanningSavedPrograms() {
-    if (!els.planningSavedPrograms) {
-      return;
-    }
-    // El selector "Programa base" lista los mismos programas (todos, no solo los 6 primeros).
-    renderPlanningBaseProgramOptions();
-    const programs = getTrainingPrograms();
-    if (!programs.length) {
-      els.planningSavedPrograms.innerHTML = '<div class="muted">Todavía no hay programaciones guardadas.</div>';
-      return;
-    }
-    els.planningSavedPrograms.innerHTML = programs.slice(0, 6).map((program) => `
-      <div class="planning-program-item">
-        <div>
-          <strong>${escapeHtml(program.name || 'Programa')}</strong>
-          <div class="meta">${escapeHtml(program.objective || 'Sin objetivo')} · ${Number(program.durationWeeks || 0)} sem.</div>
-        </div>
-        <div class="inline-actions">
-          <button class="ghost small" type="button" data-program-edit="${program.id}">Abrir</button>
-          <button class="secondary small" type="button" data-program-base="${program.id}">Usar como base</button>
-        </div>
-      </div>
-    `).join('');
-  }
-
-  function renderPlanningBaseProgramOptions() {
-    const select = els.planningBaseProgramSelect;
-    if (!select) {
-      return;
-    }
-    const programs = getTrainingPrograms();
-    const currentValue = String(planningUi.baseProgramId || '').trim();
-    select.innerHTML = '<option value="">Selecciona un programa guardado...</option>' + programs.map((program) => {
-      const programName = escapeHtml(program.name || 'Programa');
-      const clientCount = Array.isArray(program.assignedClientIds) ? program.assignedClientIds.length : 0;
-      return `<option value="${escapeHtml(program.id || '')}" ${currentValue === String(program.id || '') ? 'selected' : ''}>${programName} · ${clientCount} alumno(s)</option>`;
-    }).join('');
-    if (!programs.some((program) => String(program.id || '') === currentValue) && currentValue) {
-      select.value = '';
-      planningUi.baseProgramId = '';
-    }
-  }
-
-  function duplicatePlanningProgramFromBase(programId) {
-    const sourceProgram = getTrainingProgramById(programId);
-    if (!sourceProgram) {
-      return false;
-    }
-
-    const baseCopy = JSON.parse(JSON.stringify(sourceProgram));
-    const copiedProgram = dataApi.normalizeTrainingProgram({
-      ...baseCopy,
-      id: dataApi.createId('planning-program'),
-      name: `${baseCopy.name || 'Programa'} (copia)`,
-      assignedClientIds: Array.isArray(baseCopy.assignedClientIds) ? [...baseCopy.assignedClientIds] : [],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    });
-
-    planningUi.baseProgramId = programId;
-    planningUi.objective = copiedProgram.objective || 'Fuerza';
-    planningUi.duration = Number(copiedProgram.durationWeeks || 4);
-    planningUi.frequency = Number(copiedProgram.weeklyFrequency || copiedProgram.days?.length || 2);
-    planningUi.draftProgram = copiedProgram;
-    planningUi.selectedClientIds = Array.isArray(copiedProgram.assignedClientIds) ? [...copiedProgram.assignedClientIds] : [];
-    planningUi.weeklyDays = [];
-    planningUi.currentDayIndex = 0;
-    if (copiedProgram.days?.length) {
-      copiedProgram.days = copiedProgram.days.map((day, index) => ({ ...day, order: index + 1, name: day.name || `Día ${index + 1}` }));
-    }
-    // applyPlanningChoiceData lee el nombre y la fecha de los campos del paso 2: se llenan antes
-    // con los de la copia (si no, quedaba el nombre vacío o el de otro programa).
-    if (els.planningProgramName) {
-      els.planningProgramName.value = copiedProgram.name;
-    }
-    if (els.planningProgramStartDate) {
-      els.planningProgramStartDate.value = copiedProgram.startDate || getTodayLocalDate();
-    }
-    applyPlanningChoiceData();
-    renderPlanningClientSelection();
-    renderPlanningSavedPrograms();
-    renderPlanningBaseProgramOptions();
-    showPlanningStep(2);
-    return true;
-  }
-
-  function renderPlanningClientSelection() {
-    const clients = getActiveTrainingClients();
-    const selected = new Set(planningUi.selectedClientIds || []);
-    if (!els.planningClientGrid) {
-      return;
-    }
-    if (!clients.length) {
-      els.planningClientGrid.innerHTML = '<div class="muted">No hay alumnos activos para seleccionar. Crea primero un cliente en la sección de Clientes.</div>';
-      if (els.planningClientSelectionSummary) {
-        els.planningClientSelectionSummary.textContent = '0 alumnos seleccionados';
-      }
-      return;
-    }
-    els.planningClientGrid.innerHTML = clients.map((client) => `
-      <button class="planning-client-card ${selected.has(client.id) ? 'selected' : ''}" type="button" data-planning-client-id="${client.id}">
-        ${escapeHtml(getClientDisplayName(client))}
-      </button>
-    `).join('');
-    if (els.planningClientSelectionSummary) {
-      els.planningClientSelectionSummary.textContent = `${selected.size} alumnos seleccionados`;
-    }
-  }
-
-  function renderPlanningStepIndicators() {
-    const steps = document.querySelectorAll('.planning-step');
-    steps.forEach((step, index) => {
-      const isActive = index + 1 === planningUi.currentStep;
-      const isCompleted = index + 1 < planningUi.currentStep;
-      step.classList.toggle('active', isActive);
-      step.classList.toggle('completed', isCompleted);
-      step.classList.toggle('pending', !isActive && !isCompleted);
-      const mark = step.querySelector('.step-mark');
-      if (mark) {
-        mark.textContent = isCompleted ? '✓' : isActive ? '●' : '○';
-      }
-    });
-  }
-
-  function programHasExercises() {
-    const draft = getPlanningDraftProgram();
-    return (draft.days || []).some((day) => (day.exercises || []).length > 0);
-  }
-
-  function updatePlanningContinueButton() {
-    const button = document.getElementById('planningContinueStep3');
-    const message = document.getElementById('planningStep3Message');
-    const enabled = programHasExercises();
-    if (button) {
-      button.disabled = !enabled;
-      button.classList.toggle('secondary', !enabled);
-      button.classList.toggle('primary', enabled);
-    }
-    if (message) {
-      message.classList.toggle('hidden', enabled);
-      message.textContent = 'Agrega al menos un ejercicio para continuar.';
-    }
-  }
-
-  function showPlanningStep(stepNumber) {
-    // Al cambiar de paso se quita el aviso ("guardado y asignado" o un error viejo).
-    if (stepNumber !== planningUi.currentStep) {
-      setPlanningWizardMessage('');
-    }
-    planningUi.currentStep = stepNumber;
-    const panels = [els.planningStep1, els.planningStep2, els.planningStep3, els.planningStep4];
-    panels.forEach((panel, index) => {
-      if (panel) {
-        panel.classList.toggle('hidden', index + 1 !== stepNumber);
-      }
-    });
-    renderPlanningStepIndicators();
-
-    if (stepNumber === 1) {
-      renderPlanningClientSelection();
-      renderPlanningSavedPrograms();
-      renderPlanningBaseProgramOptions();
-    }
-
-    if (stepNumber === 2) {
-      if (els.planningProgramName) {
-        els.planningProgramName.value = getPlanningDraftProgram().name || '';
-      }
-      if (els.planningProgramStartDate) {
-        els.planningProgramStartDate.value = getPlanningDraftProgram().startDate || getTodayLocalDate();
-      }
-      renderPlanningProgramChoices();
-    }
-
-    if (stepNumber === 3) {
-      routineBuilder.screen = 'day';
-      routineBuilder.activeDayIndex = planningUi.currentDayIndex;
-      renderPlanningDays();
-      if (els.routineBuilderRoot) {
-        renderRoutineBuilder();
-      }
-    }
-    if (stepNumber === 4) {
-      const draft = getPlanningDraftProgram();
-      const expected = Math.max(1, Math.min(Number(draft.weeklyFrequency || planningUi.frequency || 3), Math.max(1, (draft.days || []).length || 3)));
-      if (!planningUi.weeklyDays || !planningUi.weeklyDays.length) {
-        planningUi.weeklyDays = getDefaultPlanningWeeklyDays(expected, draft.days.length || 3);
-      }
-      renderPlanningReview();
-    }
-  }
-
-  // Marca en el paso 2 el objetivo, la duración y la frecuencia del programa en edición
-  // (antes quedaban siempre "Fuerza", "4 semanas" y "2 días" aunque el programa dijera otra cosa).
-  function renderPlanningProgramChoices() {
-    const draft = getPlanningDraftProgram();
-    const objective = String(draft.objective || planningUi.objective || 'Fuerza');
-    document.querySelectorAll('[data-program-objective]').forEach((button) => {
-      button.classList.toggle('active', button.getAttribute('data-program-objective') === objective);
-    });
-    const weeks = Number(draft.durationWeeks || planningUi.duration || 4);
-    const durationButtons = [...document.querySelectorAll('[data-program-duration]')];
-    const presetWeeks = durationButtons.some((button) => button.getAttribute('data-program-duration') === String(weeks));
-    durationButtons.forEach((button) => {
-      const value = button.getAttribute('data-program-duration');
-      button.classList.toggle('active', presetWeeks ? value === String(weeks) : value === 'custom');
-    });
-    if (els.planningCustomDuration) {
-      els.planningCustomDuration.classList.toggle('hidden', presetWeeks);
-      els.planningCustomDuration.value = presetWeeks ? '' : String(weeks);
-    }
-    const frequency = String(Number(draft.weeklyFrequency || planningUi.frequency || 2));
-    document.querySelectorAll('[data-program-frequency]').forEach((button) => {
-      button.classList.toggle('active', button.getAttribute('data-program-frequency') === frequency);
-    });
-  }
-
-  function applyPlanningChoiceData() {
-    const draft = getPlanningDraftProgram();
-    draft.name = String(els.planningProgramName?.value || '').trim();
-    draft.objective = planningUi.objective || draft.objective || 'Fuerza';
-    draft.durationWeeks = planningUi.duration || Number(els.planningCustomDuration?.value || draft.durationWeeks || 4);
-    draft.weeklyFrequency = planningUi.frequency || Number(draft.weeklyFrequency || 2);
-    const expectedDayCount = Math.max(1, Math.min(Number(draft.weeklyFrequency || 2), 7));
-    draft.days = Array.isArray(draft.days) ? draft.days : [];
-    while (draft.days.length < expectedDayCount) {
-      const index = draft.days.length;
-      draft.days.push({
-        id: dataApi.createId('program-day'),
-        name: `Día ${String.fromCharCode(65 + index)}`,
-        order: index + 1,
-        exercises: []
-      });
-    }
-    if (draft.days.length > expectedDayCount && draft.days.slice(expectedDayCount).every((day) => !(day.exercises || []).length)) {
-      draft.days.splice(expectedDayCount);
-    }
-    planningUi.currentDayIndex = Math.min(planningUi.currentDayIndex, Math.max(0, draft.days.length - 1));
-    draft.startDate = String(els.planningProgramStartDate?.value || draft.startDate || getTodayLocalDate());
-    draft.assignedClientIds = [...planningUi.selectedClientIds];
-    draft.updatedAt = new Date().toISOString();
-    planningUi.draftProgram = draft;
-    syncPlanningProgramToLegacyForm();
-    renderPlanningReview();
-  }
-
   // Categoría del armador: por músculo principal guardado y, si no hay, por nombre (labels.js).
   function getVisualExerciseCategory(exercise) {
     return labelsApi.routineCategory(exercise);
@@ -5300,29 +4974,6 @@
     return day || { id: dataApi.createId('program-day'), name: 'Día A', order: 1, exercises: [] };
   }
 
-  function renderPlanningDays() {
-    const draft = getPlanningDraftProgram();
-    const days = draft.days || [];
-    if (!els.planningDayTabs) {
-      return;
-    }
-    els.planningDayTabs.innerHTML = days.map((day, index) => {
-      const count = Array.isArray(day.exercises) ? day.exercises.length : 0;
-      const label = count > 0 ? `${day.name || `Día ${index + 1}`} ✓ ${count}` : `${day.name || `Día ${index + 1}`} · VACÍO`;
-      return `
-        <button class="planning-day-tab ${index === planningUi.currentDayIndex ? 'active' : ''}" type="button" data-planning-day-index="${index}">${escapeHtml(label)}</button>
-      `;
-    }).join('');
-    planningUi.currentDayName = days[planningUi.currentDayIndex]?.name || `Día ${planningUi.currentDayIndex + 1}`;
-    if (els.planningCurrentDayLabel) {
-      els.planningCurrentDayLabel.textContent = planningUi.currentDayName.toUpperCase();
-    }
-    routineBuilder.activeDayIndex = planningUi.currentDayIndex;
-    routineBuilder.screen = 'day';
-    renderRoutineBuilder();
-    updatePlanningContinueButton();
-  }
-
   // Repeticiones de un ejercicio del armador: "8-12", "10" o "sin repeticiones" (series por
   // tiempo; antes se veía "0-0").
   function formatPlanningReps(exercise) {
@@ -5335,92 +4986,6 @@
       return 'sin repeticiones';
     }
     return max > min ? `${min}-${max}` : String(min);
-  }
-
-  // Aviso arriba del armador ("✓ … guardado y asignado" o el error al guardar).
-  function setPlanningWizardMessage(text, tone = 'ok') {
-    if (!els.planningWizardMessage) {
-      return;
-    }
-    els.planningWizardMessage.textContent = text || '';
-    els.planningWizardMessage.className = `notice ${tone}${text ? '' : ' hidden'}`;
-  }
-
-  // ¿Hay algo armado sin guardar? (nombre, alumnos, ejercicios o una base cargada)
-  function isPlanningDirty() {
-    const draft = planningUi.draftProgram;
-    return Boolean(String(els.planningProgramName?.value || draft?.name || '').trim()
-      || (planningUi.selectedClientIds || []).length
-      || planningUi.baseProgramId
-      || (draft?.days || []).some((day) => (day.exercises || []).length));
-  }
-
-  // Vuelve al paso 1 vacío: sin nombre, días, ejercicios ni alumnos. Descarta solo lo que se
-  // estaba armando; los programas y asignaciones guardados no se tocan.
-  function resetPlanningWizard() {
-    Object.assign(planningUi, {
-      selectedClientIds: [],
-      objective: 'Fuerza',
-      duration: 4,
-      frequency: 3,
-      currentDayIndex: 0,
-      currentDayName: 'Día A',
-      category: 'PIERNAS',
-      selectedCategory: null,
-      exerciseDraft: null,
-      draftProgram: null,
-      baseProgramId: '',
-      moreOptionsOpen: false,
-      weeklyDays: []
-    });
-    Object.assign(routineBuilder, { screen: 'day', activeDayIndex: 0, category: null, exerciseId: null, editingIndex: null, search: '' });
-    resetRoutineBuilderDraft();
-    if (els.planningProgramName) {
-      els.planningProgramName.value = '';
-    }
-    if (els.planningProgramStartDate) {
-      els.planningProgramStartDate.value = '';
-    }
-    if (els.planningCustomDuration) {
-      els.planningCustomDuration.value = '';
-    }
-    if (els.planningReviewSummary) {
-      els.planningReviewSummary.innerHTML = '';
-    }
-    showPlanningStep(1);
-  }
-
-  // "Empezar de nuevo": con algo armado pregunta dentro de la app antes de descartarlo.
-  function askPlanningRestart() {
-    if (!isPlanningDirty()) {
-      resetPlanningWizard();
-      setPlanningWizardMessage('');
-      return;
-    }
-    document.getElementById('planningRestartModal')?.remove();
-    const overlay = document.createElement('div');
-    overlay.id = 'planningRestartModal';
-    overlay.className = 'sync-modal';
-    overlay.setAttribute('role', 'dialog');
-    overlay.setAttribute('aria-modal', 'true');
-    overlay.innerHTML = `
-      <div class="sync-modal-card card">
-        <h2>¿Empezar de nuevo?</h2>
-        <p>Se descarta lo que estás armando y no está guardado. Los programas ya guardados no cambian.</p>
-        <div class="inline-actions">
-          <button class="secondary" type="button" data-planning-restart-cancel>Seguir armando</button>
-          <button class="danger" type="button" data-planning-restart-confirm>Descartar y empezar de nuevo</button>
-        </div>
-      </div>`;
-    document.body.appendChild(overlay);
-    const close = () => overlay.remove();
-    overlay.querySelector('[data-planning-restart-cancel]').focus();
-    overlay.querySelector('[data-planning-restart-cancel]').addEventListener('click', close);
-    overlay.querySelector('[data-planning-restart-confirm]').addEventListener('click', () => {
-      close();
-      resetPlanningWizard();
-      setPlanningWizardMessage('');
-    });
   }
 
   function resetRoutineBuilderDraft() {
@@ -5524,7 +5089,6 @@
         </div>
       `;
       els.routineBuilderRoot.innerHTML = html;
-      updatePlanningContinueButton();
       return;
     }
 
@@ -5800,7 +5364,6 @@
     routineBuilder.exerciseId = null;
     routineBuilder.editingIndex = null;
     resetRoutineBuilderDraft();
-    renderPlanningDays();
   }
 
   function getPlanningWeeklyDayOptions() {
@@ -5832,152 +5395,6 @@
       }
     });
     return defaults.slice(0, requested);
-  }
-
-  function getPlanningWeeklyDaySelection() {
-    const draft = getPlanningDraftProgram();
-    const totalDays = Math.max(1, Math.min(Number(draft.days?.length || 3), 7));
-    const expected = Math.max(1, Math.min(Number(draft.weeklyFrequency || planningUi.frequency || 3), totalDays));
-    const current = Array.isArray(planningUi.weeklyDays)
-      ? planningUi.weeklyDays
-      : [];
-    const normalized = [...new Set(current.map((item) => Number(item)).filter((item) => Number.isInteger(item) && item >= 1 && item <= 7))].sort((a, b) => a - b);
-    if (!normalized.length) {
-      planningUi.weeklyDays = getDefaultPlanningWeeklyDays(expected, totalDays);
-      return planningUi.weeklyDays;
-    }
-    if (normalized.length > expected) {
-      planningUi.weeklyDays = normalized.slice(0, expected);
-      return planningUi.weeklyDays;
-    }
-    planningUi.weeklyDays = normalized;
-    return planningUi.weeklyDays;
-  }
-
-  function getPlanningWeeklySchedule() {
-    const draft = getPlanningDraftProgram();
-    const selected = getPlanningWeeklyDaySelection();
-    return selected.map((weekday, index) => {
-      const programDay = draft.days?.[index] || draft.days?.[0] || { name: `Día ${index + 1}` };
-      return {
-        weekday,
-        weekdayLabel: getWeekdayLabel(weekday),
-        dayName: programDay.name || `Día ${index + 1}`,
-        dayIndex: index
-      };
-    });
-  }
-
-  function formatReviewDate(dateString) {
-    const value = String(dateString || '').trim();
-    if (!value) {
-      return 'Sin fecha';
-    }
-    const date = new Date(`${value}T00:00:00`);
-    return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString('es-CL');
-  }
-
-  function calculateEstimatedFinishDate(startDate, durationWeeks) {
-    const safeStart = String(startDate || getTodayLocalDate()).trim();
-    const start = new Date(`${safeStart}T00:00:00`);
-    if (Number.isNaN(start.getTime())) {
-      return 'Sin fecha';
-    }
-    const clone = new Date(start);
-    const weeks = Math.max(1, Number(durationWeeks || 4));
-    clone.setDate(clone.getDate() + weeks * 7);
-    return clone.toLocaleDateString('es-CL');
-  }
-
-  function getSelectedPlanningClientNames() {
-    const draft = getPlanningDraftProgram();
-    const ids = Array.isArray(draft.assignedClientIds) ? draft.assignedClientIds : [];
-    return ids.map((clientId) => {
-      const client = getClientById(clientId);
-      return client ? getClientDisplayName(client) : clientId;
-    }).filter(Boolean);
-  }
-
-  function renderPlanningReview() {
-    const draft = getPlanningDraftProgram();
-    if (!els.planningReviewSummary) {
-      return;
-    }
-    const totalExercises = (draft.days || []).reduce((sum, day) => sum + (day.exercises || []).length, 0);
-    const totalSeries = (draft.days || []).reduce((sum, day) => {
-      return sum + (day.exercises || []).reduce((inner, exercise) => inner + Number(exercise.sets || exercise.plannedSets || 0), 0);
-    }, 0);
-    const expectedDays = Math.max(1, Math.min(Number(draft.weeklyFrequency || planningUi.frequency || 3), Math.max(1, draft.days.length || 3)));
-    if (!planningUi.weeklyDays || !planningUi.weeklyDays.length) {
-      planningUi.weeklyDays = getDefaultPlanningWeeklyDays(expectedDays, draft.days.length || 3);
-    }
-    const selectedDays = getPlanningWeeklyDaySelection();
-    const schedule = getPlanningWeeklySchedule();
-    const startDate = String(draft.startDate || getTodayLocalDate()).trim() || getTodayLocalDate();
-    const clientNames = getSelectedPlanningClientNames();
-
-    els.planningReviewSummary.innerHTML = `
-      <div class="planning-review-card">
-        <strong>REVISAR PROGRAMACIÓN</strong>
-        <div class="meta">${escapeHtml(draft.name || 'Programa sin nombre')}</div>
-      </div>
-      <div class="planning-review-card">
-        <div class="meta"><strong>OBJETIVO</strong> · ${escapeHtml(draft.objective || 'Sin objetivo')}</div>
-        <div class="meta"><strong>DURACIÓN</strong> · ${Number(draft.durationWeeks || 0)} semanas</div>
-        <div class="meta"><strong>FRECUENCIA</strong> · ${Number(draft.weeklyFrequency || 0)} días por semana</div>
-        <div class="meta"><strong>ALUMNOS</strong> · ${clientNames.length ? escapeHtml(clientNames.join(', ')) : 'Sin alumnos'}</div>
-      </div>
-
-      ${(draft.days || []).map((day, index) => {
-        const exercises = Array.isArray(day.exercises) ? day.exercises : [];
-        const countSeries = exercises.reduce((sum, exercise) => sum + Number(exercise.sets || exercise.plannedSets || 0), 0);
-        return `
-          <div class="planning-review-card">
-            <div class="inline-actions" style="justify-content: space-between; align-items: center;">
-              <strong>${escapeHtml(day.name || `Día ${index + 1}`)}</strong>
-              <button class="ghost small" type="button" data-planning-edit-day="${index}">EDITAR DÍA</button>
-            </div>
-            <div class="meta">${exercises.length} ejercicios · ${countSeries} series efectivas</div>
-            ${(exercises.length ? exercises.map((exercise, exerciseIndex) => `
-              <div class="meta" style="margin-top: 8px;">
-                <strong>${exerciseIndex + 1}. ${escapeHtml(exercise.exerciseName || 'Ejercicio')}</strong>
-                <div>${Number(exercise.sets || exercise.plannedSets || 0)} × ${escapeHtml(formatPlanningReps(exercise))}</div>
-                <div>${Array.isArray(exercise.approximations) ? exercise.approximations.length : 0} aproximaciones</div>
-                <div>${escapeHtml(exercise.zone || 'Sin zona')}</div>
-              </div>
-            `).join('') : '<div class="meta">Sin ejercicios</div>')}
-          </div>
-        `;
-      }).join('')}
-
-      <div class="planning-review-card">
-        <strong>¿QUÉ DÍAS SE ENTRENA?</strong>
-        <div class="planning-chip-grid" style="margin-top: 12px;">
-          ${getPlanningWeeklyDayOptions().map((dayOption) => {
-            const active = selectedDays.includes(Number(dayOption.value));
-            return `
-              <button class="planning-option-btn ${active ? 'active' : ''}" type="button" data-planning-weekday="${dayOption.value}">
-                ${dayOption.label}${active ? ' ✓' : ''}
-              </button>
-            `;
-          }).join('')}
-        </div>
-        <div class="meta">Se seleccionaron ${selectedDays.length} de ${expectedDays} días.</div>
-        ${schedule.length ? `
-          <div class="meta" style="margin-top: 8px;">
-            ${schedule.map((slot) => `${slot.weekdayLabel} → ${escapeHtml(slot.dayName)}`).join(' · ')}
-          </div>
-        ` : ''}
-      </div>
-
-      <div class="planning-review-card">
-        <strong>INICIO Y FIN</strong>
-        <div class="meta">Inicio: ${formatReviewDate(startDate)}</div>
-        <div class="meta">Fin estimado: ${calculateEstimatedFinishDate(startDate, Number(draft.durationWeeks || 4))}</div>
-      </div>
-
-      <div class="meta" style="margin-top: 10px;">Resumen total: ${totalExercises} ejercicios · ${totalSeries} series efectivas</div>
-    `;
   }
 
   // ---- v0.9.38: Programas en 3 pantallas ----
@@ -7644,103 +7061,12 @@
 
       renderProgramsList();
       renderProgramDayList(normalizedDraft);
-      renderPlanningReview();
       setProgramButtonState('✓ Programa guardado', false);
       setProgramSaveStatus(`✓ Programa guardado correctamente\n${formName}\n${durationWeeks} semanas · ${weeklyFrequency} días`, 'ok');
     } catch (error) {
       console.error(error);
       setProgramButtonState('✕ No se pudo guardar', false);
       setProgramSaveStatus(`✕ No se pudo guardar: ${error.message || 'Error desconocido'}`, 'bad');
-    }
-  }
-
-  function savePlanningProgramAndAssignments() {
-    try {
-      ensureTrainingsV08State();
-      const draft = getPlanningDraftProgram();
-      const selectedClientIds = (planningUi.selectedClientIds && planningUi.selectedClientIds.length)
-        ? [...planningUi.selectedClientIds]
-        : [...(draft.assignedClientIds || [])];
-      const expectedDays = Math.max(1, Math.min(Number(draft.weeklyFrequency || planningUi.frequency || 3), Math.max(1, (draft.days || []).length || 3)));
-      const selectedDays = getPlanningWeeklyDaySelection();
-
-      if (!draft.name) {
-        throw new Error('El programa necesita un nombre.');
-      }
-      if (!selectedClientIds.length) {
-        throw new Error('Selecciona al menos un alumno.');
-      }
-      if (selectedDays.length !== expectedDays) {
-        throw new Error(`Selecciona ${expectedDays} días de entrenamiento.`);
-      }
-      if (!Array.isArray(draft.days) || draft.days.length === 0) {
-        throw new Error('El programa no tiene días con ejercicios.');
-      }
-
-      draft.startDate = String(draft.startDate || els.planningProgramStartDate?.value || getTodayLocalDate()).trim();
-      draft.updatedAt = new Date().toISOString();
-      const normalizedDraft = dataApi.normalizeTrainingProgram(draft);
-      const persistedProgramState = persistProgramInLocalStorage(normalizedDraft);
-      state.trainingsV08 = persistedProgramState.trainingsV08 || state.trainingsV08;
-      planningUi.draftProgram = normalizedDraft;
-
-      const assignmentPayloads = selectedClientIds.map((clientId) => {
-        const client = getClientById(clientId);
-        return dataApi.normalizeTrainingProgramAssignment({
-          id: dataApi.createId('program-assignment'),
-          programId: normalizedDraft.id,
-          clientId,
-          clientName: client ? getClientDisplayName(client) : '',
-          programName: normalizedDraft.name,
-          objective: normalizedDraft.objective,
-          startDate: normalizedDraft.startDate,
-          durationWeeks: Number(normalizedDraft.durationWeeks || 4),
-          weeklyDays: selectedDays.slice(),
-          weeklyFrequency: expectedDays,
-          status: 'active',
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        }, { trainingsV08: { programs: getTrainingPrograms() } });
-      });
-
-      const existingAssignments = getTrainingAssignments().filter((assignment) => !selectedClientIds.includes(assignment.clientId) || assignment.programId !== normalizedDraft.id);
-      state.trainingsV08.assignments = [...existingAssignments, ...assignmentPayloads];
-      dataApi.saveState(state);
-
-      const verification = dataApi.loadState();
-      const savedPrograms = Array.isArray(verification.trainingsV08?.programs) ? verification.trainingsV08.programs : [];
-      const savedAssignments = Array.isArray(verification.trainingsV08?.assignments) ? verification.trainingsV08.assignments : [];
-      const programExists = savedPrograms.some((item) => item.id === normalizedDraft.id);
-      const assignmentsExist = savedAssignments.filter((item) => item.programId === normalizedDraft.id).length === selectedClientIds.length;
-
-      if (!programExists || !assignmentsExist) {
-        throw new Error('La programación o las asignaciones no quedaron persistidas correctamente.');
-      }
-
-      renderPlanningSavedPrograms();
-      renderProgramsList();
-      renderPlanningReview();
-      if (els.planningReviewSummary) {
-        els.planningReviewSummary.insertAdjacentHTML('beforeend', `
-          <div class="planning-review-card" style="border-color: var(--success, #2e7d32);">
-            <strong>✓ PROGRAMACIÓN ASIGNADA</strong>
-            <div class="meta">${escapeHtml(normalizedDraft.name || 'Programa')}</div>
-            <div class="meta">${selectedClientIds.length} alumnos · ${expectedDays} días/semana · ${formatReviewDate(normalizedDraft.startDate || getTodayLocalDate())}</div>
-          </div>
-        `);
-      }
-      if (els.programMessage) {
-        els.programMessage.textContent = '✓ Programación asignada correctamente.';
-        els.programMessage.className = 'notice ok';
-      }
-      return true;
-    } catch (error) {
-      console.error(error);
-      if (els.programMessage) {
-        els.programMessage.textContent = error.message || 'No se pudo guardar la programación.';
-        els.programMessage.className = 'notice bad';
-      }
-      return false;
     }
   }
 
@@ -8516,7 +7842,6 @@
         setProgramImportMessage('No se pudo agregar el programa. No se importó nada.', 'bad');
         return;
       }
-      renderPlanningSavedPrograms();
       renderProgramsList();
       setProgramImportMessage(`Programa "${plan.program.name}" agregado sin alumnos. Ábrelo y toca "Asignar" para asignarlo.`, 'ok');
     });
@@ -14145,385 +13470,6 @@
       return;
     }
 
-    const planningClientId = target.closest('[data-planning-client-id]')?.getAttribute('data-planning-client-id');
-    if (planningClientId) {
-      const current = new Set(planningUi.selectedClientIds || []);
-      if (current.has(planningClientId)) {
-        current.delete(planningClientId);
-      } else {
-        current.add(planningClientId);
-      }
-      planningUi.selectedClientIds = Array.from(current);
-      getPlanningDraftProgram().assignedClientIds = [...planningUi.selectedClientIds];
-      // Empezó a armar el siguiente: se quita el aviso del anterior.
-      setPlanningWizardMessage('');
-      renderPlanningClientSelection();
-      renderPlanningSavedPrograms();
-      return;
-    }
-
-    if (target === els.planningLoadBaseProgramBtn || target.closest('#planningLoadBaseProgramBtn')) {
-      const selectedProgramId = String(els.planningBaseProgramSelect?.value || '').trim();
-      if (!selectedProgramId) {
-        if (els.programMessage) {
-          els.programMessage.textContent = 'Selecciona un programa guardado para usarlo como base.';
-          els.programMessage.className = 'notice warn';
-        }
-        return;
-      }
-      const loaded = duplicatePlanningProgramFromBase(selectedProgramId);
-      if (loaded && els.programMessage) {
-        els.programMessage.textContent = 'Base cargada correctamente.';
-        els.programMessage.className = 'notice ok';
-      }
-      return;
-    }
-
-    const programBaseId = target.closest('[data-program-base]')?.getAttribute('data-program-base');
-    if (programBaseId) {
-      duplicatePlanningProgramFromBase(programBaseId);
-      return;
-    }
-
-    if (target === els.planningContinueStep1) {
-      showPlanningStep(2);
-      if (els.planningProgramName) {
-        els.planningProgramName.value = getPlanningDraftProgram().name || '';
-      }
-      if (els.planningProgramStartDate) {
-        els.planningProgramStartDate.value = getPlanningDraftProgram().startDate || getTodayLocalDate();
-      }
-      return;
-    }
-
-    if (target === els.planningBackToStep1) {
-      showPlanningStep(1);
-      return;
-    }
-
-    if (target === els.planningContinueStep2) {
-      applyPlanningChoiceData();
-      showPlanningStep(3);
-      renderPlanningDays();
-      return;
-    }
-
-    if (target === els.planningBackToStep2) {
-      showPlanningStep(2);
-      return;
-    }
-
-    if (target === els.planningContinueStep3) {
-      const totalExercises = (getPlanningDraftProgram().days || []).reduce((sum, day) => sum + (day.exercises || []).length, 0);
-      if (totalExercises <= 0) {
-        const message = document.getElementById('planningStep3Message');
-        if (message) {
-          message.classList.remove('hidden');
-        }
-        return;
-      }
-      applyPlanningChoiceData();
-      renderPlanningReview();
-      showPlanningStep(4);
-      return;
-    }
-
-    if (target === els.planningBackToStep3) {
-      showPlanningStep(3);
-      return;
-    }
-
-    if (target === els.planningSaveProgramWizardBtn) {
-      applyPlanningChoiceData();
-      syncPlanningProgramToLegacyForm();
-      const programName = getPlanningDraftProgram().name || 'Programa';
-      const clientCount = (planningUi.selectedClientIds || []).length || (getPlanningDraftProgram().assignedClientIds || []).length;
-      if (savePlanningProgramAndAssignments()) {
-        // "Guardar y finalizar": vuelve al paso 1 vacío para armar el siguiente.
-        resetPlanningWizard();
-        setPlanningWizardMessage(`✓ ${programName} guardado y asignado a ${clientCount} ${clientCount === 1 ? 'alumno' : 'alumnos'}`, 'ok');
-      } else {
-        // Se queda en Revisar; el error (escrito en el formulario antiguo, que está oculto) se muestra aquí.
-        setPlanningWizardMessage(els.programMessage?.textContent || 'No se pudo guardar la programación.', 'bad');
-      }
-      return;
-    }
-
-    if (target === els.planningRestartBtn) {
-      askPlanningRestart();
-      return;
-    }
-
-    const weekdayButton = target.closest('[data-planning-weekday]');
-    if (weekdayButton) {
-      const chosenDay = Number(weekdayButton.getAttribute('data-planning-weekday') || 0);
-      const draft = getPlanningDraftProgram();
-      const expected = Math.max(1, Math.min(Number(draft.weeklyFrequency || planningUi.frequency || 3), Math.max(1, (draft.days || []).length || 3)));
-      const selected = new Set(getPlanningWeeklyDaySelection());
-      if (selected.has(chosenDay)) {
-        selected.delete(chosenDay);
-      } else {
-        if (selected.size >= expected) {
-          if (els.programMessage) {
-            els.programMessage.textContent = `Selecciona ${expected} días de entrenamiento.`;
-            els.programMessage.className = 'notice warn';
-          }
-          return;
-        }
-        selected.add(chosenDay);
-      }
-      planningUi.weeklyDays = Array.from(selected).sort((a, b) => a - b);
-      renderPlanningReview();
-      return;
-    }
-
-    const reviewDayEdit = target.closest('[data-planning-edit-day]');
-    if (reviewDayEdit) {
-      const index = Number(reviewDayEdit.getAttribute('data-planning-edit-day') || 0);
-      const draft = getPlanningDraftProgram();
-      if (draft.days?.[index]) {
-        planningUi.currentDayIndex = index;
-        routineBuilder.activeDayIndex = index;
-        showPlanningStep(3);
-        renderPlanningDays();
-      }
-      return;
-    }
-
-    const planningCategory = target.closest('[data-planning-category]');
-    if (planningCategory) {
-      const category = planningCategory.getAttribute('data-planning-category') || 'PIERNAS';
-      planningUi.category = category;
-      planningUi.selectedCategory = category;
-      if (els.planningCategorySelector) {
-        els.planningCategorySelector.classList.remove('hidden');
-      }
-      renderPlanningCategories();
-      return;
-    }
-
-    if (target.closest('[data-planning-category-back]')) {
-      planningUi.selectedCategory = null;
-      if (els.planningExerciseSearch) {
-        els.planningExerciseSearch.value = '';
-      }
-      renderPlanningCategories();
-      return;
-    }
-
-    if (target.closest('[data-planning-exercise-option]')) {
-      const exerciseName = target.closest('[data-planning-exercise-option]')?.textContent?.trim() || 'Ejercicio';
-      planningUi.exerciseDraft = {
-        id: dataApi.createId('program-exercise'),
-        exerciseName,
-        category: planningUi.selectedCategory || planningUi.category || 'PIERNAS',
-        notes: '',
-        repRangeMin: 8,
-        repRangeMax: 12,
-        plannedSets: 3,
-        targetWeight: '',
-        restSeconds: 90,
-        zone: '',
-        approximations: [],
-        effectiveSets: []
-      };
-      if (els.planningCategorySelector) {
-        els.planningCategorySelector.classList.add('hidden');
-      }
-      if (els.planningExerciseBuilder) {
-        els.planningExerciseBuilder.classList.remove('hidden');
-      }
-      renderPlanningBuilder();
-      return;
-    }
-
-    if (target.closest('[data-planning-day-index]')) {
-      const dayIndex = Number(target.closest('[data-planning-day-index]').getAttribute('data-planning-day-index') || 0);
-      planningUi.currentDayIndex = dayIndex;
-      routineBuilder.activeDayIndex = dayIndex;
-      routineBuilder.screen = 'day';
-      renderPlanningDays();
-      return;
-    }
-
-    if (target.closest('[data-planning-exercise-remove]')) {
-      const exerciseId = target.closest('[data-planning-exercise-remove]').getAttribute('data-planning-exercise-remove');
-      const draft = getPlanningDraftProgram();
-      const day = draft.days[planningUi.currentDayIndex];
-      if (day) {
-        day.exercises = (day.exercises || []).filter((item) => item.id !== exerciseId);
-        planningUi.draftProgram = draft;
-        renderPlanningDays();
-      }
-      return;
-    }
-
-    if (target === els.planningAddFirstExercise || target.closest('#planningAddFirstExercise') || target.closest('#planningAddExerciseBtn')) {
-      routineBuilder.screen = 'categories';
-      routineBuilder.category = null;
-      routineBuilder.search = '';
-      renderRoutineBuilder();
-      return;
-    }
-
-    if (target === els.planningBackToDay || target.closest('#planningBackToDay')) {
-      if (els.planningCategorySelector) {
-        els.planningCategorySelector.classList.add('hidden');
-      }
-      if (els.planningExerciseBuilder) {
-        els.planningExerciseBuilder.classList.add('hidden');
-      }
-      planningUi.selectedCategory = null;
-      renderPlanningDays();
-      return;
-    }
-
-    if (target === els.planningBuilderBack || target.closest('#planningBuilderBack')) {
-      if (els.planningExerciseBuilder) {
-        els.planningExerciseBuilder.classList.add('hidden');
-      }
-      if (els.planningCategorySelector) {
-        els.planningCategorySelector.classList.remove('hidden');
-      }
-      planningUi.selectedCategory = planningUi.selectedCategory || planningUi.category || 'PIERNAS';
-      renderPlanningCategories();
-      return;
-    }
-
-    if (target === els.planningSetMinus || target.closest('#planningSetMinus')) {
-      const nextValue = Math.max(1, Number(planningUi.exerciseDraft?.plannedSets || 3) - 1);
-      if (planningUi.exerciseDraft) {
-        planningUi.exerciseDraft.plannedSets = nextValue;
-      }
-      renderPlanningBuilder();
-      return;
-    }
-
-    if (target === els.planningSetPlus || target.closest('#planningSetPlus')) {
-      const nextValue = Math.max(1, Number(planningUi.exerciseDraft?.plannedSets || 3) + 1);
-      if (planningUi.exerciseDraft) {
-        planningUi.exerciseDraft.plannedSets = nextValue;
-      }
-      renderPlanningBuilder();
-      return;
-    }
-
-    if (target === els.planningToggleMoreOptions || target.closest('#planningToggleMoreOptions')) {
-      planningUi.moreOptionsOpen = !planningUi.moreOptionsOpen;
-      renderPlanningBuilder();
-      return;
-    }
-
-    if (target === els.planningAddApproximation || target.closest('#planningAddApproximation')) {
-      const draft = planningUi.exerciseDraft || { approximations: [] };
-      draft.approximations = Array.isArray(draft.approximations) ? draft.approximations : [];
-      if (draft.approximations.length >= 3) {
-        return;
-      }
-      draft.approximations.push({ id: dataApi.createId('planning-approx'), label: `A${draft.approximations.length + 1}`, weight: '', reps: 8 });
-      planningUi.exerciseDraft = draft;
-      renderPlanningBuilder();
-      return;
-    }
-
-    if (target.closest('[data-planning-approx-remove]')) {
-      const key = target.closest('[data-planning-approx-remove]').getAttribute('data-planning-approx-remove');
-      if (planningUi.exerciseDraft) {
-        planningUi.exerciseDraft.approximations = (planningUi.exerciseDraft.approximations || []).filter((item) => String(item.id || item.label || '') !== String(key));
-      }
-      renderPlanningBuilder();
-      return;
-    }
-
-    if (target === els.planningSaveExerciseBtn || target.closest('#planningSaveExerciseBtn')) {
-      const draft = getPlanningDraftProgram();
-      const day = draft.days[planningUi.currentDayIndex] || draft.days[0];
-      if (!day) {
-        return;
-      }
-      const baseExercise = planningUi.exerciseDraft || {
-        id: dataApi.createId('program-exercise'),
-        exerciseName: 'Ejercicio',
-        category: planningUi.category || 'PIERNAS',
-        repRangeMin: 8,
-        repRangeMax: 12,
-        plannedSets: 3,
-        targetWeight: 0,
-        zone: '',
-        restSeconds: 90,
-        notes: '',
-        approximations: []
-      };
-      const repMin = Number(els.planningRepMin?.value || baseExercise.repRangeMin || 8);
-      const repMax = Number(els.planningRepMax?.value || baseExercise.repRangeMax || repMin);
-      const capturedExercise = {
-        ...baseExercise,
-        id: baseExercise.id || dataApi.createId('program-exercise'),
-        exerciseName: String(els.planningBuilderTitle?.textContent || baseExercise.exerciseName || 'Ejercicio').trim() || 'Ejercicio',
-        category: baseExercise.category || planningUi.selectedCategory || planningUi.category || 'PIERNAS',
-        plannedSets: Number(els.planningSetCount?.textContent || baseExercise.plannedSets || 3),
-        repRangeMin: repMin,
-        repRangeMax: repMax,
-        targetWeight: Number(els.planningTargetWeight?.value || 0),
-        zone: els.planningZoneSelect?.value || baseExercise.zone || '',
-        restSeconds: Number(els.planningRestSelect?.value || baseExercise.restSeconds || 90),
-        notes: els.planningNotes?.value || baseExercise.notes || '',
-        approximations: Array.isArray(baseExercise.approximations) ? baseExercise.approximations.map((item, index) => ({
-          ...item,
-          id: item.id || dataApi.createId('planning-approx'),
-          label: item.label || `A${index + 1}`,
-          weight: String(els.planningApproximationRows?.querySelectorAll('[data-planning-approx-weight]')[index]?.value ?? item.weight ?? ''),
-          reps: Number(els.planningApproximationRows?.querySelectorAll('[data-planning-approx-reps]')[index]?.value || item.reps || 8)
-        })) : []
-      };
-      day.exercises = Array.isArray(day.exercises) ? day.exercises : [];
-      day.exercises.push(capturedExercise);
-      planningUi.exerciseDraft = null;
-      planningUi.selectedCategory = null;
-      planningUi.moreOptionsOpen = false;
-      if (els.planningCategorySelector) {
-        els.planningCategorySelector.classList.add('hidden');
-      }
-      if (els.planningExerciseBuilder) {
-        els.planningExerciseBuilder.classList.add('hidden');
-      }
-      renderPlanningDays();
-      return;
-    }
-
-    if (target.closest('[data-program-objective]')) {
-      const button = target.closest('[data-program-objective]');
-      planningUi.objective = button.getAttribute('data-program-objective') || 'Fuerza';
-      document.querySelectorAll('[data-program-objective]').forEach((item) => item.classList.toggle('active', item === button));
-      applyPlanningChoiceData();
-      return;
-    }
-
-    if (target.closest('[data-program-duration]')) {
-      const button = target.closest('[data-program-duration]');
-      const choice = button.getAttribute('data-program-duration') || '4';
-      planningUi.duration = choice === 'custom' ? Number(els.planningCustomDuration?.value || 4) : Number(choice);
-      document.querySelectorAll('[data-program-duration]').forEach((item) => item.classList.toggle('active', item === button));
-      if (choice === 'custom') {
-        if (els.planningCustomDuration) {
-          els.planningCustomDuration.classList.remove('hidden');
-          els.planningCustomDuration.focus();
-        }
-      } else if (els.planningCustomDuration) {
-        els.planningCustomDuration.classList.add('hidden');
-      }
-      applyPlanningChoiceData();
-      return;
-    }
-
-    if (target.closest('[data-program-frequency]')) {
-      const button = target.closest('[data-program-frequency]');
-      planningUi.frequency = Number(button.getAttribute('data-program-frequency') || 2);
-      document.querySelectorAll('[data-program-frequency]').forEach((item) => item.classList.toggle('active', item === button));
-      applyPlanningChoiceData();
-      return;
-    }
-
     if (target === els.addProgramDayBtn) {
       addProgramDay();
       return;
@@ -15227,7 +14173,6 @@
         if (blocksApi?.shiftCircuitsAfterRemoval && Array.isArray(day.blocks)) {
           day.blocks = blocksApi.shiftCircuitsAfterRemoval(day.blocks, exerciseIndex);
         }
-        renderPlanningDays();
       }
       return;
     }
@@ -15238,7 +14183,6 @@
       if (day && exerciseIndex > 0) {
         [day.exercises[exerciseIndex - 1], day.exercises[exerciseIndex]] = [day.exercises[exerciseIndex], day.exercises[exerciseIndex - 1]];
         day.exercises = day.exercises.map((item, index) => ({ ...item, order: index + 1 }));
-        renderPlanningDays();
       }
       return;
     }
@@ -15249,7 +14193,6 @@
       if (day && exerciseIndex >= 0 && exerciseIndex < day.exercises.length - 1) {
         [day.exercises[exerciseIndex], day.exercises[exerciseIndex + 1]] = [day.exercises[exerciseIndex + 1], day.exercises[exerciseIndex]];
         day.exercises = day.exercises.map((item, index) => ({ ...item, order: index + 1 }));
-        renderPlanningDays();
       }
       return;
     }
@@ -15458,18 +14401,6 @@
   els.libraryImportFile?.addEventListener('change', handleLibraryImportFile);
   els.programImportBtn?.addEventListener('click', () => els.programImportFile?.click());
   els.programImportFile?.addEventListener('change', handleProgramImportFile);
-  // "Otra duración": lo escrito es la duración del programa (antes se ignoraba y quedaba la anterior).
-  els.planningCustomDuration?.addEventListener('input', (event) => {
-    const weeks = Number(event.target.value);
-    if (Number.isInteger(weeks) && weeks >= 1 && weeks <= 52) {
-      planningUi.duration = weeks;
-      applyPlanningChoiceData();
-    }
-  });
-  // Recordar lo elegido en "Programa base" para que un redibujo no lo borre antes de "Cargar como base".
-  els.planningBaseProgramSelect?.addEventListener('change', (event) => {
-    planningUi.baseProgramId = String(event.target.value || '');
-  });
   els.newLibraryExerciseBtn?.addEventListener('click', () => {
     resetLibraryExerciseForm();
     showLibraryExerciseForm();
@@ -15483,12 +14414,6 @@
   els.libraryMuscleFilter?.addEventListener('change', renderLibraryExerciseList);
   els.libraryTechnicalLevelFilter?.addEventListener('change', renderLibraryExerciseList);
   els.addProgramDayBtn?.addEventListener('click', addProgramDay);
-  els.newProgramBtn?.addEventListener('click', () => {
-    clearProgramExerciseForm();
-    resetProgramDraft();
-    renderProgramDayList(getProgramDraft());
-    renderProgramsList();
-  });
   els.saveProgramBtn?.addEventListener('click', saveProgram);
   els.addProgramApproximationBtn?.addEventListener('click', () => {
     const draft = getProgramDraft();
