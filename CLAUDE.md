@@ -27,6 +27,9 @@ Guarda primero en localStorage y sincroniza con Supabase (coach_state + tablas d
   corregido o no registrado (coach_validated). Lo pendiente vive en valhalla_coach_sets:<cuenta>, fuera del estado.
 - settings-core.js — Ajustes: fecha del último respaldo en valhalla_last_export_at (fuera del estado, no sube a la nube)
   y revisión del archivo antes de "Restaurar" (archivo de programa o sin alumnos = bloqueado).
+- monthly-card-core.js — Tarjeta del mes (v0.9.47): trainingsV08.monthlyCards { 'AAAA-MM': { clientId: { message, sentAt } } }
+  (sube con trainingsV08) y los números del mes con los cálculos que le pasa app.js. Se carga antes de data.js.
+  monthly-card.js — dibujo en canvas 1080 × 1350 y envío (compartir el PNG o descargar + wa.me).
 - onboarding.js — formulario público de ingreso (?onboarding=1), sin login.
 - cloud-data.js — capa de tablas antiguas, desactivada. supabase/ — migración A0 y prueba de RLS (SQL).
 

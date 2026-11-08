@@ -997,6 +997,11 @@
     return merged;
   }
 
+  // v0.9.47 · Tarjeta del mes (monthly-card-core.js). Sin el módulo cargado, keepUnknown la conserva.
+  function monthlyCardApi() {
+    return (typeof window !== 'undefined' && window.VALHALLA && window.VALHALLA.monthlyCardCore) || null;
+  }
+
   function mergeWithDefaults(parsed) {
     const base = createInitialState();
     // Una lista guardada (aunque esté vacía) reemplaza a la de ejemplo; los valores por defecto
@@ -1032,7 +1037,7 @@
       trainingModelVersion: parsed.trainingModelVersion || '0.8.0',
       trainingsV08: {
         // Claves de entrenamientos de una versión más nueva: se conservan tal cual.
-        ...keepUnknown(parsed.trainingsV08, {}, ['plans', 'sessions', 'programs', 'assignments', 'clientOverrides']),
+        ...keepUnknown(parsed.trainingsV08, {}, ['plans', 'sessions', 'programs', 'assignments', 'clientOverrides', ...(monthlyCardApi() ? ['monthlyCards'] : [])]),
         plans: normalizeArray(parsed.trainingsV08?.plans, base.trainingsV08.plans, (plan) => ({
           id: plan.id || createId('tx-plan'),
           clientId: plan.clientId || '',
@@ -1046,6 +1051,10 @@
         // Solo existe si el entrenador ya cambió o agregó un ejercicio a un alumno.
         ...(Array.isArray(parsed.trainingsV08?.clientOverrides)
           ? { clientOverrides: normalizeArray(parsed.trainingsV08.clientOverrides, [], normalizeClientOverride) }
+          : {}),
+        // v0.9.47: Tarjeta del mes (mensaje y "Enviada"). Solo existe si ya se usó.
+        ...(monthlyCardApi() && parsed.trainingsV08?.monthlyCards && typeof parsed.trainingsV08.monthlyCards === 'object' && !Array.isArray(parsed.trainingsV08.monthlyCards)
+          ? { monthlyCards: monthlyCardApi().normalizeMonthlyCards(parsed.trainingsV08.monthlyCards) }
           : {})
       },
       exerciseLibrary: normalizeArray(parsed.exerciseLibrary, base.exerciseLibrary, normalizeLibraryExercise),

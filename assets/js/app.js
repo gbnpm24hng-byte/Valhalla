@@ -10123,6 +10123,7 @@
           <div class="client-ficha-buttons">
             <button class="secondary" type="button" data-client-progress="${id}" ${canProgress ? '' : 'disabled'}>Ver progreso</button>
             <button class="secondary" type="button" data-client-student-view="${id}" ${canStudentView ? '' : 'disabled'}>Vista alumno</button>
+            ${cardCoreApi && cardApi ? `<button class="secondary" type="button" data-client-card-month="${id}" ${canProgress ? '' : 'disabled'}>Tarjeta del mes</button>` : ''}
           </div>
           ${canStudentView ? '' : '<p class="meta">Vista alumno y Progreso: disponibles para alumnos activos.</p>'}
         </div>
@@ -10862,6 +10863,287 @@
       els.clientMessage.classList.toggle('bad', clientUi.noticeTone === 'bad');
       els.clientMessage.classList.toggle('warn', clientUi.noticeTone === 'warn');
       els.clientMessage.classList.toggle('muted', clientUi.noticeTone === 'neutral');
+    }
+    renderMonthlyCards();
+  }
+
+  // ---- v0.9.47 · Tarjeta del mes ----
+  // Lista "Tarjetas de <mes>" (desde Alumnos) y pantalla "NOMBRE · MES" (desde la lista o la ficha).
+  // Números: monthly-card-core.js con los cálculos de la app (récords de la ficha y Progreso, racha
+  // de la vista del alumno, series efectivas, zonas de muscle-map-core). Dibujo y envío: monthly-card.js.
+  // Lo único que se guarda es trainingsV08.monthlyCards (mensaje y "Enviada").
+  const cardCoreApi = window.VALHALLA.monthlyCardCore;
+  const cardApi = window.VALHALLA.monthlyCard;
+  const cardsUi = { view: '', month: '', clientId: '', from: '', notice: '', tone: '', key: '', blob: null, drawn: null, drawing: null };
+  const CARD_MONTHS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+  const CARD_HELPERS = {
+    getExercises: getSessionExercises,
+    getSets: getExerciseSets,
+    isTimed: isTimedExercise,
+    setType: getSetType,
+    zonesOf: (exercise) => prZones(prLibraryItem(exercise), exercise.exerciseName),
+    weekStreak: (dates, ref) => window.VALHALLA.studentView?.format?.weekStreak?.(dates, ref) || 0
+  };
+
+  const cardMonthName = (month) => CARD_MONTHS[Number(String(month).slice(5, 7)) - 1] || '';
+
+  function getMonthlyCards() {
+    ensureTrainingsV08State();
+    const cards = state.trainingsV08.monthlyCards;
+    return cards && typeof cards === 'object' && !Array.isArray(cards) ? cards : {};
+  }
+
+  function saveMonthlyCards(next) {
+    ensureTrainingsV08State();
+    state.trainingsV08.monthlyCards = next;
+    persist();
+  }
+
+  // Teléfono para wa.me (la misma normalización del botón de WhatsApp); muy corto = sin teléfono.
+  function getCardPhone(client) {
+    const phone = normalizeChileanPhoneForWhatsApp(client?.phone);
+    return phone.length >= 10 ? phone : '';
+  }
+
+  function getMonthlyCardData(client, month) {
+    const today = getTodayLocalDate();
+    const sessions = getTrainingSessionsByClient(client.id).filter((session) => session.date && session.date <= today && sessionHasWork(session));
+    const attended = (client.training_attendance || [])
+      .filter((entry) => entry && entry.status === 'attended' && entry.date && entry.date <= today)
+      .map((entry) => entry.date);
+    const weekdays = getClientAgendaWeekdays(client);
+    return cardCoreApi.buildCardData({
+      month,
+      today,
+      firstName: getClientDisplayName(client),
+      sessions,
+      attendedDates: attended,
+      weekdays,
+      perWeek: weekdays.length ? 0 : Number(getSportsProfile(client.id)?.sessionsPerWeek || 0),
+      message: cardCoreApi.getEntry(getMonthlyCards(), month, client.id).message || ''
+    }, CARD_HELPERS);
+  }
+
+  function openMonthlyCards() {
+    if (!cardCoreApi || !cardApi) return;
+    cardsUi.view = 'list';
+    cardsUi.month = cardsUi.month || getTodayLocalDate().slice(0, 7);
+    cardsUi.clientId = '';
+    cardsUi.notice = '';
+    renderClients();
+    window.scrollTo(0, 0);
+  }
+
+  function openMonthlyCard(clientId, from) {
+    if (!cardCoreApi || !cardApi || !getClientById(clientId)) return;
+    cardsUi.view = 'card';
+    cardsUi.from = from;
+    cardsUi.clientId = clientId;
+    cardsUi.month = from === 'ficha' ? getTodayLocalDate().slice(0, 7) : (cardsUi.month || getTodayLocalDate().slice(0, 7));
+    cardsUi.notice = '';
+    renderClients();
+    window.scrollTo(0, 0);
+  }
+
+  function closeMonthlyCards() {
+    const backToFicha = cardsUi.view === 'card' && cardsUi.from === 'ficha';
+    if (cardsUi.view === 'card' && !backToFicha) {
+      cardsUi.view = 'list';
+    } else {
+      cardsUi.view = '';
+      if (backToFicha) clientUi.detailId = cardsUi.clientId;
+    }
+    cardsUi.notice = '';
+    renderClients();
+    window.scrollTo(0, 0);
+  }
+
+  function setCardsNotice(text, tone) {
+    cardsUi.notice = text;
+    cardsUi.tone = tone;
+    const box = document.getElementById('monthlyCardNotice');
+    if (box) {
+      box.textContent = text;
+      box.className = `notice mc-notice${tone ? ` ${tone}` : ''}`;
+    }
+  }
+
+  function renderMonthlyCards() {
+    const view = document.getElementById('monthlyCardsView');
+    if (!view) return;
+    const open = Boolean(cardsUi.view && cardCoreApi && cardApi);
+    view.classList.toggle('hidden', !open);
+    if (!open) {
+      cardsUi.key = '';
+      view.innerHTML = '';
+      return;
+    }
+    els.clientListView?.classList.add('hidden');
+    els.clientListCard?.classList.add('hidden');
+    els.clientDetailView?.classList.add('hidden');
+    if (cardsUi.view === 'card') {
+      renderMonthlyCardScreen(view);
+    } else {
+      renderMonthlyCardList(view);
+    }
+  }
+
+  function renderMonthlyCardList(view) {
+    const month = cardsUi.month;
+    const current = getTodayLocalDate().slice(0, 7);
+    const cards = getMonthlyCards();
+    const clients = getActiveTrainingClients().slice().sort((a, b) => getClientDisplayName(a).localeCompare(getClientDisplayName(b), 'es'));
+    const rows = clients.map((client) => ({ client, data: getMonthlyCardData(client, month), entry: cardCoreApi.getEntry(cards, month, client.id), phone: getCardPhone(client) }));
+    const sent = rows.filter((row) => row.entry.sentAt).length;
+    const pct = rows.length ? Math.round((sent / rows.length) * 100) : 0;
+    cardsUi.key = '';
+    const initials = (name) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => [...part][0].toUpperCase()).join('');
+    view.innerHTML = `
+      <section class="mc-screen" aria-label="Tarjetas de ${escapeHtml(cardMonthName(month))}">
+        <button class="ghost client-back" type="button" data-cards-back>◀ Alumnos</button>
+        <header class="mc-head">
+          <h2 class="mc-title">Tarjetas de ${escapeHtml(cardMonthName(month))}</h2>
+          <div class="mc-months" role="group" aria-label="Mes">
+            ${[cardCoreApi.shiftMonth(current, -1), current].map((item) => `<button class="mc-month${item === month ? ' is-active' : ''}" type="button" data-cards-month="${item}" aria-pressed="${item === month}">${escapeHtml(cardMonthName(item).replace(/^./, (c) => c.toUpperCase()))}</button>`).join('')}
+          </div>
+        </header>
+        <div class="mc-progress" data-cards-progress="${sent}/${rows.length}">
+          <div class="mc-bar" role="progressbar" aria-valuemin="0" aria-valuemax="${rows.length}" aria-valuenow="${sent}"><span style="width:${pct}%"></span></div>
+          <p><strong>${sent} de ${rows.length}</strong> enviadas</p>
+        </div>
+        <ul class="mc-list">
+          ${rows.length ? rows.map(({ client, data, entry, phone }) => {
+            const id = escapeHtml(client.id);
+            const name = getClientDisplayName(client);
+            const action = !phone
+              ? `<button class="secondary small mc-action" type="button" data-card-download="${id}">Descargar</button>`
+              : entry.sentAt
+                ? `<button class="mc-action mc-sent-tag" type="button" data-card-open="${id}">✓ Enviada</button>`
+                : `<button class="primary small mc-action" type="button" data-card-open="${id}">Ver y enviar</button>`;
+            return `
+            <li class="mc-row${phone ? '' : ' is-off'}${entry.sentAt ? ' is-sent' : ''}" data-card-row="${id}">
+              <button class="mc-row-main" type="button" data-card-open="${id}">
+                <span class="mc-initials" aria-hidden="true">${escapeHtml(initials(name))}</span>
+                <span class="mc-row-text">
+                  <span class="mc-row-name">${escapeHtml(name)}</span>
+                  <span class="mc-row-sub">${escapeHtml(phone ? cardCoreApi.summaryLine(data) : `Sin teléfono · ${cardCoreApi.summaryLine(data)}`)}</span>
+                </span>
+              </button>
+              ${action}
+            </li>`;
+          }).join('') : '<li class="mc-empty">No hay alumnos activos.</li>'}
+        </ul>
+        <p id="monthlyCardNotice" class="notice mc-notice${cardsUi.tone ? ` ${cardsUi.tone}` : ''}" role="status">${escapeHtml(cardsUi.notice)}</p>
+      </section>`;
+  }
+
+  function renderMonthlyCardScreen(view) {
+    const client = getClientById(cardsUi.clientId);
+    if (!client) {
+      cardsUi.view = 'list';
+      renderMonthlyCardList(view);
+      return;
+    }
+    const month = cardsUi.month;
+    const entry = cardCoreApi.getEntry(getMonthlyCards(), month, client.id);
+    const phone = getCardPhone(client);
+    // Se rearma solo si cambió el alumno, el mes o la marca; así escribir el mensaje o tocar
+    // "Enviar" nunca pierde el foco ni el toque. El mensaje nuevo solo vuelve a dibujar la imagen.
+    const key = `${client.id}|${month}|${entry.sentAt || ''}|${phone}`;
+    const data = getMonthlyCardData(client, month);
+    if (cardsUi.key === key && view.querySelector('#monthlyCardCanvas')) {
+      if (cardsUi.drawn !== data.message) drawMonthlyCardPreview(data);
+      return;
+    }
+    cardsUi.key = key;
+    const id = escapeHtml(client.id);
+    const sentDate = entry.sentAt ? new Date(entry.sentAt) : null;
+    const sentText = sentDate && !Number.isNaN(sentDate.getTime()) ? `${sentDate.getDate()} ${FICHA_MONTHS[sentDate.getMonth()]}` : '';
+    const canShare = Boolean(navigator.canShare);
+    const sendLabel = phone || canShare ? 'Enviar por WhatsApp' : 'Descargar';
+    view.innerHTML = `
+      <section class="mc-screen mc-card-screen" data-card-screen="${id}" data-card-month="${escapeHtml(month)}">
+        <button class="ghost client-back" type="button" data-cards-back>${cardsUi.from === 'ficha' ? '◀ Ficha' : '◀ Tarjetas'}</button>
+        <h2 class="mc-title">${escapeHtml(data.firstName.toUpperCase())} · ${escapeHtml(cardMonthName(month).toUpperCase())}</h2>
+        <div class="mc-preview"><canvas id="monthlyCardCanvas" width="1080" height="1350" role="img" aria-label="Tarjeta de ${escapeHtml(data.firstName)}, ${escapeHtml(data.monthLabel.toLowerCase())}"></canvas></div>
+        <label class="mc-label" for="monthlyCardMessage">Tu mensaje en la tarjeta</label>
+        <textarea id="monthlyCardMessage" rows="3" maxlength="${cardCoreApi.MESSAGE_MAX}" placeholder="Opcional. Vacío = la tarjeta va sin mensaje." data-card-message="${id}">${escapeHtml(data.message)}</textarea>
+        <p class="mc-count"><span id="monthlyCardCount">${[...data.message].length}</span>/${cardCoreApi.MESSAGE_MAX}</p>
+        <button class="primary mc-send" type="button" data-card-send="${id}">${sendLabel}</button>
+        ${phone ? '' : '<p class="meta mc-nophone">Este alumno no tiene teléfono válido: la imagen se descarga para que la envíes tú.</p>'}
+        ${sentText ? `<p class="mc-sent" data-card-sent>✓ Enviada el ${escapeHtml(sentText)}</p>` : ''}
+        <p id="monthlyCardNotice" class="notice mc-notice${cardsUi.tone ? ` ${cardsUi.tone}` : ''}" role="status">${escapeHtml(cardsUi.notice)}</p>
+      </section>`;
+    drawMonthlyCardPreview(data);
+  }
+
+  // Dibuja la vista previa y guarda su PNG (es el que se comparte).
+  function drawMonthlyCardPreview(data) {
+    const canvas = document.getElementById('monthlyCardCanvas');
+    if (!canvas) return Promise.resolve();
+    cardsUi.drawn = data.message;
+    cardsUi.blob = null;
+    // Lo mismo que muestra la imagen, en texto (lectores de pantalla).
+    const records = data.records.map(cardCoreApi.recordText).map((item) => `${item.name} ${item.value}${item.delta ? ` ${item.delta}` : ''}`);
+    canvas.setAttribute('aria-label', `Tarjeta de ${data.firstName}, ${data.monthLabel.toLowerCase()}: ${cardCoreApi.boxes(data).map((box) => `${box.value} ${box.label}`).join(', ')}. `
+      + `Récords del mes: ${records.length ? `${records.join('; ')}.` : cardCoreApi.EMPTY_RECORDS_TEXT}${data.message ? ` Mensaje: ${data.message}` : ''}`);
+    const run = cardApi.draw(canvas, data)
+      .then(() => cardApi.toBlob(canvas))
+      .then((blob) => {
+        if (cardsUi.drawing === run) cardsUi.blob = blob;
+      })
+      .catch(() => {});
+    cardsUi.drawing = run;
+    return run;
+  }
+
+  // Guarda el mensaje al salir del campo (vacío = sin recuadro) y vuelve a dibujar.
+  function saveMonthlyCardMessage(input) {
+    const clientId = input.getAttribute('data-card-message');
+    const message = cardCoreApi.cleanMessage(input.value);
+    const saved = cardCoreApi.getEntry(getMonthlyCards(), cardsUi.month, clientId).message || '';
+    if (message === saved) return;
+    saveMonthlyCards(cardCoreApi.setMessage(getMonthlyCards(), cardsUi.month, clientId, message));
+    setCardsNotice('Mensaje guardado.', 'ok');
+  }
+
+  async function sendMonthlyCard(clientId) {
+    const client = getClientById(clientId);
+    if (!client) return;
+    const input = document.getElementById('monthlyCardMessage');
+    if (input) saveMonthlyCardMessage(input);
+    const data = getMonthlyCardData(client, cardsUi.month);
+    if (cardsUi.drawn !== data.message || !cardsUi.blob) {
+      await (cardsUi.drawn !== data.message ? drawMonthlyCardPreview(data) : cardsUi.drawing);
+    }
+    const month = cardsUi.month;
+    let result;
+    try {
+      result = await cardApi.send(data, getCardPhone(client), cardsUi.blob);
+    } catch (error) {
+      setCardsNotice('No se pudo crear la imagen. Intenta de nuevo.', 'bad');
+      return;
+    }
+    if (result.sent) {
+      saveMonthlyCards(cardCoreApi.markSent(getMonthlyCards(), month, client.id, new Date().toISOString()));
+      setCardsNotice(result.via === 'share' ? 'Listo: marcada como enviada.' : 'Imagen descargada y WhatsApp abierto. Adjunta la imagen en el chat. Marcada como enviada.', 'ok');
+    } else if (result.reason === 'cancel') {
+      setCardsNotice('No se envió: la tarjeta no quedó marcada.', 'warn');
+    } else if (result.reason === 'no-phone') {
+      setCardsNotice('Imagen descargada. Sin teléfono no se marca como enviada.', 'warn');
+    } else {
+      setCardsNotice('No se pudo compartir. Intenta de nuevo.', 'bad');
+    }
+  }
+
+  async function downloadMonthlyCard(clientId) {
+    const client = getClientById(clientId);
+    if (!client) return;
+    try {
+      await cardApi.downloadOnly(getMonthlyCardData(client, cardsUi.month));
+      setCardsNotice('Imagen descargada.', 'ok');
+    } catch (error) {
+      setCardsNotice('No se pudo crear la imagen. Intenta de nuevo.', 'bad');
     }
   }
 
@@ -13250,7 +13532,8 @@
     const navButton = target.closest('[data-nav]');
     if (navButton) {
       // "Alumnos" en la barra siempre lleva a la lista.
-      if (navButton.getAttribute('data-nav') === 'clients' && clientUi.detailId) {
+      if (navButton.getAttribute('data-nav') === 'clients' && (clientUi.detailId || cardsUi.view)) {
+        cardsUi.view = '';
         closeClientFicha();
         window.scrollTo(0, 0);
       }
@@ -13302,6 +13585,43 @@
       setTrainingView('progress');
       renderTrainings();
       window.scrollTo(0, 0);
+      return;
+    }
+
+    // v0.9.47: Tarjeta del mes.
+    if (target.closest('[data-cards-open]')) {
+      openMonthlyCards();
+      return;
+    }
+    const cardFromFicha = target.closest('[data-client-card-month]');
+    if (cardFromFicha) {
+      openMonthlyCard(cardFromFicha.getAttribute('data-client-card-month'), 'ficha');
+      return;
+    }
+    if (target.closest('[data-cards-back]')) {
+      closeMonthlyCards();
+      return;
+    }
+    const cardsMonthButton = target.closest('[data-cards-month]');
+    if (cardsMonthButton) {
+      cardsUi.month = cardsMonthButton.getAttribute('data-cards-month');
+      cardsUi.notice = '';
+      renderClients();
+      return;
+    }
+    const cardOpenButton = target.closest('[data-card-open]');
+    if (cardOpenButton) {
+      openMonthlyCard(cardOpenButton.getAttribute('data-card-open'), 'list');
+      return;
+    }
+    const cardDownloadButton = target.closest('[data-card-download]');
+    if (cardDownloadButton) {
+      downloadMonthlyCard(cardDownloadButton.getAttribute('data-card-download'));
+      return;
+    }
+    const cardSendButton = target.closest('[data-card-send]');
+    if (cardSendButton) {
+      sendMonthlyCard(cardSendButton.getAttribute('data-card-send'));
       return;
     }
 
@@ -14852,6 +15172,16 @@
   els.clientSearch?.addEventListener('input', (event) => {
     clientUi.search = event.target.value || '';
     renderClients();
+  });
+  // v0.9.47: mensaje de la Tarjeta del mes: contador al escribir, se guarda al salir del campo.
+  document.getElementById('monthlyCardsView')?.addEventListener('input', (event) => {
+    if (event.target.id === 'monthlyCardMessage') {
+      const count = document.getElementById('monthlyCardCount');
+      if (count) count.textContent = String([...event.target.value].length);
+    }
+  });
+  document.getElementById('monthlyCardsView')?.addEventListener('change', (event) => {
+    if (event.target.id === 'monthlyCardMessage') saveMonthlyCardMessage(event.target);
   });
   els.restPreset?.addEventListener('change', (event) => {
     const preset = event.target.value;
