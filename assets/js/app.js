@@ -149,6 +149,11 @@
   const programsUi = {
     showArchived: false, // v0.9.41: "Ver archivados (N)" abierto
     notice: '', // aviso de una línea arriba de la lista (p. ej. tras archivar)
+    // v0.9.48: archivar varios desde la lista. selecting = modo "Seleccionar"; selected = ids marcados;
+    // undoIds = los recién archivados que "Deshacer" devuelve (vive mientras dura el aviso).
+    selecting: false,
+    selected: [],
+    undoIds: [],
     view: 'list', // 'list' | 'program' | 'pick'
     tab: 'programs', // 'programs' | 'gallery'
     search: '',
@@ -6187,7 +6192,7 @@
     if (!getTrainingProgramById(programId)) {
       return;
     }
-    Object.assign(programsUi, { view: 'program', programId, dayIndex: 0, picked: [], pickSearch: '', pickZone: 'all' });
+    Object.assign(programsUi, { view: 'program', programId, dayIndex: 0, picked: [], pickSearch: '', pickZone: 'all', selecting: false, selected: [] });
     planningUi.currentDayIndex = 0;
     Object.assign(routineBuilder, { screen: 'day', activeDayIndex: 0, editingIndex: null, exerciseId: null, search: '' });
     prCurrentProgram();
@@ -6267,7 +6272,17 @@
     const active = prActivePrograms();
     const programs = active.filter((program) => !query || labelsApi.fold(program.name).includes(query));
     const archived = prArchivedPrograms();
-    const notice = programsUi.notice ? `<p class="pr-notice" role="status" data-pr-notice>${escapeHtml(programsUi.notice)}</p>` : '';
+    const selecting = programsUi.selecting;
+    const selectStart = els.trainingPlanningView?.querySelector('[data-pr-select-start]');
+    if (selectStart) {
+      selectStart.hidden = selecting || !active.length;
+    }
+    const undo = programsUi.undoIds.length ? ' <button class="pr-link pr-undo" type="button" data-pr-undo>Deshacer</button>' : '';
+    const notice = programsUi.notice ? `<div class="pr-notice" role="status" data-pr-notice><span>${escapeHtml(programsUi.notice)}</span>${undo}</div>` : '';
+    if (selecting) {
+      renderPrSelectCards(programs);
+      return;
+    }
     const emptyText = active.length
       ? 'Ningún programa con ese nombre.'
       : archived.length ? 'No hay programas activos. Los archivados están abajo.' : 'Todavía no hay programas. Toca "+ Nuevo" para crear el primero.';
@@ -6307,6 +6322,152 @@
           </span>
         </button>`;
     }).join('') + archivedHtml;
+  }
+
+  // ---- v0.9.48: archivar varios desde la lista ----
+  // Solo se pueden marcar los programas sin alumnos (la misma regla de "Archivar programa").
+  // Tocar la tarjeta marca o desmarca; no abre el programa.
+  function renderPrSelectCards(programs) {
+    const free = programs.filter((program) => !prAssignmentsFor(program.id).length);
+    const selected = new Set(programsUi.selected);
+    const count = programsUi.selected.length;
+    const allPicked = free.length > 0 && free.every((program) => selected.has(program.id));
+    const head = `
+      <div class="pr-select-head">
+        <button class="pr-link" type="button" data-pr-select-all ${free.length ? '' : 'disabled'}>${allPicked ? 'Quitar selección' : 'Seleccionar todos sin alumnos'}</button>
+      </div>`;
+    const cards = programs.map((program) => {
+      const id = escapeHtml(program.id);
+      const name = escapeHtml(program.name || 'Programa');
+      const meta = `${escapeHtml(program.objective || 'Sin objetivo')} · ${prPlural(Number(program.durationWeeks || 0), 'semana', 'semanas')}`;
+      const students = prAssignmentsFor(program.id).length;
+      if (students) {
+        return `
+        <div class="pr-card pr-card--select is-locked" data-pr-locked="${id}" aria-disabled="true">
+          <span class="pr-select-box is-empty" aria-hidden="true"></span>
+          <span class="pr-select-body">
+            <span class="pr-card-top"><strong class="pr-card-name">${name}</strong><span class="pr-tag">Tiene alumnos</span></span>
+            <span class="pr-card-meta">${meta} · ${prPlural(students, 'alumno', 'alumnos')}</span>
+          </span>
+        </div>`;
+      }
+      const on = selected.has(program.id);
+      return `
+        <button class="pr-card pr-card--select${on ? ' is-picked' : ''}" type="button" data-pr-select="${id}" aria-pressed="${on}">
+          <span class="pr-select-box" aria-hidden="true">${on ? '✓' : ''}</span>
+          <span class="pr-select-body">
+            <span class="pr-card-top"><strong class="pr-card-name">${name}</strong><span class="pr-tag">Sin alumnos</span></span>
+            <span class="pr-card-meta">${meta}</span>
+          </span>
+        </button>`;
+    }).join('');
+    const empty = programs.length ? '' : '<p class="pr-empty">Ningún programa con ese nombre.</p>';
+    els.prProgramList.innerHTML = `${head}${cards}${empty}
+      <div class="pr-footer pr-select-bar" data-pr-select-bar>
+        <button class="pr-archive-btn" type="button" data-pr-select-cancel>Cancelar</button>
+        <button class="pr-cta" type="button" data-pr-select-archive ${count ? '' : 'disabled'}>Archivar ${count}</button>
+      </div>`;
+  }
+
+  function prStartSelecting() {
+    prClearListNotice();
+    Object.assign(programsUi, { selecting: true, selected: [] });
+    renderPrCards();
+  }
+
+  function prStopSelecting() {
+    Object.assign(programsUi, { selecting: false, selected: [] });
+    renderPrCards();
+  }
+
+  function prToggleSelected(programId) {
+    const program = getTrainingProgramById(programId);
+    if (!program || prIsArchived(program) || prAssignmentsFor(programId).length) {
+      return;
+    }
+    programsUi.selected = programsUi.selected.includes(programId)
+      ? programsUi.selected.filter((id) => id !== programId)
+      : [...programsUi.selected, programId];
+    renderPrCards();
+  }
+
+  // Todos los sin alumnos que se ven (respeta el buscador); si ya están todos, los quita.
+  function prSelectAllFree() {
+    const query = labelsApi.fold(programsUi.search);
+    const free = prActivePrograms()
+      .filter((program) => !query || labelsApi.fold(program.name).includes(query))
+      .filter((program) => !prAssignmentsFor(program.id).length)
+      .map((program) => program.id);
+    const allPicked = free.length > 0 && free.every((id) => programsUi.selected.includes(id));
+    programsUi.selected = allPicked
+      ? programsUi.selected.filter((id) => !free.includes(id))
+      : [...new Set([...programsUi.selected, ...free])];
+    renderPrCards();
+  }
+
+  // El mismo archivado de "Archivar programa": archivedAt + prSaveProgram, uno por uno.
+  function prArchiveSelected() {
+    const at = new Date().toISOString();
+    const done = [];
+    programsUi.selected.forEach((programId) => {
+      const program = getTrainingProgramById(programId);
+      if (!program || prIsArchived(program) || prAssignmentsFor(programId).length) {
+        return;
+      }
+      program.archivedAt = at;
+      prSaveProgram(program);
+      done.push(programId);
+    });
+    planningUi.draftProgram = null;
+    Object.assign(programsUi, { selecting: false, selected: [] });
+    if (done.length) {
+      prSetListNotice(done.length === 1 ? '1 programa archivado' : `${done.length} programas archivados`, done);
+    }
+    renderPrCards();
+    window.scrollTo(0, 0);
+  }
+
+  // "Deshacer": desarchiva todos los del último archivado en grupo (el mismo desarchivado de siempre).
+  function prUndoArchive() {
+    const ids = programsUi.undoIds.slice();
+    prClearListNotice();
+    let back = 0;
+    ids.forEach((programId) => {
+      const program = getTrainingProgramById(programId);
+      if (!program || !prIsArchived(program)) {
+        return;
+      }
+      delete program.archivedAt;
+      prSaveProgram(program);
+      back += 1;
+    });
+    planningUi.draftProgram = null;
+    if (back) {
+      programsUi.notice = back === 1 ? '1 programa volvió a la lista.' : `${back} programas volvieron a la lista.`;
+    }
+    renderPrCards();
+  }
+
+  // Aviso con "Deshacer": dura hasta el siguiente toque o unos 10 segundos.
+  let prNoticeTimer = null;
+  const PR_UNDO_MS = 10000;
+  function prSetListNotice(text, undoIds) {
+    clearTimeout(prNoticeTimer);
+    programsUi.notice = text;
+    programsUi.undoIds = undoIds || [];
+    if (programsUi.undoIds.length) {
+      prNoticeTimer = setTimeout(() => {
+        prClearListNotice();
+        document.querySelector('#prProgramList [data-pr-notice]')?.remove();
+      }, PR_UNDO_MS);
+    }
+  }
+
+  function prClearListNotice() {
+    clearTimeout(prNoticeTimer);
+    prNoticeTimer = null;
+    programsUi.notice = '';
+    programsUi.undoIds = [];
   }
 
   // ---- Pantalla 2: programa abierto ----
@@ -7186,7 +7347,39 @@
     }
     // El aviso de la lista dura hasta la siguiente acción.
     if (programsUi.notice && !target.closest('[data-pr-notice]')) {
-      programsUi.notice = '';
+      const hadUndo = programsUi.undoIds.length > 0;
+      prClearListNotice();
+      if (hadUndo) {
+        document.querySelector('#prProgramList [data-pr-notice]')?.remove();
+      }
+    }
+    if (target.closest('[data-pr-undo]')) {
+      prUndoArchive();
+      return;
+    }
+    if (target.closest('[data-pr-select-start]')) {
+      prStartSelecting();
+      return;
+    }
+    if (target.closest('[data-pr-select-cancel]')) {
+      prStopSelecting();
+      return;
+    }
+    if (target.closest('[data-pr-select-all]')) {
+      prSelectAllFree();
+      return;
+    }
+    if (target.closest('[data-pr-select-archive]')) {
+      prArchiveSelected();
+      return;
+    }
+    const selectId = target.closest('[data-pr-select]')?.getAttribute('data-pr-select');
+    if (selectId) {
+      prToggleSelected(selectId);
+      return;
+    }
+    if (target.closest('[data-pr-locked]')) {
+      return; // con alumnos: no se marca ni se abre mientras se selecciona
     }
     if (target.closest('[data-pr-archived-toggle]')) {
       programsUi.showArchived = !programsUi.showArchived;
@@ -7205,6 +7398,7 @@
     const tab = target.closest('[data-pr-tab]')?.getAttribute('data-pr-tab');
     if (tab) {
       programsUi.tab = tab;
+      Object.assign(programsUi, { selecting: false, selected: [] });
       renderPrList();
       return;
     }
@@ -9975,37 +10169,18 @@
       attendance = expected > 0 ? `${done} de ${expected}` : String(done);
     }
 
-    const month = today.slice(0, 7);
-    const byExercise = new Map();
-    sessions.forEach((session) => getSessionExercises(session).forEach((exercise) => {
-      const key = String(exercise.exerciseName || '').trim().toLowerCase();
-      const top = getExerciseSets(exercise).reduce((max, setEntry) => {
-        const weight = Number(setEntry.weight);
-        return setEntry.completed !== false && Number.isFinite(weight) && weight > 0 ? Math.max(max, weight) : max;
-      }, 0);
-      if (!key || !top) {
-        return;
-      }
-      const perDate = byExercise.get(key) || new Map();
-      perDate.set(session.date, Math.max(perDate.get(session.date) || 0, top));
-      byExercise.set(key, perDate);
-    }));
-    let records = 0;
-    byExercise.forEach((perDate) => {
-      let best = 0;
-      [...perDate.keys()].sort().forEach((date) => {
-        const top = perDate.get(date);
-        if (best > 0 && top > best && date.startsWith(month)) {
-          records += 1;
-        }
-        best = Math.max(best, top);
-      });
-    });
+    // v0.9.48: el mismo conteo de la Tarjeta del mes (monthly-card-core): kilos y, aparte, segundos
+    // de los ejercicios por tiempo (nunca se mezclan en un mismo récord).
+    const recordInfo = window.VALHALLA.monthlyCardCore?.monthRecords(sessions, today.slice(0, 7), {
+      getExercises: getSessionExercises,
+      getSets: getExerciseSets,
+      isTimed: isTimedExercise
+    }) || { count: 0, tracked: 0 };
 
     const lastDate = [...allDates].sort().pop() || '';
     return {
       attendance,
-      records: byExercise.size ? String(records) : '—',
+      records: recordInfo.tracked ? String(recordInfo.count) : '—',
       lastSession: lastDate ? formatFichaDate(lastDate) : '—',
       dates: allDates
     };
@@ -11071,7 +11246,9 @@
         <p class="mc-count"><span id="monthlyCardCount">${[...data.message].length}</span>/${cardCoreApi.MESSAGE_MAX}</p>
         <button class="primary mc-send" type="button" data-card-send="${id}">${sendLabel}</button>
         ${phone ? '' : '<p class="meta mc-nophone">Este alumno no tiene teléfono válido: la imagen se descarga para que la envíes tú.</p>'}
-        ${sentText ? `<p class="mc-sent" data-card-sent>✓ Enviada el ${escapeHtml(sentText)}</p>` : ''}
+        ${entry.sentAt
+          ? `<p class="mc-sent" data-card-sent>✓ Enviada${sentText ? ` el ${escapeHtml(sentText)}` : ''} <button class="mc-mark" type="button" data-card-unmark="${id}">Desmarcar</button></p>`
+          : `<p class="mc-mark-row"><button class="mc-mark" type="button" data-card-mark="${id}">Marcar como enviada</button></p>`}
         <p id="monthlyCardNotice" class="notice mc-notice${cardsUi.tone ? ` ${cardsUi.tone}` : ''}" role="status">${escapeHtml(cardsUi.notice)}</p>
       </section>`;
     drawMonthlyCardPreview(data);
@@ -11130,10 +11307,24 @@
     } else if (result.reason === 'cancel') {
       setCardsNotice('No se envió: la tarjeta no quedó marcada.', 'warn');
     } else if (result.reason === 'no-phone') {
-      setCardsNotice('Imagen descargada. Sin teléfono no se marca como enviada.', 'warn');
+      setCardsNotice('Imagen descargada. Cuando la mandes, toca "Marcar como enviada".', 'warn');
     } else {
       setCardsNotice('No se pudo compartir. Intenta de nuevo.', 'bad');
     }
+  }
+
+  // v0.9.48: marca manual (sin teléfono o enviada por otro lado) y "Desmarcar".
+  function setMonthlyCardSent(clientId, sent) {
+    if (!getClientById(clientId)) return;
+    const input = document.getElementById('monthlyCardMessage');
+    if (input) saveMonthlyCardMessage(input);
+    const cards = getMonthlyCards();
+    saveMonthlyCards(sent
+      ? cardCoreApi.markSent(cards, cardsUi.month, clientId, new Date().toISOString())
+      : cardCoreApi.unmarkSent(cards, cardsUi.month, clientId));
+    renderClients();
+    // Después de dibujar: guardar ya pudo haber rearmado la pantalla (el aviso va directo a su caja).
+    setCardsNotice(sent ? 'Marcada como enviada.' : 'Ya no figura como enviada.', sent ? 'ok' : 'warn');
   }
 
   async function downloadMonthlyCard(clientId) {
@@ -13622,6 +13813,12 @@
     const cardSendButton = target.closest('[data-card-send]');
     if (cardSendButton) {
       sendMonthlyCard(cardSendButton.getAttribute('data-card-send'));
+      return;
+    }
+    const cardMarkButton = target.closest('[data-card-mark], [data-card-unmark]');
+    if (cardMarkButton) {
+      const markId = cardMarkButton.getAttribute('data-card-mark');
+      setMonthlyCardSent(markId || cardMarkButton.getAttribute('data-card-unmark'), Boolean(markId));
       return;
     }
 

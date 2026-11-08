@@ -108,6 +108,11 @@
     return withEntry(cards, month, clientId, { sentAt: String(isoDate || new Date().toISOString()) });
   }
 
+  // v0.9.48: "Desmarcar" (quita solo sentAt; el mensaje queda).
+  function unmarkSent(cards, month, clientId) {
+    return withEntry(cards, month, clientId, { sentAt: undefined });
+  }
+
   // ---- Números del mes ----
 
   const lowerName = (exercise) => String(exercise?.exerciseName || '').trim().toLowerCase();
@@ -137,10 +142,13 @@
   // list = un renglón por ejercicio con récord: lo mejor del mes y la subida contra lo mejor ANTES
   // del mes (sin registro antes → sin subida). Orden: mayor subida en porcentaje (así kilos y
   // segundos se comparan parejo); los que no tienen subida van al final.
+  // tracked = cuántos ejercicios tienen alguna carga (0 → la ficha muestra "—").
+  // v0.9.48: la caja "Récords este mes" de la ficha usa este mismo count (kilos y segundos).
   function monthRecords(sessions, month, h) {
     let count = 0;
     const list = [];
-    topByExercise(sessions, h).forEach((item) => {
+    const byKey = topByExercise(sessions, h);
+    byKey.forEach((item) => {
       let best = 0;
       let before = 0;
       let monthBest = 0;
@@ -158,7 +166,7 @@
       list.push({ name: item.name, unit: item.timed ? 's' : 'kg', value: monthBest, delta, ratio: before > 0 ? (monthBest - before) / before : -1 });
     });
     list.sort((a, b) => (b.ratio - a.ratio) || (b.value - a.value) || a.name.localeCompare(b.name));
-    return { count, list: list.slice(0, RECORDS_MAX).map(({ ratio, ...rest }) => rest) };
+    return { count, tracked: byKey.size, list: list.slice(0, RECORDS_MAX).map(({ ratio, ...rest }) => rest) };
   }
 
   // Clases planificadas del mes con la regla de la asistencia de la ficha: los días de la semana
@@ -259,6 +267,7 @@
     getEntry,
     setMessage,
     markSent,
+    unmarkSent,
     monthRecords,
     plannedClasses,
     monthZones,

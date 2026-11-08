@@ -61,7 +61,7 @@ test('récords: el primer registro no es récord; primero en el mes y mejorado v
   const result = core.monthRecords(sessions, '2026-11', H);
   assert.equal(result.count, 1);
   assert.deepEqual(core.recordText(result.list[0]), { name: 'Press falso', value: '32,5 kg', delta: '' });
-  assert.deepEqual(core.monthRecords([ses('2026-11-02', [kg('Press falso', [30])])], '2026-11', H), { count: 0, list: [] });
+  assert.deepEqual(core.monthRecords([ses('2026-11-02', [kg('Press falso', [30])])], '2026-11', H), { count: 0, tracked: 1, list: [] });
 });
 
 test('récords: hasta 4, los de mayor subida primero; series no hechas no cuentan', () => {
@@ -144,4 +144,27 @@ test('datos: monthlyCards sobrevive a guardar y cargar, sube en trainingsV08 y s
   assert.deepEqual(Object.keys(payload).filter((key) => !sync.SYNCED_KEYS.includes(key)), [], 'no hay claves nuevas en la subida');
   const without = data.importState(JSON.stringify({ trainingsV08: { sessions: [] } }));
   assert.equal('monthlyCards' in without.trainingsV08, false, 'si nunca se usó, lo guardado no cambia de forma');
+});
+
+test('v0.9.48: Desmarcar quita solo la marca; el mensaje queda; sin nada la entrada desaparece', () => {
+  let cards = core.markSent(core.setMessage({}, '2026-11', 'cli-a', 'Bien'), '2026-11', 'cli-a', '2026-11-08T12:00:00.000Z');
+  const before = JSON.stringify(cards);
+  const unmarked = core.unmarkSent(cards, '2026-11', 'cli-a');
+  assert.deepEqual(unmarked, { '2026-11': { 'cli-a': { message: 'Bien' } } });
+  assert.equal(JSON.stringify(cards), before, 'nunca toca el objeto recibido');
+  cards = core.unmarkSent(core.markSent({}, '2026-11', 'cli-b', '2026-11-08T12:00:00.000Z'), '2026-11', 'cli-b');
+  assert.deepEqual(cards, {});
+});
+
+test('v0.9.48: la ficha cuenta lo mismo que la tarjeta; un récord solo por tiempo cuenta y no se mezcla con kilos', () => {
+  // "Plancha falsa" por tiempo y, con el mismo nombre, una vez con kilos: dos historias separadas.
+  const sessions = [
+    ses('2026-10-20', [secs('Plancha falsa', [40]), kg('Plancha falsa', [50])]),
+    ses('2026-11-03', [secs('Plancha falsa', [45]), kg('Plancha falsa', [10])])
+  ];
+  const result = core.monthRecords(sessions, '2026-11', H);
+  assert.equal(result.count, 1, '45 s supera 40 s; 10 kg no supera 50 kg');
+  assert.equal(result.tracked, 2);
+  assert.deepEqual(result.list.map((item) => [item.unit, item.value]), [['s', 45]]);
+  assert.equal(core.monthRecords([], '2026-11', H).tracked, 0, 'sin cargas → la ficha muestra "—"');
 });
