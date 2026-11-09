@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Bebas+Neue&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <title>VALHALLA</title>
-  <link rel="stylesheet" href="./assets/css/styles.css?v=0.9.51">
+  <link rel="stylesheet" href="./assets/css/styles.css?v=0.9.52">
 </head>
 <!-- Clase "solo-entrenamientos": oculta Inicio, Registrar (finanzas) y Nutrición sin borrarlos. Quitarla los vuelve a mostrar. -->
 <body class="solo-entrenamientos">
@@ -31,7 +31,7 @@
       <div class="header-actions">
         <span class="user-pill">Usuario</span>
         <span class="badge" id="cloudModeBadge">Modo Local</span>
-        <span class="badge">v0.9.51</span>
+        <span class="badge">v0.9.52</span>
       </div>
     </header>
 
@@ -1021,79 +1021,6 @@
 
     </section>
 
-    <section id="studentTraining" class="hidden">
-      <div class="card student-mode-header">
-        <div class="section-title">
-          <h2>Vista alumno</h2>
-          <button class="secondary" id="studentBackBtn" type="button">Volver a entrenador</button>
-        </div>
-        <div class="student-mode-meta">
-          <div><strong id="studentName">Alumno</strong></div>
-          <div class="meta"><span id="studentSessionTitle">Sesión</span> · <span id="studentSessionDate">Fecha</span></div>
-          <div class="meta" id="studentExerciseProgress">Ejercicio 1 de 1</div>
-          <div class="progress-bar"><span id="studentSessionProgressBar" style="width:0%"></span></div>
-          <div class="meta" id="studentSessionProgressText">0% completado</div>
-        </div>
-      </div>
-
-      <div class="card student-exercise-card">
-        <h3 id="studentExerciseName">Ejercicio</h3>
-        <div class="meta" id="studentExercisePlan">Series y repeticiones</div>
-        <div class="meta" id="studentExerciseTarget">Peso objetivo</div>
-        <div class="meta" id="studentExerciseRest">Descanso</div>
-        <div class="notice" id="studentExerciseLast">Primera vez con este ejercicio</div>
-        <div class="training-progress-grid">
-          <div><strong>Último peso</strong><div class="meta" id="studentLastWeight">Sin registro</div></div>
-          <div><strong>Últimas repeticiones</strong><div class="meta" id="studentLastReps">Sin registro</div></div>
-          <div><strong>Mejor peso histórico</strong><div class="meta" id="studentBestWeight">Sin registro</div></div>
-          <div><strong>Instrucción técnica</strong><div class="meta" id="studentTechniqueNote">Sin instrucción</div></div>
-        </div>
-      </div>
-
-      <div class="card student-set-card">
-        <div class="row training-live-row">
-          <div>
-            <label for="studentWeightInput">Peso</label>
-            <input id="studentWeightInput" type="number" min="0" step="0.1" inputmode="decimal">
-            <div class="chips training-weight-chips">
-              <button class="chip" type="button" data-student-weight-delta="-5">-5</button>
-              <button class="chip" type="button" data-student-weight-delta="-2.5">-2,5</button>
-              <button class="chip" type="button" data-student-weight-delta="2.5">+2,5</button>
-              <button class="chip" type="button" data-student-weight-delta="5">+5</button>
-            </div>
-          </div>
-          <div>
-            <label for="studentRepsInput">Repeticiones</label>
-            <input id="studentRepsInput" type="number" min="0" step="1" inputmode="numeric">
-            <label class="muted"><input id="studentSetCompleted" type="checkbox" checked> Serie completada</label>
-            <input id="studentEditingSetNumber" type="hidden" value="">
-          </div>
-        </div>
-        <button class="primary" id="studentSaveSetBtn" type="button">Guardar serie</button>
-        <div id="studentSetNotice" class="notice"></div>
-        <div id="studentExerciseCompletedNotice" class="notice hidden">Ejercicio completado</div>
-        <button class="secondary" id="studentNextExerciseBtn" type="button">Siguiente ejercicio</button>
-        <button class="ghost" id="studentValidateRecordBtn" type="button" disabled>Validar por entrenador</button>
-        <div id="studentSetList" class="training-set-list"></div>
-      </div>
-
-      <div class="card student-rest-card">
-        <h3>Descanso</h3>
-        <div class="meta" id="studentRestValue">90 s</div>
-        <div class="inline-actions">
-          <button class="primary" id="studentRestStartBtn" type="button">Iniciar descanso</button>
-          <button class="secondary" id="studentRestPlusBtn" type="button">+15 s</button>
-          <button class="secondary" id="studentRestSkipBtn" type="button">Saltar</button>
-        </div>
-      </div>
-
-      <div class="card hidden" id="studentSessionFinishPanel">
-        <h3>Sesión completada</h3>
-        <div id="studentSessionSummary"></div>
-        <button class="primary" id="studentFinalizeBtn" type="button">Finalizar entrenamiento</button>
-      </div>
-    </section>
-
     <section id="nutrition" class="hidden" data-modulo-oculto>
       <div class="card">
         <div class="section-title">
@@ -1209,39 +1136,39 @@
     </div>
   </nav>
 
-  <script src="./assets/js/config.js?v=0.9.51"></script>
+  <script src="./assets/js/config.js?v=0.9.52"></script>
   <!-- supabase-js fijado a una versión exacta; integrity = SHA-384 del archivo publicado en npm -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js" integrity="sha384-Rj26LVGvoeRVR6+mwQmFfcR3QOBEwT+ZmuCWpuiqeTzJpCs0ER4ITAWGb4Hiy3Ok" crossorigin="anonymous"></script>
-  <script src="./assets/js/circuits-core.js?v=0.9.51"></script>
-  <script src="./assets/js/blocks-core.js?v=0.9.51"></script>
-  <script src="./assets/js/monthly-card-core.js?v=0.9.51"></script>
-  <script src="./assets/js/data.js?v=0.9.51"></script>
-  <script src="./assets/js/supabase.js?v=0.9.51"></script>
-  <script src="./assets/js/auth.js?v=0.9.51"></script>
-  <script src="./assets/js/invite-core.js?v=0.9.51"></script>
-  <script src="./assets/js/cloud-data.js?v=0.9.51"></script>
-  <script src="./assets/js/finance.js?v=0.9.51"></script>
-  <script src="./assets/js/qrcode-generator.js?v=0.9.51"></script>
-  <script src="./assets/js/onboarding.js?v=0.9.51"></script>
-  <script src="./assets/js/sync-core.js?v=0.9.51"></script>
-  <script src="./assets/js/cloud-sync.js?v=0.9.51"></script>
-  <script src="./assets/js/client-overrides-core.js?v=0.9.51"></script>
-  <script src="./assets/js/muscle-map-core.js?v=0.9.51"></script>
-  <script src="./assets/js/publish-core.js?v=0.9.51"></script>
-  <script src="./assets/js/publish.js?v=0.9.51"></script>
-  <script src="./assets/js/invites.js?v=0.9.51"></script>
-  <script src="./assets/js/self-log-core.js?v=0.9.51"></script>
-  <script src="./assets/js/student-view.js?v=0.9.51"></script>
-  <script src="./assets/js/auth-gate.js?v=0.9.51"></script>
-  <script src="./assets/js/labels.js?v=0.9.51"></script>
-  <script src="./assets/js/student-import-core.js?v=0.9.51"></script>
-  <script src="./assets/js/coach-sets-core.js?v=0.9.51"></script>
-  <script src="./assets/js/group-draft-core.js?v=0.9.51"></script>
-  <script src="./assets/js/group-round-core.js?v=0.9.51"></script>
-  <script src="./assets/js/program-import-core.js?v=0.9.51"></script>
-  <script src="./assets/js/settings-core.js?v=0.9.51"></script>
-  <script src="./assets/js/monthly-card.js?v=0.9.51"></script>
-  <script src="./assets/js/payment-period-core.js?v=0.9.51"></script>
-  <script src="./assets/js/app.js?v=0.9.51"></script>
+  <script src="./assets/js/circuits-core.js?v=0.9.52"></script>
+  <script src="./assets/js/blocks-core.js?v=0.9.52"></script>
+  <script src="./assets/js/monthly-card-core.js?v=0.9.52"></script>
+  <script src="./assets/js/data.js?v=0.9.52"></script>
+  <script src="./assets/js/supabase.js?v=0.9.52"></script>
+  <script src="./assets/js/auth.js?v=0.9.52"></script>
+  <script src="./assets/js/invite-core.js?v=0.9.52"></script>
+  <script src="./assets/js/cloud-data.js?v=0.9.52"></script>
+  <script src="./assets/js/finance.js?v=0.9.52"></script>
+  <script src="./assets/js/qrcode-generator.js?v=0.9.52"></script>
+  <script src="./assets/js/onboarding.js?v=0.9.52"></script>
+  <script src="./assets/js/sync-core.js?v=0.9.52"></script>
+  <script src="./assets/js/cloud-sync.js?v=0.9.52"></script>
+  <script src="./assets/js/client-overrides-core.js?v=0.9.52"></script>
+  <script src="./assets/js/muscle-map-core.js?v=0.9.52"></script>
+  <script src="./assets/js/publish-core.js?v=0.9.52"></script>
+  <script src="./assets/js/publish.js?v=0.9.52"></script>
+  <script src="./assets/js/invites.js?v=0.9.52"></script>
+  <script src="./assets/js/self-log-core.js?v=0.9.52"></script>
+  <script src="./assets/js/student-view.js?v=0.9.52"></script>
+  <script src="./assets/js/auth-gate.js?v=0.9.52"></script>
+  <script src="./assets/js/labels.js?v=0.9.52"></script>
+  <script src="./assets/js/student-import-core.js?v=0.9.52"></script>
+  <script src="./assets/js/coach-sets-core.js?v=0.9.52"></script>
+  <script src="./assets/js/group-draft-core.js?v=0.9.52"></script>
+  <script src="./assets/js/group-round-core.js?v=0.9.52"></script>
+  <script src="./assets/js/program-import-core.js?v=0.9.52"></script>
+  <script src="./assets/js/settings-core.js?v=0.9.52"></script>
+  <script src="./assets/js/monthly-card.js?v=0.9.52"></script>
+  <script src="./assets/js/payment-period-core.js?v=0.9.52"></script>
+  <script src="./assets/js/app.js?v=0.9.52"></script>
 </body>
 </html>

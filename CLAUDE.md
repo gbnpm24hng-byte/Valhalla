@@ -14,7 +14,9 @@ Guarda primero en localStorage y sincroniza con Supabase (coach_state + tablas d
   Modo Grupo sin createdAt). Para verificar una carga desde la nube usar syncCore.verifyCloudLoad (lo escrito
   tal cual + lo leído salvo esos campos), nunca comparar dos normalizaciones con compare().identical.
 - publish-core.js, publish.js — "Publicar al alumno" (copia campo por campo desde una lista cerrada).
-- student-view.js — vista de alumno de solo lectura.
+- student-view.js — vista de alumno de solo lectura. v0.9.52: renderPreview = "Vista alumno" del entrenador
+  (ficha y Modo Grupo "⋯"): lo publicado leído con publish.loadPreview, encima de la pantalla, franja
+  "Así lo ve NOMBRE · Volver", nunca escribe (ni caché, ni cola, ni student_sets). La pantalla vieja #studentTraining se quitó.
 - labels.js — tabla única de etiquetas en español y categorías del armador.
 - client-overrides-core.js — cambios de ejercicio de UN alumno (Modo Grupo: "Solo hoy" / "De aquí en adelante"),
   guardados en trainingsV08.clientOverrides y aplicados encima de su asignación (nunca tocan el programa común).

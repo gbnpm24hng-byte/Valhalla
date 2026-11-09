@@ -666,7 +666,7 @@
 
   // Una sola vista de alumno abierta a la vez (la del usuario conectado).
   const logState = {
-    container: null, cache: null, userId: '', date: '', timer: null, flushing: false, listening: false, offline: false,
+    container: null, cache: null, userId: '', date: '', timer: null, flushing: false, listening: false, offline: false, preview: false,
     screen: 'today', assignmentId: '', dayId: '', exerciseId: '', feelKey: ''
   };
 
@@ -1162,7 +1162,7 @@
   // Armado de la vista
   // ---------------------------------------------------------------------------
 
-  function shell(container, { name, userId, onSignOut }) {
+  function shell(container, { name, userId, onSignOut, preview = false }) {
     container.innerHTML = `
       <div class="student-view">
         <header class="sv-header">
@@ -1173,7 +1173,7 @@
             </div>
             <span class="sv-title">VALHALLA</span>
           </div>
-          <button class="sv-ghost" type="button" data-auth-logout>Cerrar sesión</button>
+          ${preview ? '' : '<button class="sv-ghost" type="button" data-auth-logout>Cerrar sesión</button>'}
         </header>
         <div class="sv-hello">
           <h1 class="sv-hello-name">${name ? `Hola, ${escapeHtml(name)}` : 'Hola'}</h1>
@@ -1183,7 +1183,7 @@
         <div data-student-banner></div>
         <main data-student-content><p class="sv-meta sv-loading">Cargando tu programa…</p></main>
       </div>`;
-    container.querySelector('[data-auth-logout]').addEventListener('click', () => confirmSignOut(container, userId, onSignOut));
+    container.querySelector('[data-auth-logout]')?.addEventListener('click', () => confirmSignOut(container, userId, onSignOut));
   }
 
   // Antes de cerrar sesión: si hay series de esta cuenta sin subir, se avisa.
@@ -1492,7 +1492,7 @@
   // Sube lo pendiente de la cuenta conectada, de a una serie (un rechazo no frena al resto).
   async function flushOutbox() {
     const userId = logState.userId;
-    if (logState.flushing || !userId || !authApi?.getClient || !selfLog) return;
+    if (logState.preview || logState.flushing || !userId || !authApi?.getClient || !selfLog) return;
     logState.flushing = true;
     try {
       const client = authApi.getClient();
@@ -1530,7 +1530,7 @@
   function scheduleRetry() {
     clearTimeout(logState.timer);
     logState.timer = null;
-    if (!logState.userId || !selfLog) return;
+    if (logState.preview || !logState.userId || !selfLog) return;
     if (selfLog.readOutbox(localStorage, logState.userId).some((item) => item.status === 'pending')) {
       logState.timer = setTimeout(flushOutbox, RETRY_MS);
     }
@@ -1626,7 +1626,7 @@
   function stopLog() {
     clearTimeout(logState.timer);
     Object.assign(logState, {
-      container: null, cache: null, userId: '', date: '', timer: null,
+      container: null, cache: null, userId: '', date: '', timer: null, preview: false,
       screen: 'today', assignmentId: '', dayId: '', exerciseId: '', feelKey: ''
     });
   }
@@ -1671,8 +1671,28 @@
     }
   }
 
+  // v0.9.52: vista previa para el entrenador ("Vista alumno" de la ficha y de Modo Grupo).
+  // Mismas pantallas con lo publicado, siempre en solo lectura y sin cuenta de alumno: no lee
+  // ni escribe el caché del alumno ni su cola de series, y nunca sube nada.
+  function renderPreview(container, { name = '', programs = [], progress = [] } = {}) {
+    stopLog();
+    inviteOpts = { onHaveCode: null, inviteCode: '' };
+    logState.preview = true;
+    logState.offline = false;
+    shell(container, { name, userId: '', onSignOut: null, preview: true });
+    showContent(container, { userId: '', linked: true, canSelfLog: false, programs, progress, setRows: [] }, { offline: false });
+  }
+
+  function closePreview() {
+    if (logState.preview) {
+      stopLog();
+    }
+  }
+
   window.VALHALLA.studentView = {
     render,
+    renderPreview,
+    closePreview,
     clearCache,
     format: {
       setLine, studentSetLine, setHasData, repsRange, exerciseScheme, noteForStudent, renderProgram,

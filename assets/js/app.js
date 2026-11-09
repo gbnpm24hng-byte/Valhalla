@@ -182,17 +182,6 @@
       notes: ''
     }
   };
-  const studentUi = {
-    enabled: false,
-    clientId: '',
-    sessionId: '',
-    exerciseIndex: 0,
-    editingSetNumber: null,
-    restRemaining: 0,
-    restRunning: false,
-    restTimerId: null,
-    startedAt: null
-  };
   const clientUi = {
     search: '',
     filter: 'all',
@@ -222,7 +211,6 @@
       register: document.getElementById('register'),
       clients: document.getElementById('clients'),
       trainings: document.getElementById('trainings'),
-      studentTraining: document.getElementById('studentTraining'),
       nutrition: document.getElementById('nutrition'),
       settings: document.getElementById('settings')
     },
@@ -328,39 +316,6 @@
     setEntryList: document.getElementById('setEntryList'),
     setRecordNotice: document.getElementById('setRecordNotice'),
     editingSetNumber: document.getElementById('editingSetNumber'),
-    studentBackBtn: document.getElementById('studentBackBtn'),
-    studentName: document.getElementById('studentName'),
-    studentSessionTitle: document.getElementById('studentSessionTitle'),
-    studentSessionDate: document.getElementById('studentSessionDate'),
-    studentExerciseProgress: document.getElementById('studentExerciseProgress'),
-    studentSessionProgressBar: document.getElementById('studentSessionProgressBar'),
-    studentSessionProgressText: document.getElementById('studentSessionProgressText'),
-    studentExerciseName: document.getElementById('studentExerciseName'),
-    studentExercisePlan: document.getElementById('studentExercisePlan'),
-    studentExerciseTarget: document.getElementById('studentExerciseTarget'),
-    studentExerciseRest: document.getElementById('studentExerciseRest'),
-    studentExerciseLast: document.getElementById('studentExerciseLast'),
-    studentLastWeight: document.getElementById('studentLastWeight'),
-    studentLastReps: document.getElementById('studentLastReps'),
-    studentBestWeight: document.getElementById('studentBestWeight'),
-    studentTechniqueNote: document.getElementById('studentTechniqueNote'),
-    studentWeightInput: document.getElementById('studentWeightInput'),
-    studentRepsInput: document.getElementById('studentRepsInput'),
-    studentSetCompleted: document.getElementById('studentSetCompleted'),
-    studentEditingSetNumber: document.getElementById('studentEditingSetNumber'),
-    studentSaveSetBtn: document.getElementById('studentSaveSetBtn'),
-    studentSetNotice: document.getElementById('studentSetNotice'),
-    studentSetList: document.getElementById('studentSetList'),
-    studentExerciseCompletedNotice: document.getElementById('studentExerciseCompletedNotice'),
-    studentNextExerciseBtn: document.getElementById('studentNextExerciseBtn'),
-    studentValidateRecordBtn: document.getElementById('studentValidateRecordBtn'),
-    studentRestValue: document.getElementById('studentRestValue'),
-    studentRestStartBtn: document.getElementById('studentRestStartBtn'),
-    studentRestPlusBtn: document.getElementById('studentRestPlusBtn'),
-    studentRestSkipBtn: document.getElementById('studentRestSkipBtn'),
-    studentSessionFinishPanel: document.getElementById('studentSessionFinishPanel'),
-    studentSessionSummary: document.getElementById('studentSessionSummary'),
-    studentFinalizeBtn: document.getElementById('studentFinalizeBtn'),
     templateForm: document.getElementById('templateForm'),
     templateIdInput: document.getElementById('templateId'),
     templateNameInput: document.getElementById('templateName'),
@@ -1839,7 +1794,7 @@
       <div class="group-ex-head">
         <strong>${confirmed ? '✓ ' : ''}${index + 1}. ${escapeHtml(planExercise.exerciseName || 'Ejercicio')}</strong>
         ${tag}
-        <span class="meta">Objetivo: ${isTimedExercise(planExercise) ? `${escapeHtml(blocksApi.formatTarget(planExercise))} por serie` : `${Number(planExercise.targetWeight || 0)} kg × ${escapeHtml(getGroupRepsLabel(planExercise))}`}${formatProgramExerciseRir(planExercise) ? ` · <span data-group-rir>${escapeHtml(formatProgramExerciseRir(planExercise))}</span>` : ''}</span>
+        <span class="meta">${isTimedExercise(planExercise) ? `Objetivo: ${escapeHtml(blocksApi.formatTarget(planExercise))} por serie` : escapeHtml(formatGroupTarget(planExercise).replace(/^Objetivo /, 'Objetivo: '))}${formatProgramExerciseRir(planExercise) ? ` · <span data-group-rir>${escapeHtml(formatProgramExerciseRir(planExercise))}</span>` : ''}</span>
         ${lastTime ? `<span class="meta group-last-time" data-group-last-time>${escapeHtml(lastTime)}</span>` : ''}
       </div>`;
     const comment = pickerHere ? null : renderGroupComment(clientId, planExercise, confirmed, attrs);
@@ -1913,6 +1868,13 @@
         </div>
         ${changeButton}
       </div>`;
+  }
+
+  // v0.9.52: objetivo de Modo Grupo. Sin peso (0 o vacío) solo las repeticiones: "Objetivo 10-12".
+  function formatGroupTarget(planExercise) {
+    const weight = groupRoundApi.parseNumber(planExercise?.targetWeight);
+    const reps = getGroupRepsLabel(planExercise);
+    return weight !== null && weight > 0 ? `Objetivo ${groupRoundApi.formatNumber(weight)} kg × ${reps}` : `Objetivo ${reps}`;
   }
 
   // "Sesión del programa" de un alumno (lista y panel "⋯" de la vista compacta).
@@ -2244,7 +2206,7 @@
     const blockInfo = planExercise.blockId && blocksApi ? blocksApi.blockOf(context.day, planExercise.id) : null;
     const targetText = timed
       ? `Objetivo ${blocksApi.formatTarget(planExercise)} por serie`
-      : `Objetivo ${groupRoundApi.formatNumber(planExercise.targetWeight || 0)} kg × ${getGroupRepsLabel(planExercise)}`;
+      : formatGroupTarget(planExercise);
     const blockTag = blockInfo
       ? `<span class="tag gv-block-tag" data-gv-block-tag>${escapeHtml(`${blockInfo.letter}${blockInfo.position} · Superserie ${blockInfo.letter} · ${prPlural(blockInfo.block.rounds, 'vuelta', 'vueltas')}`)}</span>`
       : '';
@@ -2287,6 +2249,7 @@
           ${planExercise.overrideId ? `<button class="gv-chip group-revert-btn" type="button" data-group-revert="${escapeHtml(planExercise.overrideId)}" ${attrs}>Quitar cambio</button>` : ''}
           <button class="gv-chip group-add-btn" type="button" data-group-add data-client-id="${cid}">+ Agregar ejercicio</button>
           <button class="gv-chip" type="button" data-group-cancel>Descartar lo no confirmado</button>
+          <button class="gv-chip" type="button" data-client-student-view="${cid}">Vista alumno</button>
         </div>
         ${renderGroupDaySelect(clientId, assignment, day, false)}
       </div>` : '';
@@ -3439,6 +3402,7 @@
           </summary>
           ${renderGroupDaySelect(clientId, assignment, day, inHistory)}
           ${inHistory ? '' : `<button class="secondary small group-history-open" type="button" data-group-history-open data-client-id="${escapeHtml(clientId)}" ${previousCount ? '' : 'disabled'} title="${previousCount ? 'Ver su sesión anterior de este día' : 'No hay sesiones anteriores de este día'}">◀ Sesión anterior</button>`}
+          ${inHistory ? '' : `<button class="secondary small" type="button" data-client-student-view="${escapeHtml(clientId)}">Vista alumno</button>`}
           ${notice ? `<p class="notice ok group-client-notice" role="status">${escapeHtml(notice)}</p>` : ''}
           ${body}
         </details>`;
@@ -8639,481 +8603,75 @@
     return findExerciseInSession(session, trainingUi.activeExerciseId);
   }
 
-  function stopStudentRestTimer() {
-    if (studentUi.restTimerId) {
-      clearInterval(studentUi.restTimerId);
-      studentUi.restTimerId = null;
-    }
-    studentUi.restRunning = false;
-  }
-
   function getClientById(clientId) {
     return (state.clients || []).find((client) => client.id === clientId) || null;
   }
 
-  function getStudentSessionForClient(clientId) {
-    const sessions = sortSessionsByDateAsc(getTrainingSessionsByClient(clientId));
-    if (!sessions.length) {
-      return null;
+  // v0.9.52: "Vista alumno" (ficha y Modo Grupo) = vista previa de solo lectura de lo que el
+  // alumno ve hoy en su app: lo publicado (student_programs y student_progress), dibujado con
+  // las mismas pantallas de student-view.js. Va encima de la pantalla actual; "Volver" la quita
+  // y deja todo como estaba. No escribe nada (ni estado, ni nube, ni student_sets).
+  function closeStudentPreview() {
+    const overlay = document.getElementById('studentPreview');
+    if (!overlay) {
+      return;
     }
-    const today = getTodayLocalDate();
-    const todaySession = sessions.find((session) => session.date === today && session.status !== 'completed') || null;
-    if (todaySession) {
-      return todaySession;
-    }
-    const nextUpcoming = sessions.find((session) => session.date && session.date > today && session.status !== 'completed') || null;
-    if (nextUpcoming) {
-      return nextUpcoming;
-    }
-    const inProgress = sessions.find((session) => session.status === 'in_progress') || null;
-    if (inProgress) {
-      return inProgress;
-    }
-    return sessions[sessions.length - 1] || null;
+    overlay.remove();
+    document.body.classList.remove('sv-preview-open');
+    window.VALHALLA.studentView?.closePreview?.();
   }
 
-  function enterStudentMode(clientId) {
+  async function openStudentPreview(clientId) {
     const client = getClientById(clientId);
-    if (!client || client.client_status !== 'active' || client.active === false) {
-      setClientNotice('La vista alumno solo está disponible para clientes activos.', 'warn');
+    if (!client) {
       return;
     }
-
-    const session = getStudentSessionForClient(clientId);
-    if (!session) {
-      setClientNotice('Este cliente no tiene sesiones planificadas para entrenar.', 'warn');
-      return;
-    }
-    studentUi.enabled = true;
-    studentUi.clientId = clientId;
-    studentUi.sessionId = session.id;
-    studentUi.exerciseIndex = 0;
-    studentUi.editingSetNumber = null;
-    studentUi.restRemaining = 0;
-    studentUi.startedAt = new Date().toISOString();
-    stopStudentRestTimer();
-    show('studentTraining');
-  }
-
-  function exitStudentMode() {
-    stopStudentRestTimer();
-    studentUi.enabled = false;
-    studentUi.clientId = '';
-    studentUi.sessionId = '';
-    studentUi.exerciseIndex = 0;
-    studentUi.editingSetNumber = null;
-    studentUi.restRemaining = 0;
-    studentUi.startedAt = null;
-    show('trainings');
-  }
-
-  function getStudentSession() {
-    if (!studentUi.sessionId) {
-      return null;
-    }
-    return findSessionById(studentUi.sessionId);
-  }
-
-  function getStudentExercises() {
-    const session = getStudentSession();
-    return session ? getSessionExercises(session) : [];
-  }
-
-  function getStudentExercise() {
-    const exercises = getStudentExercises();
-    if (!exercises.length) {
-      return null;
-    }
-    const safeIndex = Math.max(0, Math.min(studentUi.exerciseIndex, exercises.length - 1));
-    studentUi.exerciseIndex = safeIndex;
-    return exercises[safeIndex];
-  }
-
-  function isExerciseCompleted(exercise) {
-    const plannedSets = Number(exercise?.plannedSets || 0);
-    return plannedSets > 0 && countExerciseSets(exercise) >= plannedSets;
-  }
-
-  function getPreviousExerciseMetrics(clientId, exerciseName, currentSessionId) {
-    const previousExecution = getLastValidExerciseExecution(clientId, exerciseName, { ignoreSessionId: currentSessionId });
-    if (!previousExecution) {
-      return {
-        hasHistory: false,
-        label: 'Sin registro anterior',
-        lastWeight: 'Sin registro',
-        lastReps: 'Sin registro',
-        bestWeight: 'Sin registro'
-      };
-    }
-
-    const bestWeight = getBestWeightForExercise(clientId, exerciseName, { ignoreSessionId: currentSessionId });
-    return {
-      hasHistory: true,
-      label: buildLastSessionSummary(clientId, exerciseName, { ignoreSessionId: currentSessionId }),
-      lastWeight: summarizeExecutionWeight(previousExecution.snapshot),
-      lastReps: summarizeExecutionReps(previousExecution.snapshot),
-      bestWeight: bestWeight > 0 ? `${bestWeight} kg` : 'Sin registro'
-    };
-  }
-
-  function getStudentSessionStats(session) {
-    const exercises = getSessionExercises(session);
-    const completedExercises = exercises.filter((exercise) => isExerciseCompleted(exercise)).length;
-    const totalSets = exercises.reduce((sum, exercise) => sum + getExerciseSets(exercise).length, 0);
-    const potentialRecords = exercises.reduce((sum, exercise) => sum + getExerciseSets(exercise).filter((setEntry) => setEntry.personalRecord).length, 0);
-    const estimatedDurationMinutes = Math.max(1, Math.round(exercises.reduce((sum, exercise) => {
-      const planned = Number(exercise.plannedSets || 0);
-      const rest = Number(exercise.restSeconds || 0);
-      return sum + (planned * (rest + 45));
-    }, 0) / 60));
-    return {
-      completedExercises,
-      totalExercises: exercises.length,
-      totalSets,
-      potentialRecords,
-      estimatedDurationMinutes
-    };
-  }
-
-  function notifyRestFinished() {
-    if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
-      navigator.vibrate([150, 80, 150]);
-    }
+    closeStudentPreview();
+    const firstName = getClientFirstName(client);
+    const overlay = document.createElement('div');
+    overlay.id = 'studentPreview';
+    overlay.className = 'auth-gate auth-gate--student sv-preview';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.setAttribute('aria-label', `Así lo ve ${firstName}`);
+    overlay.innerHTML = `
+      <div class="sv-preview-bar" data-sv-preview-bar>
+        <span class="sv-preview-label">Así lo ve <strong>${escapeHtml(firstName)}</strong></span>
+        <button class="sv-preview-back" type="button" data-sv-preview-back>Volver</button>
+      </div>
+      <div class="sv-preview-body" data-sv-preview-body><p class="sv-meta sv-loading">Cargando lo publicado…</p></div>`;
+    document.body.appendChild(overlay);
+    document.body.classList.add('sv-preview-open');
+    overlay.querySelector('[data-sv-preview-back]').addEventListener('click', closeStudentPreview);
+    const body = overlay.querySelector('[data-sv-preview-body]');
+    const publishApi = window.VALHALLA.publish;
+    let result;
     try {
-      if (typeof window !== 'undefined' && typeof window.AudioContext === 'function') {
-        const context = new window.AudioContext();
-        const oscillator = context.createOscillator();
-        const gain = context.createGain();
-        oscillator.type = 'sine';
-        oscillator.frequency.value = 880;
-        gain.gain.value = 0.04;
-        oscillator.connect(gain);
-        gain.connect(context.destination);
-        oscillator.start();
-        oscillator.stop(context.currentTime + 0.2);
-      }
-    } catch (_) {
-      // Silent fallback when audio is not available.
+      result = publishApi?.loadPreview
+        ? await publishApi.loadPreview(clientId)
+        : { ok: false, message: 'Para ver lo que ve el alumno, inicia sesión con conexión.' };
+    } catch (error) {
+      result = { ok: false, message: 'No se pudo consultar lo publicado. Intenta de nuevo.' };
     }
+    if (!overlay.isConnected) {
+      return;
+    }
+    if (!result.ok) {
+      body.innerHTML = `<section class="sv-card" data-sv-preview-message><p>${escapeHtml(result.message)}</p></section>`;
+      return;
+    }
+    if (!result.programs.length || !window.VALHALLA.studentView?.renderPreview) {
+      body.innerHTML = `<section class="sv-card" data-sv-preview-empty><h2>Aún no le publicas su programa</h2><p class="sv-meta">Usa "Publicar al alumno" en su ficha para que lo vea en su app.</p></section>`;
+      return;
+    }
+    window.VALHALLA.studentView.renderPreview(body, {
+      name: getClientDisplayName(client),
+      programs: result.programs,
+      progress: result.progress
+    });
   }
 
-  function startStudentRest() {
-    const exercise = getStudentExercise();
-    const restSeconds = Number(exercise?.restSeconds || 0);
-    if (!restSeconds) {
-      return;
-    }
-    stopStudentRestTimer();
-    studentUi.restRemaining = restSeconds;
-    studentUi.restRunning = true;
-    studentUi.restTimerId = setInterval(() => {
-      studentUi.restRemaining = Math.max(0, studentUi.restRemaining - 1);
-      if (studentUi.restRemaining <= 0) {
-        stopStudentRestTimer();
-        notifyRestFinished();
-      }
-      renderStudentTraining();
-    }, 1000);
-    renderStudentTraining();
-  }
-
-  async function saveStudentSetEntry() {
-    const session = getStudentSession();
-    const exercise = getStudentExercise();
-    if (!session || !exercise) {
-      if (els.studentSetNotice) {
-        els.studentSetNotice.textContent = 'No hay ejercicio activo para registrar.';
-      }
-      return;
-    }
-
-    if (session.status === 'planned') {
-      session.status = 'in_progress';
-    }
-
-    const weight = Number(els.studentWeightInput?.value || 0);
-    const reps = Number(els.studentRepsInput?.value || 0);
-    const completed = els.studentSetCompleted ? els.studentSetCompleted.checked : true;
-    if (!Number.isFinite(weight) || weight < 0 || !Number.isFinite(reps) || reps < 0) {
-      if (els.studentSetNotice) {
-        els.studentSetNotice.textContent = 'Ingresa valores válidos.';
-      }
-      return;
-    }
-
-    const sets = getExerciseSets(exercise);
-    const requestedSetNumber = Number(els.studentEditingSetNumber?.value || studentUi.editingSetNumber || 0);
-    const plannedSets = Math.max(1, Number(exercise.plannedSets || 1));
-    // El cupo lo usan solo las series efectivas registradas; las aproximaciones no lo ocupan.
-    if (!requestedSetNumber && countExerciseSets(exercise, { onlyCompleted: false }) >= plannedSets) {
-      if (els.studentSetNotice) {
-        els.studentSetNotice.textContent = 'Ejercicio completado. Usa Siguiente ejercicio o corrige una serie.';
-      }
-      return;
-    }
-    const nextSetNumber = requestedSetNumber || (sets.length + 1);
-    const previousBestWeight = getBestWeightForExercise(session.clientId, exercise.exerciseName, { ignoreSessionId: session.id });
-    const isPotentialRecord = weight > previousBestWeight && weight > 0;
-
-    const existingSet = sets.find((setEntry) => Number(setEntry.setNumber || 0) === Number(nextSetNumber));
-    if (existingSet) {
-      if (existingSet.loggedBy === 'student') {
-        existingSet.loggedBy = 'coach';
-      }
-      existingSet.weight = weight;
-      existingSet.reps = reps;
-      existingSet.completed = completed;
-      existingSet.personalRecord = isPotentialRecord;
-      existingSet.setType = getSetType(existingSet);
-      existingSet.techniqueStatus = existingSet.techniqueStatus || 'pending';
-      existingSet.coachValidated = Boolean(existingSet.coachValidated);
-    } else {
-      sets.push({
-        setNumber: nextSetNumber,
-        weight,
-        reps,
-        completed,
-        setType: 'S',
-        createdAt: new Date().toISOString(),
-        techniqueStatus: 'pending',
-        coachValidated: false,
-        personalRecord: isPotentialRecord
-      });
-    }
-    sets.sort((a, b) => Number(a.setNumber || 0) - Number(b.setNumber || 0));
-
-    studentUi.editingSetNumber = null;
-    if (els.studentEditingSetNumber) {
-      els.studentEditingSetNumber.value = '';
-    }
-    if (els.studentRepsInput) {
-      els.studentRepsInput.value = '';
-    }
-    if (els.studentSetNotice) {
-      els.studentSetNotice.textContent = isPotentialRecord ? '🏆 Posible nuevo récord' : 'Serie guardada. Inicia descanso.';
-    }
-
-    const doneSets = countExerciseSets(exercise);
-    const exerciseCompleted = plannedSets > 0 && doneSets >= plannedSets;
-    const completionFeedback = exerciseCompleted ? getExerciseCompletionFeedback(session.clientId, exercise, session.id) : null;
-    if (exerciseCompleted && completionFeedback?.suggestion && els.studentSetNotice) {
-      const comparisonText = completionFeedback.comparison?.status !== 'no_data'
-        ? ` ${completionFeedback.comparison.headline}.`
-        : '';
-      els.studentSetNotice.textContent = `${completionFeedback.suggestion.badge}. ${completionFeedback.suggestion.message}${comparisonText}`;
-    }
-    if (doneSets < plannedSets && !els.studentWeightInput?.value) {
-      els.studentWeightInput.value = String(Number(exercise.targetWeight || 0));
-    }
-
-    if (isCloudSessionActive()) {
-      const syncResult = await syncSessionToCloud(session);
-      if (!syncResult.ok) {
-        if (els.studentSetNotice) {
-          els.studentSetNotice.textContent = syncResult.error || 'No se pudo sincronizar la serie en Cloud.';
-        }
-        return;
-      }
-      renderStudentTraining();
-      return;
-    }
-
-    persist();
-  }
-
-  async function goToNextStudentExercise() {
-    const exercises = getStudentExercises();
-    if (!exercises.length) {
-      return;
-    }
-    if (studentUi.exerciseIndex < exercises.length - 1) {
-      studentUi.exerciseIndex += 1;
-      studentUi.editingSetNumber = null;
-      if (els.studentEditingSetNumber) {
-        els.studentEditingSetNumber.value = '';
-      }
-      if (els.studentSetNotice) {
-        els.studentSetNotice.textContent = '';
-      }
-      renderStudentTraining();
-      return;
-    }
-
-    const session = getStudentSession();
-    if (session) {
-      session.status = 'completed';
-    }
-
-    if (isCloudSessionActive() && session) {
-      const syncResult = await syncSessionToCloud(session);
-      if (!syncResult.ok) {
-        if (els.studentSetNotice) {
-          els.studentSetNotice.textContent = syncResult.error || 'No se pudo completar la sesión en Cloud.';
-        }
-        return;
-      }
-      renderStudentTraining();
-      return;
-    }
-
-    persist();
-  }
-
-  async function finalizeStudentSession() {
-    const session = getStudentSession();
-    if (session) {
-      session.status = 'completed';
-    }
-    stopStudentRestTimer();
-
-    if (isCloudSessionActive() && session) {
-      const syncResult = await syncSessionToCloud(session);
-      if (!syncResult.ok) {
-        if (els.studentSetNotice) {
-          els.studentSetNotice.textContent = syncResult.error || 'No se pudo finalizar en Cloud.';
-        }
-        return;
-      }
-      renderStudentTraining();
-    } else {
-      persist();
-    }
-
-    exitStudentMode();
-  }
-
-  function renderStudentTraining() {
-    if (!els.sections.studentTraining) {
-      return;
-    }
-
-    const client = getClientById(studentUi.clientId);
-    const session = getStudentSession();
-    const exercises = getStudentExercises();
-    const exercise = getStudentExercise();
-
-    if (!studentUi.enabled || !client || !session || !exercise) {
-      if (els.studentName) {
-        els.studentName.textContent = 'Sin sesión activa';
-      }
-      return;
-    }
-
-    const metrics = getPreviousExerciseMetrics(client.id, exercise.exerciseName, session.id);
-    const sets = getExerciseSets(exercise);
-    const doneSets = countExerciseSets(exercise);
-    const plannedSets = Number(exercise.plannedSets || 0);
-    const progressText = `Ejercicio ${studentUi.exerciseIndex + 1} de ${Math.max(1, exercises.length)}`;
-    const sessionStats = getStudentSessionStats(session);
-    const progressPercent = sessionStats.totalExercises > 0
-      ? Math.round((sessionStats.completedExercises / sessionStats.totalExercises) * 100)
-      : 0;
-
-    if (els.studentName) {
-      els.studentName.textContent = getClientDisplayName(client);
-    }
-    if (els.studentSessionTitle) {
-      els.studentSessionTitle.textContent = session.title || 'Sesión de hoy';
-    }
-    if (els.studentSessionDate) {
-      els.studentSessionDate.textContent = formatClientDate(session.date || getTodayLocalDate());
-    }
-    if (els.studentExerciseProgress) {
-      els.studentExerciseProgress.textContent = progressText;
-    }
-    if (els.studentSessionProgressBar) {
-      els.studentSessionProgressBar.style.width = `${progressPercent}%`;
-    }
-    if (els.studentSessionProgressText) {
-      els.studentSessionProgressText.textContent = `${progressPercent}% completado`;
-    }
-
-    if (els.studentExerciseName) {
-      els.studentExerciseName.textContent = exercise.exerciseName;
-    }
-    if (els.studentExercisePlan) {
-      els.studentExercisePlan.textContent = `${plannedSets} series · ${Number(exercise.plannedRepMin || 0)}-${Number(exercise.plannedRepMax || 0)} repeticiones`;
-    }
-    if (els.studentExerciseTarget) {
-      els.studentExerciseTarget.textContent = Number(exercise.targetWeight || 0) > 0
-        ? `Peso objetivo ${Number(exercise.targetWeight || 0)} kg`
-        : 'Sin peso objetivo definido';
-    }
-    if (els.studentExerciseRest) {
-      els.studentExerciseRest.textContent = `Descanso ${Number(exercise.restSeconds || 0)} s`;
-    }
-    if (els.studentExerciseLast) {
-      els.studentExerciseLast.textContent = metrics.label;
-    }
-    if (els.studentLastWeight) {
-      els.studentLastWeight.textContent = metrics.lastWeight;
-    }
-    if (els.studentLastReps) {
-      els.studentLastReps.textContent = metrics.lastReps;
-    }
-    if (els.studentBestWeight) {
-      els.studentBestWeight.textContent = metrics.bestWeight;
-    }
-    if (els.studentTechniqueNote) {
-      els.studentTechniqueNote.textContent = exercise.coachNotes || 'Sin instrucción';
-    }
-
-    if (els.studentWeightInput && !els.studentWeightInput.value) {
-      const fallbackWeight = Number(exercise.targetWeight || 0);
-      if (fallbackWeight > 0) {
-        els.studentWeightInput.value = String(fallbackWeight);
-      }
-    }
-    if (els.studentSetList) {
-      els.studentSetList.innerHTML = sets.length
-        ? sets.map((setEntry) => `
-          <div class="student-set-item">
-            <div>
-              <strong>${escapeHtml(getSetDisplayLabel(exercise, setEntry))}</strong>
-              <div class="meta">${Number(setEntry.seconds) > 0 ? `${Number(setEntry.seconds)} s` : `${Number(setEntry.weight || 0)} kg${setEntry.reps === null || setEntry.reps === undefined ? '' : ` × ${Number(setEntry.reps)}`}`}</div>
-              <div class="meta">${setEntry.personalRecord ? '🏆 Posible nuevo récord' : ''}</div>
-            </div>
-            <button class="secondary small" type="button" data-student-set-edit="${Number(setEntry.setNumber || 0)}">Corregir</button>
-          </div>`).join('')
-        : '<div class="muted">Todavía no hay series registradas en este ejercicio.</div>';
-    }
-
-    if (els.studentExerciseCompletedNotice) {
-      const completed = plannedSets > 0 && doneSets >= plannedSets;
-      const completionFeedback = completed ? getExerciseCompletionFeedback(client.id, exercise, session.id) : null;
-      els.studentExerciseCompletedNotice.classList.toggle('hidden', !completed);
-      if (completed && completionFeedback?.suggestion) {
-        const comparisonText = completionFeedback.comparison?.status !== 'no_data'
-          ? ` · ${completionFeedback.comparison.headline}`
-          : '';
-        els.studentExerciseCompletedNotice.textContent = `${completionFeedback.suggestion.badge}${comparisonText}`;
-      } else {
-        els.studentExerciseCompletedNotice.textContent = completed ? 'Ejercicio completado' : getNextSetLabel(exercise, studentUi.editingSetNumber);
-      }
-    }
-
-    if (els.studentNextExerciseBtn) {
-      els.studentNextExerciseBtn.textContent = studentUi.exerciseIndex < exercises.length - 1 ? 'Siguiente ejercicio' : 'Completar sesión';
-    }
-
-    if (els.studentRestValue) {
-      const baseRest = Number(exercise.restSeconds || 0);
-      const displayRest = studentUi.restRunning || studentUi.restRemaining > 0 ? studentUi.restRemaining : baseRest;
-      els.studentRestValue.textContent = `${Math.max(0, displayRest)} s`;
-    }
-
-    if (els.studentSessionFinishPanel) {
-      const sessionDone = session.status === 'completed' || (sessionStats.totalExercises > 0 && sessionStats.completedExercises >= sessionStats.totalExercises);
-      els.studentSessionFinishPanel.classList.toggle('hidden', !sessionDone);
-      if (sessionDone && els.studentSessionSummary) {
-        els.studentSessionSummary.innerHTML = `
-          <div class="meta">Ejercicios completados: ${sessionStats.completedExercises}/${sessionStats.totalExercises}</div>
-          <div class="meta">Series realizadas: ${sessionStats.totalSets}</div>
-          <div class="meta">Récords potenciales: ${sessionStats.potentialRecords}</div>
-          <div class="meta">Duración estimada: ${sessionStats.estimatedDurationMinutes} min</div>`;
-      }
-    }
-  }
+  window.addEventListener('valhalla:auth-locked', closeStudentPreview);
 
   function getClientDisplayName(client) {
     return client.full_name || client.name || 'Cliente sin nombre';
@@ -10196,7 +9754,7 @@
       element.classList.toggle('hidden', name !== section);
     });
     if (els.nav) {
-      els.nav.classList.toggle('hidden', section === 'studentTraining');
+      els.nav.classList.remove('hidden');
     }
     // Ajustes: al entrar, la Zona de peligro parte plegada y sin archivo elegido.
     if (section === 'settings' && currentSection !== 'settings') {
@@ -10217,9 +9775,6 @@
     if (section === 'trainings') {
       ensureDateValue(els.routineDate);
       refreshTrainingsV08FromCloud().catch(() => {});
-    }
-    if (section === 'studentTraining') {
-      renderStudentTraining();
     }
   }
 
@@ -10864,7 +10419,6 @@
     }
 
     renderTrainings();
-    renderStudentTraining();
   }
 
   async function syncSessionToCloud(session) {
@@ -12374,7 +11928,6 @@
     renderDashboard();
     renderClients();
     renderTrainings();
-    renderStudentTraining();
     renderSettings();
     renderNutrition();
   }
@@ -13371,7 +12924,7 @@
 
     const clientStudentViewId = target.getAttribute('data-client-student-view');
     if (clientStudentViewId) {
-      enterStudentMode(clientStudentViewId);
+      openStudentPreview(clientStudentViewId);
       return;
     }
 
@@ -13935,94 +13488,6 @@
       const current = Number(els.setWeightInput.value || 0);
       const next = Math.max(0, Math.round((current + Number(weightDelta)) * 10) / 10);
       els.setWeightInput.value = String(next);
-      return;
-    }
-
-    const studentSetEditNumber = target.getAttribute('data-student-set-edit');
-    if (studentSetEditNumber) {
-      const exercise = getStudentExercise();
-      const setEntry = getExerciseSets(exercise).find((item) => Number(item.setNumber || 0) === Number(studentSetEditNumber));
-      if (setEntry) {
-        studentUi.editingSetNumber = Number(studentSetEditNumber);
-        if (els.studentEditingSetNumber) {
-          els.studentEditingSetNumber.value = String(studentSetEditNumber);
-        }
-        if (els.studentWeightInput) {
-          els.studentWeightInput.value = String(Number(setEntry.weight || 0));
-        }
-        if (els.studentRepsInput) {
-          els.studentRepsInput.value = String(Number(setEntry.reps || 0));
-        }
-        if (els.studentSetCompleted) {
-          els.studentSetCompleted.checked = setEntry.completed !== false;
-        }
-        if (els.studentSetNotice) {
-          const editingLabel = getSetDisplayLabel(exercise, setEntry);
-          els.studentSetNotice.textContent = `Editando ${editingLabel.charAt(0).toLowerCase()}${editingLabel.slice(1)}`;
-        }
-      }
-      return;
-    }
-
-    const studentWeightDelta = target.getAttribute('data-student-weight-delta');
-    if (studentWeightDelta && els.studentWeightInput) {
-      const current = Number(els.studentWeightInput.value || 0);
-      const next = Math.max(0, Math.round((current + Number(studentWeightDelta)) * 10) / 10);
-      els.studentWeightInput.value = String(next);
-      return;
-    }
-
-    if (target === els.studentSaveSetBtn) {
-      saveStudentSetEntry().catch((error) => {
-        if (els.studentSetNotice) {
-          els.studentSetNotice.textContent = error?.message || 'No se pudo guardar la serie.';
-        }
-      });
-      return;
-    }
-
-    if (target === els.studentNextExerciseBtn) {
-      goToNextStudentExercise().catch((error) => {
-        if (els.studentSetNotice) {
-          els.studentSetNotice.textContent = error?.message || 'No se pudo avanzar de ejercicio.';
-        }
-      });
-      return;
-    }
-
-    if (target === els.studentRestStartBtn) {
-      startStudentRest();
-      return;
-    }
-
-    if (target === els.studentRestPlusBtn) {
-      const exercise = getStudentExercise();
-      if (!studentUi.restRunning && studentUi.restRemaining <= 0) {
-        studentUi.restRemaining = Number(exercise?.restSeconds || 0);
-      }
-      studentUi.restRemaining = Math.max(0, Number(studentUi.restRemaining || 0) + 15);
-      renderStudentTraining();
-      return;
-    }
-
-    if (target === els.studentRestSkipBtn) {
-      stopStudentRestTimer();
-      studentUi.restRemaining = 0;
-      renderStudentTraining();
-      return;
-    }
-
-    if (target === els.studentBackBtn) {
-      exitStudentMode();
-      return;
-    }
-
-    if (target === els.studentFinalizeBtn) {
-      finalizeStudentSession().catch((error) => {
-        if (els.studentSetNotice) {
-          els.studentSetNotice.textContent = error?.message || 'No se pudo finalizar la sesión.';
-        }
-      });
       return;
     }
 

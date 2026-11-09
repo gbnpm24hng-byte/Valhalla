@@ -871,55 +871,6 @@ button.small {
   gap: 10px;
 }
 
-.student-mode-header,
-.student-exercise-card,
-.student-set-card,
-.student-rest-card {
-  display: grid;
-  gap: 10px;
-}
-
-.student-mode-meta {
-  display: grid;
-  gap: 6px;
-}
-
-#studentExerciseName {
-  font-size: 1.35rem;
-}
-
-#studentWeightInput,
-#studentRepsInput {
-  font-size: 1.3rem;
-  font-weight: 800;
-  min-height: 58px;
-}
-
-#studentSaveSetBtn,
-#studentNextExerciseBtn,
-#studentRestStartBtn,
-#studentFinalizeBtn,
-#studentBackBtn {
-  min-height: 52px;
-}
-
-#studentRestValue {
-  font-size: 1.6rem;
-  font-weight: 800;
-  color: var(--accent);
-}
-
-.student-set-item {
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 10px;
-  background: var(--surface-2);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-}
-
 .training-progress-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1490,10 +1441,6 @@ button.small {
     flex-direction: column;
     align-items: flex-start;
   }
-  .student-set-item {
-    flex-direction: column;
-    align-items: flex-start;
-  }
   .planning-category-grid {
     grid-template-columns: 1fr;
   }
@@ -1527,10 +1474,6 @@ button.small {
   .training-weight-chips {
     display: grid;
     grid-template-columns: 1fr 1fr;
-  }
-  .student-mode-header .section-title {
-    flex-direction: column;
-    align-items: stretch;
   }
   .group-athlete-heading,
   .group-confirm-row { align-items: stretch; flex-direction: column; }
@@ -5180,3 +5123,44 @@ div.pr-notice { display: flex; align-items: center; justify-content: space-betwe
 .today-alert--pay span {
   color: var(--text);
 }
+
+/* v0.9.52: "Vista alumno" del entrenador = vista previa de la app del alumno (solo lectura),
+   encima de la pantalla actual, con la franja "Así lo ve NOMBRE · Volver". */
+body.sv-preview-open { overflow: hidden; }
+.auth-gate.auth-gate--student.sv-preview {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: block;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-top: 0;
+}
+.sv-preview-bar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  max-width: 560px;
+  margin: 0 auto 12px;
+  padding: calc(8px + env(safe-area-inset-top)) 12px 8px;
+  background: #FFCC1A;
+  color: #0E0E0C;
+  border-radius: 0 0 12px 12px;
+  font-size: 0.95rem;
+}
+.sv-preview-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sv-preview-back {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 10px;
+  background: #0E0E0C;
+  color: #F2EEE3;
+  font-weight: 700;
+}
+.sv-preview-body { max-width: 560px; margin: 0 auto; }

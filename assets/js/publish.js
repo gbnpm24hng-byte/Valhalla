@@ -368,5 +368,37 @@
     return Boolean(ctx.busyClientId);
   }
 
-  window.VALHALLA.publish = { renderStatus, publish, isPublished, statusOf, isBusy };
+  // v0.9.52: "Vista alumno" del entrenador. Lee (sin escribir) lo mismo que lee la app del
+  // alumno: sus programas activos publicados y su historial publicado. No lee student_sets.
+  async function loadPreview(clientId) {
+    const ownerId = ctx.ownerId;
+    if (!ownerId || !ctx.online) {
+      return { ok: false, message: 'Para ver lo que ve el alumno, inicia sesión con conexión.' };
+    }
+    const timedOut = { data: null, error: { message: 'timeout', timedOut: true }, status: 0 };
+    try {
+      const [programs, progress] = await Promise.all([
+        withTimeout(
+          client().from('student_programs').select('assignment_id, title, data, published_at')
+            .eq('owner_id', ownerId).eq('client_id', clientId).eq('active', true)
+            .order('published_at', { ascending: false }),
+          timedOut
+        ),
+        withTimeout(
+          client().from('student_progress').select('session_id, session_date, title, data')
+            .eq('owner_id', ownerId).eq('client_id', clientId)
+            .order('session_date', { ascending: false }).limit(60),
+          timedOut
+        )
+      ]);
+      if (programs.error || progress.error) {
+        return { ok: false, message: 'No se pudo consultar lo publicado. Revisa tu conexión e intenta de nuevo.' };
+      }
+      return { ok: true, programs: programs.data || [], progress: progress.data || [] };
+    } catch (error) {
+      return { ok: false, message: 'No se pudo consultar lo publicado. Revisa tu conexión e intenta de nuevo.' };
+    }
+  }
+
+  window.VALHALLA.publish = { renderStatus, publish, isPublished, statusOf, isBusy, loadPreview };
 })();
