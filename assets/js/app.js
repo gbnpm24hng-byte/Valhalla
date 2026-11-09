@@ -26,6 +26,10 @@
   const blocksApi = window.VALHALLA.blocksCore;
   // v0.9.45 · Bloques fase 2: circuitos (circuits-core.js; los guarda blocks-core en day.blocks).
   const circuitsApi = window.VALHALLA.circuitsCore;
+  // v0.9.51 · Período de pago por clases (payment-period-core.js).
+  const periodApi = window.VALHALLA.paymentPeriodCore;
+  // ready: ya se hizo la revisión al abrir (con la nube al día, si hay nube).
+  const paymentCheck = { ready: false };
   // Ejercicio (del programa o hecho en una sesión) por tiempo: measure 'time'.
   function isTimedExercise(exercise) {
     return exercise?.measure === 'time';
@@ -484,12 +488,26 @@
 
   // Siempre guarda el estado en memoria, haya o no sesión iniciada.
   function persist() {
+    // v0.9.51: al guardar (una sesión, una asistencia…) se revisan los períodos de pago, una vez
+    // que ya se hizo la revisión al abrir la app (ver runOpenPaymentCheck).
+    if (paymentCheck.ready) {
+      applyPaymentPeriods();
+    }
     if (supabaseApi && typeof supabaseApi.saveData === 'function') {
       supabaseApi.saveData(state);
     } else {
       dataApi.saveState(state);
     }
     render();
+  }
+
+  // v0.9.51: guardado de una sesión o asistencia (Modo Grupo, circuitos, asistencia de Hoy) que
+  // no pasa por persist(): también revisa los períodos de pago antes de guardar.
+  function saveSessionState() {
+    if (paymentCheck.ready) {
+      applyPaymentPeriods();
+    }
+    dataApi.saveState(state);
   }
 
   function escapeHtml(value) {
@@ -2682,7 +2700,7 @@
       renderTrainingGroupMode();
       return;
     }
-    dataApi.saveState(state);
+    saveSessionState();
     if (isCloudSessionActive()) {
       touched.forEach((session) => syncSessionToCloud(session).catch((error) => console.error(error)));
     }
@@ -3531,13 +3549,17 @@
   // escribieron; una repetición vacía se guarda como "sin dato" (null), nunca 1 ni 0.
   function buildGroupDraftSets(draft, effective) {
     const rir = String(draft.rir ?? '').trim() !== '' && Number.isFinite(Number(draft.rir)) ? Number(draft.rir) : null;
+    // v0.9.51: cada serie lleva su createdAt (antes faltaba y la normalización ponía "ahora",
+    // distinto en cada lectura: la carga desde la nube nunca coincidía).
+    const createdAt = new Date().toISOString();
     const warmups = String(draft.warmups || '').match(/[0-9]+(?:[.,][0-9]+)?/g) || [];
     const sets = warmups.map((weight, index) => ({
       setNumber: index + 1,
       weight: Number(weight.replace(',', '.')),
       reps: null,
       setType: 'A',
-      completed: true
+      completed: true,
+      createdAt
     }));
     effective.forEach((entry, index) => {
       if (entry.seconds !== undefined) {
@@ -3549,7 +3571,8 @@
           seconds: Math.round(Number(entry.seconds)),
           setType: 'S',
           rir: index === effective.length - 1 ? rir : null,
-          completed: true
+          completed: true,
+          createdAt
         });
         return;
       }
@@ -3559,7 +3582,8 @@
         reps: entry.reps === '' ? null : Number(entry.reps),
         setType: 'S',
         rir: index === effective.length - 1 ? rir : null,
-        completed: true
+        completed: true,
+        createdAt
       });
     });
     return sets;
@@ -3743,7 +3767,7 @@
           override.updatedAt = new Date().toISOString();
         });
     }
-    dataApi.saveState(state);
+    saveSessionState();
     if (isCloudSessionActive()) {
       syncSessionToCloud(session).catch((error) => console.error(error));
     }
@@ -9226,6 +9250,16 @@
     document.getElementById('clientSchedule').value = client?.schedule_notes || '';
     document.getElementById('clientSessionsTotal').value = Number(client?.sessions_total ?? 0);
     document.getElementById('clientSessionsUsed').value = Number(client?.sessions_used ?? 0);
+    const classesInput = document.getElementById('clientClassesPerPayment');
+    if (classesInput) {
+      classesInput.value = periodApi?.manualClasses(client) || '';
+      classesInput.placeholder = client && periodApi ? `Automático: ${periodApi.classesForPeriod({}, getClientWeeklyClasses(client)).total}` : 'Automático';
+    }
+    const paidAtInput = document.getElementById('clientPaidAt');
+    if (paidAtInput) {
+      paidAtInput.value = periodApi?.isDate(client?.paidAt) ? client.paidAt : '';
+      paidAtInput.max = getTodayLocalDate();
+    }
     document.getElementById('clientTrainingModality').value = client?.training_modality || 'personalized';
     document.getElementById('clientTrainingGroupSize').value = client?.training_modality === 'group' ? Number(client?.training_group_size || 2) : '';
     document.getElementById('clientStartDate').value = client?.start_date || '';
@@ -9311,6 +9345,12 @@
     if (!Number.isFinite(monthlyValue) || monthlyValue < 0) {
       errors.push('El valor mensual no puede ser negativo');
     }
+    if (periodApi && periodApi.parseManualClasses(payload.classesPerPayment) === undefined) {
+      errors.push(`Clases por pago: un número entero de 1 a ${periodApi.MAX_CLASSES} (o vacío para automático)`);
+    }
+    if (periodApi && periodApi.parseStartDate(payload.paidAt, getTodayLocalDate()) === undefined) {
+      errors.push('Inicio del pago: una fecha válida que no sea futura (o vacío)');
+    }
 
     ['birthDate', 'startDate', 'renewalDate'].forEach((field) => {
       if (!isValidDateInput(payload[field])) {
@@ -9341,8 +9381,30 @@
     const paymentStatus = payload.paymentStatus || 'pending';
     const clientId = existingClient?.id || (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : dataApi.createId('client'));
 
+    // v0.9.51: "Clases por pago" (vacío = automático) e "Inicio del pago" (paidAt). Pasar a Pagado
+    // desde Editar empieza un período como "Marcar pagado" (hoy, o la fecha escrita a mano); dejar
+    // de estar Pagado lo cierra. Si la fecha ya cumplió 28 días o las clases, al guardar vuelve a
+    // Pendiente (lo hace applyPaymentPeriods en persist()).
+    let periodFields = { ...(existingClient || {}) };
+    if (periodApi) {
+      const manual = periodApi.parseManualClasses(payload.classesPerPayment);
+      if (manual) {
+        periodFields.classesPerPayment = manual;
+      } else {
+        delete periodFields.classesPerPayment;
+      }
+      const paidAt = periodApi.startDateFromForm({
+        prevStatus: existingClient?.payment_status || '',
+        prevPaidAt: existingClient?.paidAt,
+        nextStatus: paymentStatus,
+        formDate: String(payload.paidAt || '').trim(),
+        today: getTodayLocalDate()
+      });
+      periodFields = paidAt ? { ...periodFields, paidAt } : periodApi.closePeriod(periodFields);
+    }
+
     return normalizeClientRecord({
-      ...existingClient,
+      ...periodFields,
       id: clientId,
       full_name: fullName,
       name: fullName,
@@ -9388,11 +9450,22 @@
     const text = (value) => String(value ?? '').trim();
     const monthly = Number(client.monthly_value ?? client.amount ?? 0);
     const sessionsTotal = Number(client.sessions_total || 0);
+    // v0.9.51: período de pago ("8 de 12 clases · hasta el 3 dic") y "Clases por pago".
+    const period = getClientPaymentPeriod(client);
+    const periodText = periodApi ? periodApi.describe(period) : '';
+    const periodTone = period.kind === 'no-start' || period.warn ? ' is-warn' : '';
+    const manualClasses = periodApi?.manualClasses(client);
+    const autoClasses = periodApi ? periodApi.classesForPeriod({}, getClientWeeklyClasses(client)) : null;
+    const classesText = !periodApi || client.payment_status === 'not_applicable' ? ''
+      : manualClasses ? `${manualClasses} (a mano)`
+        : `${autoClasses.total} (${autoClasses.source === 'week' ? `${autoClasses.total / 4} por semana × 4` : 'sin dato de clases por semana'})`;
     const fields = [
       ['Servicio', text(client.service)],
       ['Valor mensual', monthly > 0 ? financeApi.formatCurrency(monthly) : ''],
       ['Fecha de renovación', client.renewal_date || client.renewal_day ? getClientRenewalLabel(client) : ''],
       ['Estado de pago', text(getClientStatusLabel(client))],
+      ['Clases del pago', periodText, periodTone],
+      ['Clases por pago', classesText],
       ['Sesiones disponibles', sessionsTotal > 0 ? `${Math.max(0, sessionsTotal - Number(client.sessions_used || 0))}/${sessionsTotal}` : ''],
       ['Estado del cliente', text(getClientPresenceLabel(client))],
       ['Teléfono', text(client.phone)],
@@ -9408,10 +9481,11 @@
       ['Fecha de inicio', client.start_date ? formatClientDate(client.start_date) : '']
     ];
     const filled = fields.filter(([, value]) => value);
-    const missing = fields.filter(([, value]) => !value).map(([label]) => label.toLowerCase());
+    // "Clases del pago" solo aplica a los pagados: no se pide como dato faltante.
+    const missing = fields.filter(([label, value]) => !value && label !== 'Clases del pago').map(([label]) => label.toLowerCase());
     return `
         <div class="client-detail-grid">
-          ${filled.map(([label, value]) => `<div><strong>${escapeHtml(label)}</strong><div class="meta">${escapeHtml(value)}</div></div>`).join('')}
+          ${filled.map(([label, value, tone = '']) => `<div${label === 'Clases del pago' ? ' data-client-period' : ''}><strong>${escapeHtml(label)}</strong><div class="meta${tone ? ` client-period${tone}` : ''}">${escapeHtml(value)}</div></div>`).join('')}
         </div>
         ${missing.length ? `<p class="meta client-detail-missing">Datos por completar: ${escapeHtml(missing.join(', '))}.</p>` : ''}`;
   }
@@ -9467,12 +9541,18 @@
   // Asistencia: días con sesión registrada o asistencia marcada en los últimos 28 días, contra
   // los días que le tocaban según sus días de entrenamiento (hoy cuenta solo si ya entrenó).
   // Récords: fechas de este mes en que la carga máxima de un ejercicio superó todo lo anterior.
+  // Días en que el alumno entrenó: sesiones con trabajo (incluye "Hecho sin datos") y asistencia
+  // marcada en Hoy, sin repetir el mismo día. La usan la ficha y el período de pago.
+  function getClientClassDates(client, today = getTodayLocalDate()) {
+    const sessions = getTrainingSessionsByClient(client.id).filter((session) => session.date && session.date <= today && sessionHasWork(session));
+    const attended = (client.training_attendance || []).filter((entry) => entry && entry.status === 'attended' && entry.date && entry.date <= today);
+    return { sessions, dates: new Set([...sessions.map((session) => session.date), ...attended.map((entry) => entry.date)]) };
+  }
+
   function getClientFichaStats(client) {
     const today = getTodayLocalDate();
     const start = shiftLocalDate(today, -27);
-    const sessions = getTrainingSessionsByClient(client.id).filter((session) => session.date && session.date <= today && sessionHasWork(session));
-    const attended = (client.training_attendance || []).filter((entry) => entry && entry.status === 'attended' && entry.date && entry.date <= today);
-    const allDates = new Set([...sessions.map((session) => session.date), ...attended.map((entry) => entry.date)]);
+    const { sessions, dates: allDates } = getClientClassDates(client, today);
 
     let attendance = '—';
     if (allDates.size) {
@@ -9509,6 +9589,59 @@
       lastSession: lastDate ? formatFichaDate(lastDate) : '—',
       dates: allDates
     };
+  }
+
+  // ---- v0.9.51 · Período de pago por clases ----
+  // Clases por semana del alumno: sus días de entrenamiento (o los del programa) y, si no hay,
+  // las sesiones/semana de la ficha deportiva. 0 = sin dato (el núcleo usa 12).
+  function getClientWeeklyClasses(client) {
+    const weekdays = getClientAgendaWeekdays(client);
+    if (weekdays.length) {
+      return weekdays.length;
+    }
+    return Number(getSportsProfile(client.id)?.sessionsPerWeek || 0);
+  }
+
+  function getClientPaymentPeriod(client, today = getTodayLocalDate()) {
+    if (!periodApi || !client) {
+      return { kind: 'none' };
+    }
+    return periodApi.evaluate(client, { today, perWeek: getClientWeeklyClasses(client), dates: getClientClassDates(client, today).dates });
+  }
+
+  // Revisa a todos los pagados con fecha de inicio: el que terminó su período vuelve a "Pendiente"
+  // (paidAt queda para avisar "su pago venció"). El pagado sin fecha no cambia nunca solo.
+  // Solo cambia payment_status; nunca toca finanzas ni el historial. Devuelve cuántos cambió.
+  function applyPaymentPeriods() {
+    if (!periodApi || !Array.isArray(state.clients)) {
+      return 0;
+    }
+    const today = getTodayLocalDate();
+    const changed = new Map();
+    state.clients = state.clients.map((client) => {
+      if (!client || client.payment_status !== 'paid' || getClientPaymentPeriod(client, today).kind !== 'due') {
+        return client;
+      }
+      const normalized = normalizeClientRecord({ ...client, payment_status: 'pending' });
+      changed.set(normalized.id, normalized);
+      return normalized;
+    });
+    if (changed.size) {
+      clientUi.records = (clientUi.records || []).map((client) => changed.get(client.id) || client);
+    }
+    return changed.size;
+  }
+
+  // Al abrir la app: sin nube, de inmediato; con nube, cuando ya se sabe qué datos valen
+  // (sincronizado, sin conexión, nube caída o sin subir), para no crear un conflicto.
+  function runOpenPaymentCheck() {
+    if (paymentCheck.ready) {
+      return;
+    }
+    paymentCheck.ready = true;
+    if (applyPaymentPeriods()) {
+      persist();
+    }
   }
 
   // Frases que empiezan con "Interno:" (la convención que nunca se publica al alumno), de lo
@@ -10319,6 +10452,10 @@
       const name = escapeHtml(getClientDisplayName(client));
       const dot = getClientDotTone(client);
       const whatsappPhone = normalizeChileanPhoneForWhatsApp(client.phone);
+      // v0.9.51: en los pagados, "8 de 12 clases · hasta el 3 dic" (amarillo si queda poco).
+      const period = client.payment_status === 'paid' ? getClientPaymentPeriod(client) : null;
+      const periodText = period && periodApi ? periodApi.describe(period) : '';
+      const periodTone = period && (period.kind === 'no-start' || period.warn) ? ' is-warn' : '';
       return `
         <article class="client-row" data-client-row="${id}" data-client-card="${id}">
           <button class="client-row-main" type="button" data-client-view="${id}">
@@ -10326,6 +10463,7 @@
             <span class="client-row-text">
               <span class="client-row-name">${name}</span>
               <span class="client-row-sub">${escapeHtml(getClientGroupLabel(client))}</span>
+              ${periodText ? `<span class="client-row-period client-period${periodTone}" data-client-period>${escapeHtml(periodText)}</span>` : ''}
             </span>
           </button>
           ${renderClientPayToggle(client, 'row')}
@@ -10906,13 +11044,21 @@
     }
     clientUi.saving = true;
     try {
-      const nextClient = normalizeClientRecord({ ...existingClient, payment_status: nextStatus });
+      // v0.9.51: "Marcar pagado" empieza un período (paidAt = hoy); "Volver a pendiente" lo cierra.
+      const withPeriod = !periodApi ? existingClient : nextStatus === 'paid'
+        ? periodApi.startPeriod(existingClient, getTodayLocalDate())
+        : periodApi.closePeriod(existingClient);
+      const nextClient = normalizeClientRecord({ ...withPeriod, payment_status: nextStatus });
       await storeClientRecord(nextClient, existingClient, { keepOrder: true });
       // Si el formulario de Editar está abierto para este alumno, que no devuelva el estado anterior.
       if (clientUi.formOpen && clientUi.editingId === clientId) {
         const select = document.getElementById('clientPaymentStatus');
         if (select) {
           select.value = nextStatus;
+        }
+        const paidAtInput = document.getElementById('clientPaidAt');
+        if (paidAtInput) {
+          paidAtInput.value = nextClient.paidAt || '';
         }
       }
       const message = nextStatus === 'paid' ? 'Pago registrado' : 'Pago vuelto a pendiente';
@@ -11324,6 +11470,19 @@
         : '';
       newEl.classList.toggle('hidden', !(lastNew && ids.length));
     }
+    // v0.9.51: "Nombre: le queda 1 clase" · "Nombre: su pago venció" (alumnos activos).
+    const payEl = document.getElementById('todayPaymentNotice');
+    if (payEl) {
+      const items = periodApi ? (state.clients || [])
+        .filter((client) => client && client.client_status === 'active' && client.active !== false)
+        .map((client) => ({ client, text: periodApi.notice(getClientPaymentPeriod(client, todayValue)) }))
+        .filter((item) => item.text) : [];
+      const names = getGroupShortNames(items.map((item) => item.client.id));
+      payEl.innerHTML = items.length
+        ? `<strong>Pagos</strong>${items.map((item, index) => `<span data-today-pay-item="${escapeHtml(item.client.id)}">${escapeHtml(names[index])}: ${escapeHtml(item.text)}</span>`).join('')}`
+        : '';
+      payEl.classList.toggle('hidden', !items.length);
+    }
     const classesEl = document.getElementById('todayClasses');
     if (!classesEl) {
       return;
@@ -11420,7 +11579,7 @@
     if (status !== 'rescheduled') {
       client.sessions_used = Math.min(Number(client.sessions_total || 0), Number(client.sessions_used || 0) + 1);
     }
-    dataApi.saveState(state);
+    saveSessionState();
     render();
   }
 
@@ -14537,6 +14696,17 @@
       return refreshClients();
     })
     .catch(() => {});
+
+  // v0.9.51: revisión de los períodos de pago al abrir la app.
+  if (isCloudMode()) {
+    window.addEventListener('valhalla:sync-status', (event) => {
+      if (['synced', 'offline', 'unavailable', 'notUploaded'].includes(event.detail?.status)) {
+        runOpenPaymentCheck();
+      }
+    });
+  } else {
+    runOpenPaymentCheck();
+  }
 
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./service-worker.js').catch(() => {});

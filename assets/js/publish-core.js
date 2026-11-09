@@ -9,7 +9,9 @@
   const FORBIDDEN_KEYS = [
     'monthly_value', 'payment_status', 'amount', 'renewal_date', 'renewal_day', 'payments',
     'movements', 'accounts', 'phone', 'phone_number', 'email', 'injuries', 'observations',
-    'emergency_contact', 'emergency_phone', 'birth_date', 'avoid_exercises', 'intake_comment'
+    'emergency_contact', 'emergency_phone', 'birth_date', 'avoid_exercises', 'intake_comment',
+    // v0.9.51: período de pago del alumno.
+    'paidAt', 'classesPerPayment'
   ];
 
   // Tipos de serie que acepta la base (student_sets). La app también acepta 'T', pero

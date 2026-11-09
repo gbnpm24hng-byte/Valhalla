@@ -112,6 +112,20 @@
     return window.VALHALLA.appState?.get?.() || dataApi.loadState();
   }
 
+  // Espacio usado por esta app en el navegador (claves + valores; el navegador suele permitir ~5 MB).
+  function storageUsage() {
+    let chars = 0;
+    try {
+      for (let index = 0; index < localStorage.length; index += 1) {
+        const key = localStorage.key(index) || '';
+        chars += key.length + (localStorage.getItem(key) || '').length;
+      }
+    } catch (error) {
+      return 'no se pudo medir';
+    }
+    return `${(chars / 1048576).toFixed(1)} M caracteres`;
+  }
+
   function localStoredRaw() {
     const keys = [dataApi.STORAGE_KEY, ...(dataApi.LEGACY_STORAGE_KEYS || [])];
     for (const key of keys) {
@@ -624,13 +638,27 @@
     const previous = localStoredRaw();
     const nextState = syncCore.applyCloudData(currentLocalState(), row.data);
     try {
-      dataApi.saveState(nextState);
-      // Se compara contra lo mismo normalizado por la app: así se detecta un guardado
-      // fallido sin bloquear por diferencias de forma (p. ej. datos de otra versión).
-      const expected = syncCore.buildCloudPayload(dataApi.importState(JSON.stringify(nextState)));
-      const check = syncCore.compare(syncCore.buildCloudPayload(dataApi.loadState()), expected);
-      if (!check.identical) {
-        throw new Error('Los datos cargados no coinciden con la nube.');
+      try {
+        dataApi.saveState(nextState);
+      } catch (error) {
+        // Almacenamiento del navegador lleno: lo anterior sigue intacto (setItem no escribió).
+        if (/quota|exceed/i.test(`${error?.name || ''} ${error?.message || ''}`)) {
+          throw new Error(`No hay espacio en este equipo para los datos de la nube (${storageUsage()} usados en el navegador).`);
+        }
+        throw error;
+      }
+      // v0.9.51: verificación determinista (sync-core.verifyCloudLoad). 1) Lo escrito es,
+      // tal cual, lo de la nube. 2) Lo que lee la app coincide con lo esperado, salvo los
+      // id/createdAt/updatedAt que la normalización inventa cuando faltan (antes eso hacía
+      // fallar siempre la carga: p. ej. series de Modo Grupo sin createdAt).
+      const result = syncCore.verifyCloudLoad({
+        intended: nextState,
+        storedRaw: localStorage.getItem(dataApi.STORAGE_KEY),
+        loaded: dataApi.loadState(),
+        expected: dataApi.importState(JSON.stringify(nextState))
+      });
+      if (!result.ok) {
+        throw new Error(`Los datos cargados no coinciden con la nube: ${result.reason}.`);
       }
       writeMeta(ownerId, row);
     } catch (error) {

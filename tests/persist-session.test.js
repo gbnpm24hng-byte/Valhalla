@@ -74,11 +74,16 @@ test('persist() con sesión activa guarda en localStorage los cambios en memoria
     dataApi,
     supabaseApi: { saveData: (data) => dataApi.saveState(data) },
     cloudUi: { sessionActive: true, ownerId: 'falso-owner', authUserId: 'falso-owner' },
-    render: () => { renders += 1; }
+    render: () => { renders += 1; },
+    // v0.9.51: la revisión de pagos corre dentro de persist(); aquí solo se cuenta que se llamó.
+    paymentCheck: { ready: true },
+    applyPaymentPeriods: () => { paymentChecks += 1; return 0; }
   });
+  let paymentChecks = 0;
 
   applyMemoryChanges(state);
   persist();
+  assert.equal(paymentChecks, 1);
 
   assertChangesPresent(state, 'memoria');
   assertChangesPresent(dataApi.loadState(), 'localStorage');

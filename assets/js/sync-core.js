@@ -162,6 +162,99 @@
     };
   }
 
+  // v0.9.51 · Rutas que difieren entre dos datos (índices como [], sin valores: no muestran
+  // nombres, correos ni montos). Devuelve [{ path, count }] ordenado por cantidad.
+  function diffPaths(first, second) {
+    const counts = new Map();
+    const add = (path) => counts.set(path || '(raíz)', (counts.get(path || '(raíz)') || 0) + 1);
+    const visit = (a, b, path) => {
+      if (canonicalize(a) === canonicalize(b)) {
+        return;
+      }
+      if (Array.isArray(a) && Array.isArray(b)) {
+        if (a.length !== b.length) {
+          add(`${path}.length`);
+        }
+        for (let index = 0; index < Math.min(a.length, b.length); index += 1) {
+          visit(a[index], b[index], `${path}[]`);
+        }
+        return;
+      }
+      const isObject = (value) => value && typeof value === 'object' && !Array.isArray(value);
+      if (isObject(a) && isObject(b)) {
+        new Set([...Object.keys(a), ...Object.keys(b)]).forEach((key) => {
+          if (a[key] === undefined && b[key] === undefined) {
+            return;
+          }
+          visit(a[key], b[key], path ? `${path}.${key}` : key);
+        });
+        return;
+      }
+      add(path);
+    };
+    visit(first, second, '');
+    return [...counts.entries()].map(([path, count]) => ({ path, count })).sort((x, y) => y.count - x.count || x.path.localeCompare(y.path));
+  }
+
+  // Campos que la normalización inventa cuando faltan (id nuevo, fecha de "ahora"): normalizar dos
+  // veces el mismo dato los deja distintos aunque el contenido sea el mismo.
+  const GENERATED_FIELDS = ['id', 'createdAt', 'updatedAt'];
+  const isGeneratedPath = (path) => GENERATED_FIELDS.includes(String(path).split('.').pop());
+
+  function describeDiffPaths(paths, max = 5) {
+    if (!paths.length) {
+      return '';
+    }
+    const shown = paths.slice(0, max).map((item) => `${item.path}${item.count > 1 ? ` (×${item.count})` : ''}`);
+    return shown.join(', ') + (paths.length > max ? ` y ${paths.length - max} más` : '');
+  }
+
+  // Verificación de "reemplazar este equipo con la nube". Dos pasos, ambos deterministas:
+  //  1) lo escrito en el equipo (storedRaw, tal cual) es lo que se quiso escribir (intended);
+  //  2) lo que lee la app (loaded = loadState) coincide con lo esperado (expected = importState del
+  //     mismo dato), salvo los campos que la normalización inventa (GENERATED_FIELDS).
+  // Devuelve { ok, reason, tolerated } — reason dice qué difiere (rutas y conteos, sin valores).
+  function verifyCloudLoad({ intended, storedRaw, loaded, expected }) {
+    if (storedRaw === null || storedRaw === undefined) {
+      return { ok: false, reason: 'no quedó nada guardado en este equipo' };
+    }
+    let stored;
+    try {
+      stored = JSON.parse(storedRaw);
+    } catch (error) {
+      return { ok: false, reason: 'lo guardado en este equipo quedó dañado (no se puede leer)' };
+    }
+    const intendedPayload = buildCloudPayload(intended);
+    const storedPayload = buildCloudPayload(stored);
+    if (canonicalize(storedPayload) !== canonicalize(intendedPayload)) {
+      return { ok: false, reason: `lo guardado en este equipo no es lo de la nube (difiere: ${describeDiffPaths(diffPaths(storedPayload, intendedPayload))})` };
+    }
+    const loadedPayload = buildCloudPayload(loaded);
+    const expectedPayload = buildCloudPayload(expected);
+    const check = compare(loadedPayload, expectedPayload);
+    if (check.identical) {
+      return { ok: true, reason: '', tolerated: [] };
+    }
+    const problems = [];
+    if (!check.keysMatch) {
+      problems.push(`claves ${[...check.missingInCloud, ...check.extraInCloud].join(', ')}`);
+    }
+    if (check.countDifferences.length) {
+      const loadedSummary = summarize(loadedPayload);
+      const expectedSummary = summarize(expectedPayload);
+      problems.push(check.countDifferences.map((field) => `${field} ${loadedSummary[field]} en vez de ${expectedSummary[field]}`).join(', '));
+    }
+    const paths = diffPaths(loadedPayload, expectedPayload);
+    const real = paths.filter((item) => !isGeneratedPath(item.path));
+    if (real.length) {
+      problems.push(`difiere: ${describeDiffPaths(real)}`);
+    }
+    if (problems.length) {
+      return { ok: false, reason: `lo que lee la app no coincide (${problems.join('; ')})` };
+    }
+    return { ok: true, reason: '', tolerated: paths };
+  }
+
   // Quita lo que cambia entre dos estados de fábrica aunque el contenido sea el mismo:
   // ids aleatorios, fechas de creación y campos vacíos ('' frente a ausente).
   function stripVolatile(value) {
@@ -307,7 +400,7 @@
   // guarda nada en la nube. Debe coincidir con el encabezado (index.html) y la caché
   // (service-worker.js); lo revisa tests/version-lock.test.js.
   // ---------------------------------------------------------------------------
-  const APP_VERSION = '0.9.50';
+  const APP_VERSION = '0.9.51';
   const APP_VERSION_KEY = 'appVersion';
 
   // -1, 0 o 1 comparando "0.9.16" con "0.9.9" por partes numéricas. Lo que no es una
@@ -384,6 +477,9 @@
     fingerprint,
     summarize,
     compare,
+    diffPaths,
+    describeDiffPaths,
+    verifyCloudLoad,
     decideSyncAction,
     applyCloudData
   };

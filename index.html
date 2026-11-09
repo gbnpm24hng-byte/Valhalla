@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Bebas+Neue&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <title>VALHALLA</title>
-  <link rel="stylesheet" href="./assets/css/styles.css?v=0.9.50">
+  <link rel="stylesheet" href="./assets/css/styles.css?v=0.9.51">
 </head>
 <!-- Clase "solo-entrenamientos": oculta Inicio, Registrar (finanzas) y Nutrición sin borrarlos. Quitarla los vuelve a mostrar. -->
 <body class="solo-entrenamientos">
@@ -31,7 +31,7 @@
       <div class="header-actions">
         <span class="user-pill">Usuario</span>
         <span class="badge" id="cloudModeBadge">Modo Local</span>
-        <span class="badge">v0.9.50</span>
+        <span class="badge">v0.9.51</span>
       </div>
     </header>
 
@@ -306,6 +306,18 @@
           </div>
           <div class="row">
             <div>
+              <label for="clientClassesPerPayment">Clases por pago</label>
+              <input id="clientClassesPerPayment" name="classesPerPayment" type="number" min="1" max="99" step="1" inputmode="numeric" placeholder="Automático">
+              <p class="meta">Vacío: clases por semana × 4 (12 si no hay dato). El pago vuelve a Pendiente al usarlas o a los 28 días.</p>
+            </div>
+            <div>
+              <label for="clientPaidAt">Inicio del pago</label>
+              <input id="clientPaidAt" name="paidAt" type="date">
+              <p class="meta">Se llena con hoy al marcar pagado; corrígela si te pagó otro día. Solo cuenta con el estado Pagado.</p>
+            </div>
+          </div>
+          <div class="row">
+            <div>
               <label for="clientTrainingModality">Modalidad</label>
               <select id="clientTrainingModality" name="trainingModality">
                 <option value="personalized">Personalizado</option>
@@ -401,6 +413,7 @@
         </div>
         <div id="todayInactiveNotice" class="today-alert today-alert--bad hidden" role="status" data-today-inactive></div>
         <div id="todayNewSetsNotice" class="today-alert today-alert--new hidden" role="status" data-today-new></div>
+        <div id="todayPaymentNotice" class="today-alert today-alert--pay hidden" role="status" data-today-pay></div>
         <div id="todayClasses" class="today-classes"></div>
 
         <!-- Lo que estaba en Hoy y no entra en la pantalla nueva: plegado, sin cambios. -->
@@ -1196,38 +1209,39 @@
     </div>
   </nav>
 
-  <script src="./assets/js/config.js?v=0.9.50"></script>
+  <script src="./assets/js/config.js?v=0.9.51"></script>
   <!-- supabase-js fijado a una versión exacta; integrity = SHA-384 del archivo publicado en npm -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js" integrity="sha384-Rj26LVGvoeRVR6+mwQmFfcR3QOBEwT+ZmuCWpuiqeTzJpCs0ER4ITAWGb4Hiy3Ok" crossorigin="anonymous"></script>
-  <script src="./assets/js/circuits-core.js?v=0.9.50"></script>
-  <script src="./assets/js/blocks-core.js?v=0.9.50"></script>
-  <script src="./assets/js/monthly-card-core.js?v=0.9.50"></script>
-  <script src="./assets/js/data.js?v=0.9.50"></script>
-  <script src="./assets/js/supabase.js?v=0.9.50"></script>
-  <script src="./assets/js/auth.js?v=0.9.50"></script>
-  <script src="./assets/js/invite-core.js?v=0.9.50"></script>
-  <script src="./assets/js/cloud-data.js?v=0.9.50"></script>
-  <script src="./assets/js/finance.js?v=0.9.50"></script>
-  <script src="./assets/js/qrcode-generator.js?v=0.9.50"></script>
-  <script src="./assets/js/onboarding.js?v=0.9.50"></script>
-  <script src="./assets/js/sync-core.js?v=0.9.50"></script>
-  <script src="./assets/js/cloud-sync.js?v=0.9.50"></script>
-  <script src="./assets/js/client-overrides-core.js?v=0.9.50"></script>
-  <script src="./assets/js/muscle-map-core.js?v=0.9.50"></script>
-  <script src="./assets/js/publish-core.js?v=0.9.50"></script>
-  <script src="./assets/js/publish.js?v=0.9.50"></script>
-  <script src="./assets/js/invites.js?v=0.9.50"></script>
-  <script src="./assets/js/self-log-core.js?v=0.9.50"></script>
-  <script src="./assets/js/student-view.js?v=0.9.50"></script>
-  <script src="./assets/js/auth-gate.js?v=0.9.50"></script>
-  <script src="./assets/js/labels.js?v=0.9.50"></script>
-  <script src="./assets/js/student-import-core.js?v=0.9.50"></script>
-  <script src="./assets/js/coach-sets-core.js?v=0.9.50"></script>
-  <script src="./assets/js/group-draft-core.js?v=0.9.50"></script>
-  <script src="./assets/js/group-round-core.js?v=0.9.50"></script>
-  <script src="./assets/js/program-import-core.js?v=0.9.50"></script>
-  <script src="./assets/js/settings-core.js?v=0.9.50"></script>
-  <script src="./assets/js/monthly-card.js?v=0.9.50"></script>
-  <script src="./assets/js/app.js?v=0.9.50"></script>
+  <script src="./assets/js/circuits-core.js?v=0.9.51"></script>
+  <script src="./assets/js/blocks-core.js?v=0.9.51"></script>
+  <script src="./assets/js/monthly-card-core.js?v=0.9.51"></script>
+  <script src="./assets/js/data.js?v=0.9.51"></script>
+  <script src="./assets/js/supabase.js?v=0.9.51"></script>
+  <script src="./assets/js/auth.js?v=0.9.51"></script>
+  <script src="./assets/js/invite-core.js?v=0.9.51"></script>
+  <script src="./assets/js/cloud-data.js?v=0.9.51"></script>
+  <script src="./assets/js/finance.js?v=0.9.51"></script>
+  <script src="./assets/js/qrcode-generator.js?v=0.9.51"></script>
+  <script src="./assets/js/onboarding.js?v=0.9.51"></script>
+  <script src="./assets/js/sync-core.js?v=0.9.51"></script>
+  <script src="./assets/js/cloud-sync.js?v=0.9.51"></script>
+  <script src="./assets/js/client-overrides-core.js?v=0.9.51"></script>
+  <script src="./assets/js/muscle-map-core.js?v=0.9.51"></script>
+  <script src="./assets/js/publish-core.js?v=0.9.51"></script>
+  <script src="./assets/js/publish.js?v=0.9.51"></script>
+  <script src="./assets/js/invites.js?v=0.9.51"></script>
+  <script src="./assets/js/self-log-core.js?v=0.9.51"></script>
+  <script src="./assets/js/student-view.js?v=0.9.51"></script>
+  <script src="./assets/js/auth-gate.js?v=0.9.51"></script>
+  <script src="./assets/js/labels.js?v=0.9.51"></script>
+  <script src="./assets/js/student-import-core.js?v=0.9.51"></script>
+  <script src="./assets/js/coach-sets-core.js?v=0.9.51"></script>
+  <script src="./assets/js/group-draft-core.js?v=0.9.51"></script>
+  <script src="./assets/js/group-round-core.js?v=0.9.51"></script>
+  <script src="./assets/js/program-import-core.js?v=0.9.51"></script>
+  <script src="./assets/js/settings-core.js?v=0.9.51"></script>
+  <script src="./assets/js/monthly-card.js?v=0.9.51"></script>
+  <script src="./assets/js/payment-period-core.js?v=0.9.51"></script>
+  <script src="./assets/js/app.js?v=0.9.51"></script>
 </body>
 </html>

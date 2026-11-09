@@ -5162,3 +5162,21 @@ div.pr-notice { display: flex; align-items: center; justify-content: space-betwe
 .mc-sent { margin: 10px 0 0; color: var(--mc-green); font-weight: 700; text-align: center; }
 .mc-notice:empty { display: none; }
 .mc-notice { margin-top: 10px; }
+
+/* v0.9.51: período de pago por clases ("8 de 12 clases · hasta el 3 dic"); amarillo si queda poco. */
+.client-row-period {
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+.client-period.is-warn {
+  color: var(--sv-accent);
+  font-weight: 700;
+}
+.today-alert--pay {
+  background: rgba(255, 204, 26, 0.1);
+  border-color: rgba(255, 204, 26, 0.45);
+  color: var(--accent);
+}
+.today-alert--pay span {
+  color: var(--text);
+}

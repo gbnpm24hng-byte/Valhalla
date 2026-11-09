@@ -10,6 +10,9 @@ Guarda primero en localStorage y sincroniza con Supabase (coach_state + tablas d
 - config.js — Project URL y clave publishable (lo único público permitido).
 - supabase.js, auth.js — cliente de Supabase y sesión. auth-gate.js — pantalla de acceso, roles coach/student, modo sin conexión.
 - sync-core.js, cloud-sync.js — qué se sube (lista cerrada, sin finanzas) y guardado automático con versión y conflictos.
+  Ojo: importState/loadState NO son idempotentes (inventan id/createdAt/updatedAt si faltan; p. ej. series de
+  Modo Grupo sin createdAt). Para verificar una carga desde la nube usar syncCore.verifyCloudLoad (lo escrito
+  tal cual + lo leído salvo esos campos), nunca comparar dos normalizaciones con compare().identical.
 - publish-core.js, publish.js — "Publicar al alumno" (copia campo por campo desde una lista cerrada).
 - student-view.js — vista de alumno de solo lectura.
 - labels.js — tabla única de etiquetas en español y categorías del armador.
@@ -35,6 +38,11 @@ Guarda primero en localStorage y sincroniza con Supabase (coach_state + tablas d
   Nueva invitación, Anular, Quitar acceso = client_links.active=false). El alumno crea su cuenta con código en
   auth-gate.js ("Tengo un código"). Nube: supabase/b4_invitaciones.sql (solo agrega); sin ese SQL "Invitar" avisa.
   El código nunca se guarda en texto (solo su hash en la nube) ni entra al estado local.
+- payment-period-core.js — v0.9.51: período de pago por clases. "Marcar pagado" guarda paidAt = hoy; el pago vuelve
+  solo a Pendiente al usar las clases (classesPerPayment a mano o clases por semana × 4; 12 sin dato) o a los 28 días.
+  Revisión al abrir (con la nube al día) y al guardar (persist y saveSessionState en app.js). paidAt y classesPerPayment
+  suben con los alumnos en coach_state; nunca se publican. Pagado sin paidAt = "sin fecha de inicio" y nunca cambia
+  solo (no se deduce de finanzas). En Editar, "Inicio del pago" corrige paidAt a mano (startDateFromForm).
 - onboarding.js — formulario público de ingreso (?onboarding=1), sin login.
 - cloud-data.js — capa de tablas antiguas, desactivada. supabase/ — migración A0 y prueba de RLS (SQL);
   B4: b4_invitaciones.sql, b4_invitaciones_deshacer.sql y b4_prueba_invitaciones.sql (36 pruebas, todo se deshace).
