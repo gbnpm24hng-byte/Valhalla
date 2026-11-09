@@ -5191,3 +5191,14 @@ body.sv-preview-open { overflow: hidden; }
 .today-class-pains { display: grid; gap: 4px; }
 .today-class-pain { margin: 0; color: var(--warn); font-size: 0.9rem; overflow-wrap: anywhere; }
 .client-ficha-pain { border-left-color: var(--warn); }
+
+/* ---- v0.9.54 · "Puede anotar sus series" (client_links.can_self_log) ---- */
+.client-selflog { display: grid; gap: 4px; margin: 8px 0; }
+.client-selflog-switch { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 48px; padding: 0; border: 0; background: none; color: var(--text); font-weight: 600; font-size: 0.98rem; text-align: left; cursor: pointer; }
+.client-selflog-switch:disabled { opacity: 0.55; cursor: default; }
+.client-selflog-track { position: relative; flex: 0 0 auto; width: 48px; height: 28px; border-radius: 999px; background: var(--surface-soft); border: 1px solid var(--border); transition: background 0.15s; }
+.client-selflog-knob { position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: var(--muted); transition: transform 0.15s, background 0.15s; }
+.client-selflog-switch.is-on .client-selflog-track { background: var(--sv-green); border-color: var(--sv-green); }
+.client-selflog-switch.is-on .client-selflog-knob { transform: translateX(20px); background: #fff; }
+.client-selflog-label { min-width: 0; overflow-wrap: anywhere; }
+.client-selflog-help { margin: 0; font-size: 0.8rem; }

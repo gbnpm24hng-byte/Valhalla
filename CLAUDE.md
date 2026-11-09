@@ -43,6 +43,9 @@ Guarda primero en localStorage y sincroniza con Supabase (coach_state + tablas d
   Nueva invitación, Anular, Quitar acceso = client_links.active=false). El alumno crea su cuenta con código en
   auth-gate.js ("Tengo un código"). Nube: supabase/b4_invitaciones.sql (solo agrega); sin ese SQL "Invitar" avisa.
   El código nunca se guarda en texto (solo su hash en la nube) ni entra al estado local.
+  v0.9.54: con cuenta activa, interruptor "Puede anotar sus series" = update solo de client_links.can_self_log
+  (owner_id = coach, client_id, active = true; lo permite client_links_coach_all). Prender pide confirmación; si falla
+  vuelve al estado anterior con aviso. selfLogLabel() da "puede anotar" / "solo ver" a la franja de "Vista alumno".
 - payment-period-core.js — v0.9.51: período de pago por clases. "Marcar pagado" guarda paidAt = hoy; el pago vuelve
   solo a Pendiente al usar las clases (classesPerPayment a mano o clases por semana × 4; 12 sin dato) o a los 28 días.
   Revisión al abrir (con la nube al día) y al guardar (persist y saveSessionState en app.js). paidAt y classesPerPayment

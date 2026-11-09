@@ -25,7 +25,7 @@
     loadError: '',
     loadedAt: 0,
     missing: false, // la nube aún no tiene la tabla o las funciones de invitaciones
-    links: new Map(), // client_id -> { email }
+    links: new Map(), // client_id -> { email, canSelfLog } (canSelfLog leído de la nube)
     invites: [], // pendientes (sin usar ni anular)
     fresh: new Map(), // client_id -> { inviteId, code, expiresAt }: solo en memoria, el código se ve una vez
     notices: new Map(), // client_id -> { text, tone }
@@ -72,7 +72,7 @@
     }
     ctx.loadedAt = Date.now();
     const [links, invites, emails] = await Promise.all([
-      withTimeout(client().from('client_links').select('client_id').eq('owner_id', ownerId).eq('active', true)),
+      withTimeout(client().from('client_links').select('client_id, can_self_log').eq('owner_id', ownerId).eq('active', true)),
       withTimeout(client().from('student_invites').select('id, client_id, expires_at, used_at, revoked_at, created_at')
         .eq('owner_id', ownerId).is('used_at', null).is('revoked_at', null)),
       withTimeout(client().rpc('coach_student_accounts'))
@@ -87,7 +87,7 @@
       return;
     }
     const emailByClient = new Map(emails.error ? [] : (emails.data || []).map((row) => [row.client_id, row.email || '']));
-    ctx.links = new Map((links.data || []).map((row) => [row.client_id, { email: emailByClient.get(row.client_id) || '' }]));
+    ctx.links = new Map((links.data || []).map((row) => [row.client_id, { email: emailByClient.get(row.client_id) || '', canSelfLog: row.can_self_log === true }]));
     if (invites.error) {
       ctx.missing = core.isMissingCloudError(invites.error, invites.status);
       ctx.invites = [];
@@ -150,10 +150,18 @@
       body = `<p class="meta">No se pudo consultar la cuenta (${escapeHtml(ctx.loadError)}).</p><button class="auth-link" type="button" data-invite-reload ${attrs}>Reintentar</button>`;
     } else if (state === 'linked') {
       const email = ctx.links.get(clientId)?.email || '';
+      const canSelfLog = ctx.links.get(clientId)?.canSelfLog === true;
       const published = window.VALHALLA.publish?.isPublished?.(clientId);
       body = `
         <p class="client-account-status ok" data-invite-state="linked">Cuenta activa${email ? ` <span class="meta">· ${escapeHtml(email)}</span>` : ''}</p>
         ${published === false ? '<p class="warn" data-invite-publish-reminder>Publica su programa: sin programa publicado, el alumno ve la pantalla vacía.</p>' : ''}
+        <div class="client-selflog">
+          <button class="client-selflog-switch${canSelfLog ? ' is-on' : ''}" type="button" role="switch" aria-checked="${canSelfLog}" data-invite-selflog ${attrs} ${busy ? 'disabled' : ''}>
+            <span class="client-selflog-track" aria-hidden="true"><span class="client-selflog-knob"></span></span>
+            <span class="client-selflog-label">Puede anotar sus series</span>
+          </button>
+          <p class="meta client-selflog-help">Apagado: ve su rutina y tú anotas en clase. Prendido: anota sus series desde su teléfono.</p>
+        </div>
         <button class="auth-link client-account-danger" type="button" data-invite-unlink ${attrs} ${busy ? 'disabled' : ''}>Quitar acceso</button>`;
     } else if (state === 'pending') {
       const shown = fresh && fresh.inviteId === pending.id ? fresh : null;
@@ -263,6 +271,83 @@
     }
   }
 
+  // v0.9.54: "Puede anotar sus series" = client_links.can_self_log. Solo esa columna, solo el
+  // vínculo activo de ese alumno y de este entrenador. Si la escritura falla, queda como estaba
+  // (con aviso); si resulta, se vuelve a leer la nube para mostrar el estado real.
+  async function setSelfLog(clientId, value) {
+    const link = ctx.links.get(clientId);
+    if (!link) {
+      return false;
+    }
+    const before = link.canSelfLog === true;
+    ctx.busyClientId = clientId;
+    setNotice(clientId, '');
+    notifyChanged();
+    let ok = false;
+    try {
+      const result = await withTimeout(client().from('client_links').update({ can_self_log: value })
+        .eq('owner_id', ctx.ownerId).eq('client_id', clientId).eq('active', true)
+        .select('client_id, can_self_log'));
+      const rows = Array.isArray(result.data) ? result.data : null;
+      if (result.error || (rows && !rows.length)) {
+        link.canSelfLog = before;
+        const what = before ? 'Sigue prendido.' : 'Sigue apagado.';
+        setNotice(clientId, result.error
+          ? `${isUnavailable(result) ? 'El servidor no respondió.' : 'No se pudo cambiar el permiso.'} ${what}`
+          : `No se encontró su cuenta activa. ${what}`, 'warn');
+        return false;
+      }
+      link.canSelfLog = rows ? rows[0].can_self_log === true : value;
+      setNotice(clientId, link.canSelfLog ? 'Listo: ahora puede anotar sus series desde su teléfono.' : 'Listo: ahora solo ve su rutina; tú anotas en clase.', 'ok');
+      ok = true;
+      return true;
+    } finally {
+      ctx.busyClientId = '';
+      notifyChanged();
+      if (ok) {
+        ctx.loadedAt = 0;
+        load();
+      }
+    }
+  }
+
+  // Para la franja de "Vista alumno": 'puede anotar', 'solo ver' o '' (si aún no se sabe).
+  function selfLogLabel(clientId) {
+    if (!ctx.loaded) {
+      return '';
+    }
+    return ctx.links.get(clientId)?.canSelfLog === true ? 'puede anotar' : 'solo ver';
+  }
+
+  function confirmSelfLog(clientId, name) {
+    closeModal();
+    const overlay = document.createElement('div');
+    overlay.id = 'inviteModal';
+    overlay.className = 'sync-modal';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.innerHTML = `
+      <div class="sync-modal-card card">
+        <h2>Puede anotar sus series</h2>
+        <p><strong>${escapeHtml(name || 'Este alumno')}</strong> podrá anotar sus series desde su teléfono.</p>
+        <p class="muted">Lo que anote lo ves en Modo Grupo y lo puedes corregir. Puedes apagarlo cuando quieras.</p>
+        <div class="inline-actions">
+          <button class="secondary" type="button" data-invite-modal-cancel>Cancelar</button>
+          <button class="primary" type="button" data-invite-modal-confirm>Prender</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    overlay.querySelector('[data-invite-modal-cancel]').addEventListener('click', closeModal);
+    overlay.querySelector('[data-invite-modal-confirm]').addEventListener('click', async (event) => {
+      const button = event.currentTarget;
+      button.disabled = true;
+      button.textContent = 'Guardando…';
+      await setSelfLog(clientId, true);
+      closeModal();
+    });
+    overlay.querySelector('[data-invite-modal-cancel]').focus();
+  }
+
   function closeModal() {
     document.getElementById('inviteModal')?.remove();
   }
@@ -337,6 +422,13 @@
       revokeInvite(clientId, button.getAttribute('data-invite-revoke'));
     } else if (button.hasAttribute('data-invite-unlink')) {
       confirmUnlink(clientId, name);
+    } else if (button.hasAttribute('data-invite-selflog')) {
+      // Prender pide confirmación; apagar se aplica directo.
+      if (ctx.links.get(clientId)?.canSelfLog === true) {
+        setSelfLog(clientId, false);
+      } else {
+        confirmSelfLog(clientId, name);
+      }
     } else if (button.hasAttribute('data-invite-reload')) {
       ctx.loadError = '';
       notifyChanged();
@@ -384,5 +476,5 @@
     closeModal();
   });
 
-  window.VALHALLA.invites = { renderSection, refresh };
+  window.VALHALLA.invites = { renderSection, refresh, selfLogLabel };
 })();

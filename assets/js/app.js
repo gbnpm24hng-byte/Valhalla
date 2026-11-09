@@ -8780,10 +8780,12 @@
     overlay.className = 'auth-gate auth-gate--student sv-preview';
     overlay.setAttribute('role', 'dialog');
     overlay.setAttribute('aria-modal', 'true');
-    overlay.setAttribute('aria-label', `Así lo ve ${firstName}`);
+    // v0.9.54: "· puede anotar" o "· solo ver" según client_links.can_self_log (la vista sigue de solo lectura).
+    const permission = window.VALHALLA.invites?.selfLogLabel?.(clientId) || '';
+    overlay.setAttribute('aria-label', `Así lo ve ${firstName}${permission ? ` · ${permission}` : ''}`);
     overlay.innerHTML = `
       <div class="sv-preview-bar" data-sv-preview-bar>
-        <span class="sv-preview-label">Así lo ve <strong>${escapeHtml(firstName)}</strong></span>
+        <span class="sv-preview-label">Así lo ve <strong>${escapeHtml(firstName)}</strong>${permission ? ` <span data-sv-preview-permission>· ${escapeHtml(permission)}</span>` : ''}</span>
         <button class="sv-preview-back" type="button" data-sv-preview-back>Volver</button>
       </div>
       <div class="sv-preview-body" data-sv-preview-body><p class="sv-meta sv-loading">Cargando lo publicado…</p></div>`;
