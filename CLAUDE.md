@@ -20,6 +20,9 @@ Guarda primero en localStorage y sincroniza con Supabase (coach_state + tablas d
 - labels.js — tabla única de etiquetas en español y categorías del armador.
 - client-overrides-core.js — cambios de ejercicio de UN alumno (Modo Grupo: "Solo hoy" / "De aquí en adelante"),
   guardados en trainingsV08.clientOverrides y aplicados encima de su asignación (nunca tocan el programa común).
+- swap-reason-core.js — v0.9.53: motivo opcional del cambio, override.reason = { kind: pain|busy|other, zones?, side?, note? }
+  (sube en coach_state, nunca se publica), textos (tarjeta, Historial/Progreso, Hoy, Ficha), reemplazos sugeridos de la
+  misma zona (muscle-map-core.js) y CAUTION_BY_ZONE = única lista de ejercicios que van "al final" según la molestia.
 - group-draft-core.js — borrador de Modo Grupo (lo escrito sin confirmar), solo en el teléfono:
   clave propia valhalla_group_draft:<cuenta>, fuera del estado; no sube a la nube ni sale en respaldos.
 - group-round-core.js — Modo Grupo compacto v2: series hechas (peso y reps), −/+ (2,5 kg / 1 rep), coma decimal,

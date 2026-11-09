@@ -138,7 +138,9 @@
   }
 
   // Arma el registro del cambio. replaced: ejercicio efectivo que se cambia (o null al agregar).
-  function createOverride({ createId, now, client, assignment, day, kind, scope, date, libraryExercise, values, replaced }) {
+  // v0.9.53: reason (opcional, ya normalizado por swap-reason-core.js) = motivo del cambio;
+  // solo en un reemplazo. Sin motivo el registro es el mismo de siempre (sin la clave).
+  function createOverride({ createId, now, client, assignment, day, kind, scope, date, libraryExercise, values, replaced, reason }) {
     if (!KINDS.includes(kind) || !SCOPES.includes(scope)) {
       throw new Error('Cambio de ejercicio inválido');
     }
@@ -169,6 +171,7 @@
         restSeconds: Number(replaced?.restSeconds || 90),
         notes: ''
       },
+      ...(kind === 'replace' && reason && typeof reason === 'object' && reason.kind ? { reason } : {}),
       createdAt: timestamp,
       updatedAt: timestamp
     };

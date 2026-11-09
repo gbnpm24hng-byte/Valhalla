@@ -18,6 +18,8 @@
   const coachSetsApi = window.VALHALLA.coachSetsCore;
   // Cambios de ejercicio de un alumno, aparte de su programa (client-overrides-core.js).
   const overridesApi = window.VALHALLA.clientOverrides;
+  // v0.9.53: motivo del cambio (molestia, máquina ocupada, otro) y reemplazos sugeridos (swap-reason-core.js).
+  const swapReasonApi = window.VALHALLA.swapReason;
   // Borrador de Modo Grupo guardado solo en este teléfono (group-draft-core.js).
   const groupDraftApi = window.VALHALLA.groupDraftCore;
   // Modo Grupo compacto v2: series hechas, rotación entre alumnos y cierre de ronda (group-round-core.js).
@@ -1423,6 +1425,7 @@
           <button class="secondary small" type="button" data-group-history-step="newer" ${attrs} ${index <= 0 ? 'disabled' : ''} aria-label="Sesión más reciente">▶</button>
         </div>
         <p class="meta group-history-readonly">Solo lectura</p>
+        ${getSessionSwapReasons(clientId, session.date).map((item) => `<p class="meta group-history-reason" data-group-history-reason>${escapeHtml(item.text)} · ${escapeHtml(item.swap)}</p>`).join('')}
         <ul class="group-history-list">${exercises}</ul>
         <button class="primary small" type="button" data-group-history-today ${attrs}>Volver a hoy</button>
       </div>`;
@@ -1447,10 +1450,138 @@
       sets: String(target ? getGroupPlannedSets(target) : 3),
       reps: target && getGroupRepsLabel(target) !== 'reps por definir' ? getGroupRepsLabel(target) : '',
       weight: '',
-      error: ''
+      error: '',
+      // v0.9.53: motivo opcional del cambio (solo al cambiar, no al agregar).
+      reason: { kind: '', zones: [], side: '', note: '' }
     };
     delete groupSessionUi.clientNotices[clientId];
     renderTrainingGroupMode();
+  }
+
+  // ---- v0.9.53 · Motivo del cambio y reemplazos sugeridos (swap-reason-core.js) ----
+
+  // Motivo elegido en el selector, ya normalizado (null = sin motivo).
+  function getGroupPickerReason(picker) {
+    return swapReasonApi && picker?.mode === 'replace' ? swapReasonApi.normalizeReason(picker.reason) : null;
+  }
+
+  function findClientOverride(overrideId) {
+    return overrideId ? getClientOverrides().find((item) => item.id === overrideId) || null : null;
+  }
+
+  // Etiqueta "Molestia: rodilla der." de un ejercicio cambiado, mientras dure el cambio.
+  function renderGroupReasonTag(planExercise) {
+    const override = planExercise?.overrideId && swapReasonApi ? findClientOverride(planExercise.overrideId) : null;
+    const text = override ? swapReasonApi.tagText(override.reason) : '';
+    return text ? `<span class="tag warn group-reason-tag" data-group-reason-tag>${escapeHtml(text)}</span>` : '';
+  }
+
+  // Cambios con motivo hechos ese día para el alumno (Historial y Progreso).
+  function getSessionSwapReasons(clientId, date) {
+    if (!swapReasonApi || !date) {
+      return [];
+    }
+    return getClientOverrides()
+      .filter((item) => item && item.clientId === clientId && item.kind === 'replace' && item.date === date && swapReasonApi.normalizeReason(item.reason))
+      .sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || '')))
+      .map((item) => ({
+        override: item,
+        text: swapReasonApi.historyText(item.reason),
+        swap: `${item.replacedExerciseName || 'Ejercicio'} → ${item.exercise?.exerciseName || 'Ejercicio'}`
+      }));
+  }
+
+  // Fechas en que el alumno entrenó (con series o circuito), para el aviso de Hoy.
+  function getClientWorkDates(clientId) {
+    return getTrainingSessionsByClient(clientId).filter((session) => session.date && sessionHasWork(session)).map((session) => session.date);
+  }
+
+  function renderGroupReasonPicker(picker) {
+    const reason = picker.reason || { kind: '', zones: [], side: '', note: '' };
+    const chip = (attr, value, label, on) => `<button class="gp-chip${on ? ' is-on' : ''}" type="button" ${attr}="${escapeHtml(value)}" aria-pressed="${on}">${escapeHtml(label)}</button>`;
+    const kinds = swapReasonApi.KINDS.map((kind) => chip('data-group-reason-kind', kind, swapReasonApi.KIND_LABELS[kind], reason.kind === kind)).join('');
+    const pain = reason.kind === 'pain';
+    const zones = pain ? swapReasonApi.PAIN_ZONES.map((zone) => chip('data-group-reason-zone', zone.key, zone.label, reason.zones.includes(zone.key))).join('') : '';
+    const sides = pain && swapReasonApi.hasSidedZone(reason.zones)
+      ? swapReasonApi.SIDES.map((side) => chip('data-group-reason-side', side, swapReasonApi.SIDE_LABELS[side], reason.side === side)).join('')
+      : '';
+    const note = pain || reason.kind === 'other'
+      ? `<label class="gp-note">Nota<input type="text" maxlength="${swapReasonApi.NOTE_MAX}" data-group-reason-note value="${escapeHtml(reason.note || '')}" placeholder="${pain ? 'Ej.: duele al bajar' : 'Opcional'}"></label>`
+      : '';
+    return `
+      <div class="gp-reason" data-group-reason>
+        <p class="gp-label">Motivo <span class="meta">(opcional)</span></p>
+        <div class="gp-chips" role="group" aria-label="Motivo">${kinds}</div>
+        ${zones ? `<div class="gp-chips" role="group" aria-label="Dónde" data-group-reason-zones>${zones}</div>` : ''}
+        ${sides ? `<div class="gp-chips gp-sides" role="group" aria-label="Lado" data-group-reason-sides>${sides}</div>` : ''}
+        ${note}
+      </div>`;
+  }
+
+  // Reemplazos de la misma zona muscular que el original, con su mini figura. Con molestia,
+  // los de la lista "al final" (swap-reason-core.js) van después y marcados.
+  function getGroupSwapSuggestions(target, picker) {
+    const map = prMuscleMap();
+    if (!swapReasonApi || !map || !target) {
+      return [];
+    }
+    const library = Array.isArray(state.exerciseLibrary) ? state.exerciseLibrary : [];
+    const catalog = getRoutineExerciseCatalog();
+    const candidates = Object.keys(catalog).flatMap((key) => catalog[key] || []).map((entry) => {
+      const item = library.find((libraryItem) => libraryItem && libraryItem.id === entry.id) || entry;
+      return { id: entry.id, name: entry.name, zones: prZones(item, entry.name) };
+    });
+    return swapReasonApi.suggest({
+      candidates,
+      original: prZones(prLibraryItem(target), target.exerciseName),
+      reason: getGroupPickerReason(picker),
+      excludeIds: [target.libraryExerciseId, prLibraryItem(target)?.id]
+    });
+  }
+
+  function renderGroupSwapSuggestions(target, picker) {
+    const items = getGroupSwapSuggestions(target, picker);
+    const map = prMuscleMap();
+    if (!items.length) {
+      return '<p class="meta gp-suggest-empty" data-group-suggest-empty>Sin sugerencias de la misma zona: busca en la biblioteca.</p>';
+    }
+    const zoneLabel = (key) => swapReasonApi.PAIN_ZONES.find((zone) => zone.key === key)?.text || key;
+    return `
+      <p class="gp-label">Misma zona</p>
+      <div class="gp-suggest" data-group-suggest>
+        ${items.map((item) => `
+          <button class="gp-suggest-item${item.caution ? ' is-caution' : ''}" type="button" data-group-picker-pick="${escapeHtml(item.id)}" data-group-suggest-item${item.caution ? ` data-caution="${escapeHtml(item.caution)}"` : ''}>
+            ${map.figureHtml(item.zones, 'sw') || '<span class="gp-fig-empty" aria-hidden="true"></span>'}
+            <span class="gp-suggest-text">
+              <strong>${escapeHtml(item.name)}</strong>
+              <small>${item.caution ? `Ojo con la ${escapeHtml(zoneLabel(item.caution))}` : escapeHtml(map.mainLabel(item.zones) || '')}</small>
+            </span>
+          </button>`).join('')}
+      </div>`;
+  }
+
+  // Clic en un chip del motivo. Devuelve true si lo manejó.
+  function handleGroupReasonClick(target, picker) {
+    const reason = picker.reason || (picker.reason = { kind: '', zones: [], side: '', note: '' });
+    const kindButton = target.closest('[data-group-reason-kind]');
+    if (kindButton) {
+      const kind = kindButton.getAttribute('data-group-reason-kind');
+      reason.kind = reason.kind === kind ? '' : kind;
+      return true;
+    }
+    const zoneButton = target.closest('[data-group-reason-zone]');
+    if (zoneButton) {
+      const zone = zoneButton.getAttribute('data-group-reason-zone');
+      reason.zones = reason.zones.includes(zone) ? reason.zones.filter((item) => item !== zone) : [...reason.zones, zone];
+      return true;
+    }
+    const sideButton = target.closest('[data-group-reason-side]');
+    if (sideButton) {
+      const side = sideButton.getAttribute('data-group-reason-side');
+      reason.side = reason.side === side ? '' : side;
+      return true;
+    }
+    return false;
   }
 
   function renderGroupPickerResults() {
@@ -1495,6 +1626,8 @@
     let body = '';
     if (picker.screen === 'browse') {
       body = `
+        ${target && swapReasonApi ? renderGroupReasonPicker(picker) + renderGroupSwapSuggestions(target, picker) : ''}
+        ${target && swapReasonApi ? '<p class="gp-label">Buscar en la biblioteca</p>' : ''}
         <div class="planning-search-wrap">
           <input type="search" data-group-picker-field="search" value="${escapeHtml(picker.search)}" placeholder="Buscar en toda la biblioteca..." aria-label="Buscar ejercicio">
         </div>
@@ -1512,8 +1645,10 @@
         <button class="primary" type="button" data-group-picker-confirm>Confirmar</button>`;
     } else if (picker.screen === 'scope') {
       const keepsSeries = target && !findConfirmedGroupExercise(clientId, target.id) && groupDraftHasData(groupSessionUi.drafts[`${clientId}::${target.id}`]);
+      const reasonText = swapReasonApi ? swapReasonApi.tagText(getGroupPickerReason(picker)) : '';
       body = `
         <p><strong>${escapeHtml(chosen?.name || 'Ejercicio')}</strong> · ${escapeHtml(picker.sets)} × ${escapeHtml(picker.reps)} · ${escapeHtml(picker.weight)} kg</p>
+        ${reasonText ? `<p class="meta" data-group-picker-reason>Motivo: ${escapeHtml(reasonText)}</p>` : ''}
         <p class="group-picker-question">¿Para cuándo?</p>
         <div class="group-picker-scope" role="group" aria-label="Para cuándo">
           <button class="primary" type="button" data-group-picker-scope="today">Solo hoy</button>
@@ -1539,6 +1674,10 @@
       return false;
     }
     const button = (selector) => target.closest(selector);
+    if (handleGroupReasonClick(target, picker)) {
+      renderTrainingGroupMode();
+      return true;
+    }
     if (button('[data-group-picker-cancel]')) {
       groupSessionUi.picker = null;
     } else if (button('[data-group-picker-category]')) {
@@ -1611,7 +1750,8 @@
       date: groupSessionUi.sessionDate,
       libraryExercise,
       values: checked.values,
-      replaced
+      replaced,
+      reason: getGroupPickerReason(picker)
     });
     getClientOverrides({ create: true }).push(override);
     dataApi.saveState(state);
@@ -1623,6 +1763,9 @@
     groupSessionUi.clientNotices[clientId] = scope === 'today'
       ? `✓ ${first}: ${what}, solo hoy. Su programa no cambió.`
       : `✓ ${first}: ${what}, de aquí en adelante en "${context.day.name || 'este día'}". Solo cambia su programa; los demás alumnos no.${getGroupPublishReminder(clientId)}`;
+    if (override.reason && swapReasonApi) {
+      groupSessionUi.clientNotices[clientId] += ` Motivo: ${swapReasonApi.tagText(override.reason).replace(/\.$/, '')}.`;
+    }
     if (keptSession) {
       groupSessionUi.clientNotices[clientId] += ` Las series escritas de ${replaced.exerciseName || 'el ejercicio anterior'} quedaron en su historial.`;
     }
@@ -1786,7 +1929,7 @@
     const pickerHere = picker && picker.clientId === clientId && picker.mode === 'replace' && picker.targetExerciseId === planExercise.id;
     const onlyToday = planExercise.overrideScope === 'today';
     const tag = planExercise.overrideId
-      ? `<span class="tag ${onlyToday ? 'warn' : 'ok'} group-override-tag">${onlyToday ? 'Solo hoy' : `Solo para ${escapeHtml(getClientFirstName(client))}`}</span>`
+      ? `<span class="tag ${onlyToday ? 'warn' : 'ok'} group-override-tag">${onlyToday ? 'Solo hoy' : `Solo para ${escapeHtml(getClientFirstName(client))}`}</span>${renderGroupReasonTag(planExercise)}`
       : '';
     const lastFound = findLastGroupPerformance(clientId, planExercise, groupSessionUi.sessionDate);
     const lastTime = formatLastGroupPerformance(lastFound);
@@ -2192,7 +2335,7 @@
     const pickerHere = picker && picker.clientId === clientId && picker.mode === 'replace' && picker.targetExerciseId === planExercise.id;
     const onlyToday = planExercise.overrideScope === 'today';
     const tag = planExercise.overrideId
-      ? `<span class="tag ${onlyToday ? 'warn' : 'ok'} group-override-tag">${onlyToday ? 'Solo hoy' : `Solo para ${escapeHtml(getClientFirstName(client))}`}</span>`
+      ? `<span class="tag ${onlyToday ? 'warn' : 'ok'} group-override-tag">${onlyToday ? 'Solo hoy' : `Solo para ${escapeHtml(getClientFirstName(client))}`}</span>${renderGroupReasonTag(planExercise)}`
       : '';
     const { found: lastFound, sets: lastSets } = getGroupLastSets(clientId, planExercise);
     const draft = confirmed || pickerHere ? null : getResolvedGroupDraft(clientId, context, planExercise);
@@ -3767,6 +3910,10 @@
           counter.textContent = `${editor.text.length}/${GROUP_COMMENT_MAX}`;
         }
       }
+      return;
+    }
+    if (event.target.hasAttribute('data-group-reason-note') && groupSessionUi.picker?.reason) {
+      groupSessionUi.picker.reason.note = event.target.value;
       return;
     }
     const pickerField = event.target.getAttribute('data-group-picker-field');
@@ -9271,6 +9418,27 @@
       </div>`;
   }
 
+  // v0.9.53: "Molestias recientes" (cambios con motivo molestia de las últimas 4 semanas).
+  // Sin molestias no se muestra nada.
+  function renderClientRecentPain(client) {
+    const items = swapReasonApi ? swapReasonApi.recentPain(getClientOverrides(), client.id, getTodayLocalDate(), 28) : [];
+    if (!items.length) {
+      return '';
+    }
+    const line = (item) => {
+      const place = swapReasonApi.painPlace(item.reason);
+      const what = place ? place.charAt(0).toUpperCase() + place.slice(1) : 'Molestia';
+      const note = swapReasonApi.normalizeReason(item.reason)?.note;
+      const scope = item.scope === 'today' ? 'solo ese día' : (item.endDate ? `hasta ${formatGroupShortDate(item.endDate)}` : 'de aquí en adelante');
+      return `<li data-ficha-pain>${escapeHtml(what)}<span class="meta">${escapeHtml(formatGroupShortDate(item.date))} · ${escapeHtml(`${item.replacedExerciseName || 'Ejercicio'} → ${item.exercise?.exerciseName || 'Ejercicio'}`)} · ${escapeHtml(scope)}${note ? ` · ${escapeHtml(note)}` : ''}</span></li>`;
+    };
+    return `
+        <div class="client-ficha-internal client-ficha-pain" data-ficha-pains>
+          <h3>Molestias recientes</h3>
+          <ul>${items.map(line).join('')}</ul>
+        </div>`;
+  }
+
   function renderClientFicha(client) {
     const id = escapeHtml(client.id);
     const name = escapeHtml(getClientDisplayName(client));
@@ -9309,6 +9477,7 @@
           <ul>${shownNotes.map((note) => `<li>${escapeHtml(note.text)}<span class="meta">${escapeHtml(note.meta)}</span></li>`).join('')}</ul>
           ${notes.length > shownNotes.length ? `<p class="meta">y ${notes.length - shownNotes.length} más.</p>` : ''}
         </div>` : ''}
+        ${renderClientRecentPain(client)}
         <div class="client-ficha-actions">
           ${assignment && window.VALHALLA.publish ? window.VALHALLA.publish.renderStatus(client.id, assignment) : '<p class="meta">Para publicar al alumno, primero asígnale un programa.</p>'}
           <div class="client-ficha-buttons">
@@ -9636,6 +9805,7 @@
               ${exercises.length || !circuitLines.length ? `<span class="pg-session-meta">${prPlural(exercises.length, 'ejercicio', 'ejercicios')} · ${done}/${planned} series</span>` : ''}
               ${circuitLines.map((line) => `<span class="pg-session-circuit" data-pg-circuit>${escapeHtml(line)}</span>`).join('')}
               ${studentSets ? `<span class="pg-session-student" data-student-logged>Registrado por el alumno · ${prPlural(studentSets, 'serie', 'series')}</span>` : ''}
+              ${getSessionSwapReasons(session.clientId, session.date).map((item) => `<span class="pg-session-reason" data-pg-reason>${escapeHtml(item.text)} · ${escapeHtml(item.swap)}</span>`).join('')}
             </span>
             <span class="pg-tag pg-tag--${tag[0]}">${tag[1]}</span>
           </button>`;
@@ -11060,6 +11230,13 @@
         return `
         <span class="today-avatar${fresh.has(student.id) ? ' is-new' : ''}${attended ? ' is-attended' : ''}" title="${escapeHtml(student.name)}${notes ? ` · ${notes}` : ''}" data-today-student="${escapeHtml(student.id)}">${escapeHtml(getInitials(student.name))}${attended ? '<span class="today-avatar-check" data-today-attended aria-label="Asistió">✓</span>' : ''}</span>`;
       }).join('');
+      // v0.9.53: "Beto: molestia en hombro izq. el miércoles" en su primera clase después.
+      const painIds = swapReasonApi ? slot.students.map((student) => student.id) : [];
+      const painNames = getGroupShortNames(painIds);
+      const pains = painIds.map((clientId, index) => {
+        const found = swapReasonApi.nextClassNotice(getClientOverrides(), clientId, todayValue, getClientWorkDates(clientId));
+        return found ? `<p class="today-class-pain" data-today-pain="${escapeHtml(clientId)}">⚠ ${escapeHtml(swapReasonApi.todayText(painNames[index], found.reason, found.date, todayValue))}</p>` : '';
+      }).join('');
       return `
         <article class="today-class${isNext ? ' is-next' : ''}" data-today-class="${escapeHtml(slot.sessionKey)}">
           <div class="today-class-head">
@@ -11067,6 +11244,7 @@
             <span class="today-class-day">${escapeHtml(getClassDayLabel(slot, todayValue))}</span>
           </div>
           <div class="today-class-people" aria-label="Alumnos de la clase">${people}</div>
+          ${pains ? `<div class="today-class-pains" data-today-pains>${pains}</div>` : ''}
           <div class="today-class-actions">
             <button class="${isNext ? 'primary' : 'secondary today-outline'} today-class-btn" type="button" data-agenda-group="${escapeHtml(slot.sessionKey)}">${isNext ? 'Empezar clase' : 'Ver clase'}</button>
             <button class="secondary today-outline today-attendance-btn" type="button" data-today-attendance="${escapeHtml(slot.sessionKey)}" aria-expanded="${open}">Asistencia</button>
