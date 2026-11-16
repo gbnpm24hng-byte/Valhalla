@@ -129,9 +129,11 @@
     if (!repRange) {
       return { error: 'Repeticiones: por ejemplo 8 o 8-10' };
     }
-    const weightText = String(weight ?? '').trim().replace(',', '.');
-    const targetWeight = Number(weightText);
-    if (weightText === '' || !Number.isFinite(targetWeight) || targetWeight < 0) {
+    // v0.9.55: el lector único de decimales ("7.5" y "7,5" = 7,5).
+    const decimal = (typeof window !== 'undefined' && window.VALHALLA && window.VALHALLA.decimal)
+      || (typeof require === 'function' ? require('./decimal-core.js') : null);
+    const targetWeight = decimal.parse(weight);
+    if (targetWeight === null || !Number.isFinite(targetWeight) || targetWeight < 0) {
       return { error: 'Peso: un número en kg (0 si no lleva carga)' };
     }
     return { values: { sets: setCount, repMin: repRange.min, repMax: repRange.max, targetWeight } };

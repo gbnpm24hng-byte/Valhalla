@@ -4852,6 +4852,21 @@ div.pr-notice { display: flex; align-items: center; justify-content: space-betwe
 .st-ghost-btn { flex: 1 1 0 !important; min-height: 42px; border: 1px solid var(--st-line); border-radius: 12px; background: transparent; color: var(--st-yellow); font-family: inherit; font-weight: 700; cursor: pointer; }
 .st-screen .onboarding-qr { justify-self: center; }
 
+/* v0.9.55 · Revisar pesos (plegado, como la Zona de peligro pero sin rojo) */
+.st-fold { padding: 0; gap: 0; }
+.st-fold > summary { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 52px; padding: 0 16px; font-weight: 700; cursor: pointer; list-style: none; }
+.st-fold > summary::-webkit-details-marker { display: none; }
+.st-fold > summary > span:first-child { min-width: 0; }
+.st-fold-body { display: grid; gap: 10px; padding: 0 16px 16px; }
+.st-chip--warn { border-color: rgba(255, 204, 26, 0.5); color: var(--st-yellow); }
+.st-review-list { display: grid; gap: 10px; }
+.st-review-row { display: grid; gap: 6px; padding: 10px 12px; border: 1px solid var(--st-line); border-radius: 12px; background: #26241F; }
+.st-review-row strong { overflow-wrap: anywhere; }
+.st-review-row .st-row > button { flex: 1 1 0; }
+.st-review-value { color: var(--st-yellow); font-weight: 800; }
+.st-review-ok { flex: 1 1 0; min-height: 42px; border: 1px solid var(--st-line); border-radius: 12px; background: transparent; color: var(--text); font-family: inherit; font-weight: 700; cursor: pointer; }
+.st-review-fix { flex: 1 1 0; min-height: 42px; border: 0; border-radius: 12px; background: var(--st-yellow); color: #0E0E0C; font-family: inherit; font-weight: 800; cursor: pointer; }
+
 /* Zona de peligro */
 .st-danger { border-color: var(--st-red-soft); padding: 0; gap: 0; }
 .st-danger > summary { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 52px; padding: 0 16px; font-weight: 700; cursor: pointer; list-style: none; }
@@ -4954,6 +4969,13 @@ div.pr-notice { display: flex; align-items: center; justify-content: space-betwe
 .gv-round-ex { color: var(--gv-yellow); font-weight: 700; font-size: 0.9rem; overflow-wrap: anywhere; }
 .gv-round-summary { color: var(--gv-muted); font-size: 0.86rem; }
 .gv-round-controls { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+/* v0.9.55: "No vino" en cada fila del cierre y la pregunta de "Terminar clase". */
+.group-mode-view--compact .gv-round-absent { justify-self: start; min-height: 32px; }
+.gv-round-absent-ask { display: grid; gap: 8px; padding: 8px 10px; border: 1px solid rgba(224, 53, 43, 0.45); border-radius: 10px; font-size: 0.88rem; }
+.gv-round-absent-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.gv-end-ask { display: grid; gap: 8px; margin-top: 8px; }
+.gv-end-ask p { margin: 0; }
+.group-mode-view--compact .gv-end-ask .gv-link { justify-self: start; }
 .gv-rirs { display: flex; gap: 4px; }
 .group-mode-view--compact .gv-rir { width: 44px; min-height: 44px; padding: 0; border: 0; border-radius: 10px; background: var(--gv-btn); color: var(--text); font-weight: 800; }
 .group-mode-view--compact .gv-rir.is-on { background: var(--gv-yellow); color: #0E0E0C; }

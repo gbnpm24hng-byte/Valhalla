@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Bebas+Neue&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <title>VALHALLA</title>
-  <link rel="stylesheet" href="./assets/css/styles.css?v=0.9.54">
+  <link rel="stylesheet" href="./assets/css/styles.css?v=0.9.55">
 </head>
 <!-- Clase "solo-entrenamientos": oculta Inicio, Registrar (finanzas) y Nutrición sin borrarlos. Quitarla los vuelve a mostrar. -->
 <body class="solo-entrenamientos">
@@ -31,7 +31,7 @@
       <div class="header-actions">
         <span class="user-pill">Usuario</span>
         <span class="badge" id="cloudModeBadge">Modo Local</span>
-        <span class="badge">v0.9.54</span>
+        <span class="badge">v0.9.55</span>
       </div>
     </header>
 
@@ -523,7 +523,7 @@
               <div class="row">
                 <div>
                   <label for="weight">Peso objetivo</label>
-                  <input id="weight" name="targetWeight" type="number" min="0" step="0.1" placeholder="Opcional">
+                  <input id="weight" name="targetWeight" type="text" inputmode="decimal" autocomplete="off" placeholder="Opcional">
                 </div>
                 <div>
                   <label for="restPreset">Descanso</label>
@@ -559,7 +559,7 @@
             <div class="row training-live-row">
               <div>
                 <label for="setWeightInput">Peso (kg)</label>
-                <input id="setWeightInput" type="number" min="0" step="0.1" inputmode="decimal">
+                <input id="setWeightInput" type="text" inputmode="decimal" autocomplete="off">
                 <div class="chips training-weight-chips">
                   <button class="chip" type="button" data-weight-delta="-5">-5</button>
                   <button class="chip" type="button" data-weight-delta="-2.5">-2,5</button>
@@ -639,7 +639,7 @@
                 <div class="row">
                   <div>
                     <label for="templateExerciseWeight">Peso objetivo</label>
-                    <input id="templateExerciseWeight" type="number" min="0" step="0.1" placeholder="Opcional">
+                    <input id="templateExerciseWeight" type="text" inputmode="decimal" autocomplete="off" placeholder="Opcional">
                   </div>
                   <div>
                     <label for="templateExerciseRest">Descanso (s)</label>
@@ -935,7 +935,7 @@
               <div class="row">
                 <div>
                   <label for="programExerciseWeight">Peso objetivo</label>
-                  <input id="programExerciseWeight" type="number" min="0" step="0.5" placeholder="Opcional">
+                  <input id="programExerciseWeight" type="text" inputmode="decimal" autocomplete="off" placeholder="Opcional">
                 </div>
                 <div>
                   <label for="programExerciseRepMin">Rango de reps</label>
@@ -1054,6 +1054,17 @@
           <p class="st-small">La nube gratis no guarda copias. Este archivo es tu única copia de seguridad.</p>
         </div>
 
+        <!-- v0.9.55: series guardadas con un peso 10 veces lo normal (el "7.5" que se guardó como 75). -->
+        <h2 class="st-label">Revisar pesos</h2>
+        <details class="st-card st-fold" id="weightReviewCard">
+          <summary><span>Pesos que parecen 10 veces lo normal</span><span class="st-chip" id="weightReviewCount">0</span></summary>
+          <div class="st-fold-body">
+            <p class="st-small">Sale una serie guardada si su peso es entre 7,5 y 12,5 veces el peso habitual de ese alumno en ese ejercicio (la mediana de sus series efectivas de otras fechas; hacen falta al menos 2 fechas). Ej.: 75 kg cuando sus otras son 7,5 kg. "Corregir" divide solo el peso por 10; "Está bien" la deja como está y no vuelve a salir.</p>
+            <div id="weightReviewList" class="st-review-list"></div>
+            <div id="weightReviewMessage" class="notice" role="status"></div>
+          </div>
+        </details>
+
         <h2 class="st-label">Ingreso de alumnos nuevos</h2>
         <div class="st-card onboarding-qr-settings">
           <label for="coachWhatsAppNumber">Número de WhatsApp para ingreso de alumnos</label>
@@ -1136,40 +1147,42 @@
     </div>
   </nav>
 
-  <script src="./assets/js/config.js?v=0.9.54"></script>
+  <script src="./assets/js/config.js?v=0.9.55"></script>
+  <script src="./assets/js/decimal-core.js?v=0.9.55"></script>
   <!-- supabase-js fijado a una versión exacta; integrity = SHA-384 del archivo publicado en npm -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js" integrity="sha384-Rj26LVGvoeRVR6+mwQmFfcR3QOBEwT+ZmuCWpuiqeTzJpCs0ER4ITAWGb4Hiy3Ok" crossorigin="anonymous"></script>
-  <script src="./assets/js/circuits-core.js?v=0.9.54"></script>
-  <script src="./assets/js/blocks-core.js?v=0.9.54"></script>
-  <script src="./assets/js/monthly-card-core.js?v=0.9.54"></script>
-  <script src="./assets/js/data.js?v=0.9.54"></script>
-  <script src="./assets/js/supabase.js?v=0.9.54"></script>
-  <script src="./assets/js/auth.js?v=0.9.54"></script>
-  <script src="./assets/js/invite-core.js?v=0.9.54"></script>
-  <script src="./assets/js/cloud-data.js?v=0.9.54"></script>
-  <script src="./assets/js/finance.js?v=0.9.54"></script>
-  <script src="./assets/js/qrcode-generator.js?v=0.9.54"></script>
-  <script src="./assets/js/onboarding.js?v=0.9.54"></script>
-  <script src="./assets/js/sync-core.js?v=0.9.54"></script>
-  <script src="./assets/js/cloud-sync.js?v=0.9.54"></script>
-  <script src="./assets/js/client-overrides-core.js?v=0.9.54"></script>
-  <script src="./assets/js/swap-reason-core.js?v=0.9.54"></script>
-  <script src="./assets/js/muscle-map-core.js?v=0.9.54"></script>
-  <script src="./assets/js/publish-core.js?v=0.9.54"></script>
-  <script src="./assets/js/publish.js?v=0.9.54"></script>
-  <script src="./assets/js/invites.js?v=0.9.54"></script>
-  <script src="./assets/js/self-log-core.js?v=0.9.54"></script>
-  <script src="./assets/js/student-view.js?v=0.9.54"></script>
-  <script src="./assets/js/auth-gate.js?v=0.9.54"></script>
-  <script src="./assets/js/labels.js?v=0.9.54"></script>
-  <script src="./assets/js/student-import-core.js?v=0.9.54"></script>
-  <script src="./assets/js/coach-sets-core.js?v=0.9.54"></script>
-  <script src="./assets/js/group-draft-core.js?v=0.9.54"></script>
-  <script src="./assets/js/group-round-core.js?v=0.9.54"></script>
-  <script src="./assets/js/program-import-core.js?v=0.9.54"></script>
-  <script src="./assets/js/settings-core.js?v=0.9.54"></script>
-  <script src="./assets/js/monthly-card.js?v=0.9.54"></script>
-  <script src="./assets/js/payment-period-core.js?v=0.9.54"></script>
-  <script src="./assets/js/app.js?v=0.9.54"></script>
+  <script src="./assets/js/circuits-core.js?v=0.9.55"></script>
+  <script src="./assets/js/blocks-core.js?v=0.9.55"></script>
+  <script src="./assets/js/monthly-card-core.js?v=0.9.55"></script>
+  <script src="./assets/js/data.js?v=0.9.55"></script>
+  <script src="./assets/js/supabase.js?v=0.9.55"></script>
+  <script src="./assets/js/auth.js?v=0.9.55"></script>
+  <script src="./assets/js/invite-core.js?v=0.9.55"></script>
+  <script src="./assets/js/cloud-data.js?v=0.9.55"></script>
+  <script src="./assets/js/finance.js?v=0.9.55"></script>
+  <script src="./assets/js/qrcode-generator.js?v=0.9.55"></script>
+  <script src="./assets/js/onboarding.js?v=0.9.55"></script>
+  <script src="./assets/js/sync-core.js?v=0.9.55"></script>
+  <script src="./assets/js/cloud-sync.js?v=0.9.55"></script>
+  <script src="./assets/js/client-overrides-core.js?v=0.9.55"></script>
+  <script src="./assets/js/swap-reason-core.js?v=0.9.55"></script>
+  <script src="./assets/js/muscle-map-core.js?v=0.9.55"></script>
+  <script src="./assets/js/publish-core.js?v=0.9.55"></script>
+  <script src="./assets/js/publish.js?v=0.9.55"></script>
+  <script src="./assets/js/invites.js?v=0.9.55"></script>
+  <script src="./assets/js/self-log-core.js?v=0.9.55"></script>
+  <script src="./assets/js/student-view.js?v=0.9.55"></script>
+  <script src="./assets/js/auth-gate.js?v=0.9.55"></script>
+  <script src="./assets/js/labels.js?v=0.9.55"></script>
+  <script src="./assets/js/student-import-core.js?v=0.9.55"></script>
+  <script src="./assets/js/coach-sets-core.js?v=0.9.55"></script>
+  <script src="./assets/js/group-draft-core.js?v=0.9.55"></script>
+  <script src="./assets/js/group-round-core.js?v=0.9.55"></script>
+  <script src="./assets/js/program-import-core.js?v=0.9.55"></script>
+  <script src="./assets/js/settings-core.js?v=0.9.55"></script>
+  <script src="./assets/js/monthly-card.js?v=0.9.55"></script>
+  <script src="./assets/js/payment-period-core.js?v=0.9.55"></script>
+  <script src="./assets/js/weight-review-core.js?v=0.9.55"></script>
+  <script src="./assets/js/app.js?v=0.9.55"></script>
 </body>
 </html>

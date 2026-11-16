@@ -12,15 +12,10 @@
   const SAVED_KEEP_DAYS = 7;
 
   // "72,5" y "72.5" valen lo mismo. Vacío = null. Texto no numérico = NaN.
+  // v0.9.55: usa el lector único de decimales (decimal-core.js).
+  const decimal = window.VALHALLA.decimal || (typeof require === 'function' ? require('./decimal-core.js') : null);
   function parseDecimal(text) {
-    const value = String(text ?? '').trim().replace(/\s+/g, '');
-    if (!value) {
-      return null;
-    }
-    if (!/^\d+([.,]\d+)?$/.test(value)) {
-      return Number.NaN;
-    }
-    return Number(value.replace(',', '.'));
+    return decimal.parse(text === null || text === undefined ? '' : String(text));
   }
 
   // Fecha de hoy en Chile (AAAA-MM-DD), sin importar la zona del teléfono.

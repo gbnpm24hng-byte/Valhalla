@@ -16,12 +16,16 @@
 
   const blank = (value) => value === null || value === undefined || String(value).trim() === '';
 
+  // v0.9.55: el lector único de decimales (decimal-core.js; en las pruebas de Node se carga con require).
+  const decimal = (typeof window !== 'undefined' && window.VALHALLA && window.VALHALLA.decimal)
+    || (typeof require === 'function' ? require('./decimal-core.js') : null);
+
   // "22,5" o "22.5" -> 22.5; vacío o inválido -> null.
   function parseNumber(value) {
     if (blank(value)) {
       return null;
     }
-    const number = Number(String(value).trim().replace(',', '.'));
+    const number = decimal.parse(value);
     return Number.isFinite(number) ? number : null;
   }
 

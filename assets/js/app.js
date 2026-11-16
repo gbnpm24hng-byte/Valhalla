@@ -30,6 +30,18 @@
   const circuitsApi = window.VALHALLA.circuitsCore;
   // v0.9.51 · Período de pago por clases (payment-period-core.js).
   const periodApi = window.VALHALLA.paymentPeriodCore;
+  // v0.9.55 · Lector único de pesos y decimales ("7.5" y "7,5" = 7,5; decimal-core.js) y
+  // "Revisar pesos" de Ajustes (weight-review-core.js).
+  const decimalApi = window.VALHALLA.decimal;
+  const weightReviewApi = window.VALHALLA.weightReview;
+  // Lee un campo de peso/decimales: vacío o inválido -> fallback.
+  function readDecimal(value, fallback = 0) {
+    return decimalApi.parseOr(value, fallback);
+  }
+  // Muestra un peso en un campo de texto: con coma ("7,5"); vacío si no hay número.
+  function showDecimal(value) {
+    return decimalApi.format(value);
+  }
   // ready: ya se hizo la revisión al abrir (con la nube al día, si hay nube).
   const paymentCheck = { ready: false };
   // Ejercicio (del programa o hecho en una sesión) por tiempo: measure 'time'.
@@ -110,8 +122,10 @@
     focus: {},
     moreOpen: {},
     clientsOpen: null,
-    // Cierre de ronda abierto: { items: [{ clientId, planExerciseId }], ask, skipped } o null.
+    // Cierre de ronda abierto: { items: [{ clientId, planExerciseId }], ask, skipped, absentAsk } o null.
     round: null,
+    // v0.9.55 · "Terminar clase" con alumnos sin ningún dato: { ids } esperando la respuesta, o null.
+    endAsk: null,
     // Línea pequeña sobre lo traído de los alumnos (sin conexión, error o dos sesiones el mismo día).
     importNotice: '',
     // v0.9.45 · Circuito abierto para todo el grupo ({ blockId } o null), su reloj por circuito
@@ -824,7 +838,7 @@
             </div>
             <div>
               <label for="movementEvaluated1rm">1RM evaluado (opcional)</label>
-              <input id="movementEvaluated1rm" name="evaluated1rm" type="number" min="0" step="0.1">
+              <input id="movementEvaluated1rm" name="evaluated1rm" type="text" inputmode="decimal" autocomplete="off">
             </div>
           </div>
           <div>
@@ -1639,7 +1653,7 @@
         <div class="group-picker-form">
           ${pickerField('sets', 'Series', 'number', 'min="1" max="10" step="1" inputmode="numeric"')}
           ${pickerField('reps', 'Repeticiones', 'text', 'inputmode="numeric" placeholder="8-10"')}
-          ${pickerField('weight', 'Peso (kg)', 'number', 'min="0" step="0.5" inputmode="decimal" placeholder="kg"')}
+          ${pickerField('weight', 'Peso (kg)', 'text', 'inputmode="decimal" autocomplete="off" placeholder="kg"')}
         </div>
         <p class="group-confirm-error${picker.error ? '' : ' hidden'}" role="alert">${escapeHtml(picker.error)}</p>
         <button class="primary" type="button" data-group-picker-confirm>Confirmar</button>`;
@@ -1647,7 +1661,7 @@
       const keepsSeries = target && !findConfirmedGroupExercise(clientId, target.id) && groupDraftHasData(groupSessionUi.drafts[`${clientId}::${target.id}`]);
       const reasonText = swapReasonApi ? swapReasonApi.tagText(getGroupPickerReason(picker)) : '';
       body = `
-        <p><strong>${escapeHtml(chosen?.name || 'Ejercicio')}</strong> · ${escapeHtml(picker.sets)} × ${escapeHtml(picker.reps)} · ${escapeHtml(picker.weight)} kg</p>
+        <p><strong>${escapeHtml(chosen?.name || 'Ejercicio')}</strong> · ${escapeHtml(picker.sets)} × ${escapeHtml(picker.reps)} · ${escapeHtml(showDecimal(picker.weight) || picker.weight)} kg</p>
         ${reasonText ? `<p class="meta" data-group-picker-reason>Motivo: ${escapeHtml(reasonText)}</p>` : ''}
         <p class="group-picker-question">¿Para cuándo?</p>
         <div class="group-picker-scope" role="group" aria-label="Para cuándo">
@@ -1991,7 +2005,7 @@
             </div>` : `
             <div class="group-set">
               <span class="group-set-label">S${n}</span>
-              ${field(`s${n}Weight`, `<span class="sr-only">S${n} peso en kg</span>`, 'number', `min="0" step="0.5" inputmode="decimal" placeholder="${lastSets[n - 1]?.weight ? `${escapeHtml(lastSets[n - 1].weight)} kg` : 'kg'}"`)}
+              ${field(`s${n}Weight`, `<span class="sr-only">S${n} peso en kg</span>`, 'text', `inputmode="decimal" autocomplete="off" placeholder="${lastSets[n - 1]?.weight ? `${escapeHtml(lastSets[n - 1].weight)} kg` : 'kg'}"`)}
               ${field(`s${n}Reps`, `<span class="sr-only">S${n} repeticiones</span>`, 'number', `min="0" step="1" inputmode="numeric" placeholder="${lastSets[n - 1]?.reps ? `${escapeHtml(lastSets[n - 1].reps)} reps` : 'reps'}"`)}
             </div>`)).join('')}
           ${field('rir', 'RIR final', 'number', 'min="0" max="10" step="1" inputmode="numeric"')}
@@ -2003,7 +2017,7 @@
         </div>
         ${nextSession}
         <div class="group-confirm-row">
-          ${onlyToday || timedRow ? '' : `<label>Próxima sesión · ${escapeHtml(planExercise.exerciseName || 'Ejercicio')}<input type="number" min="0" step="2.5" inputmode="decimal" data-group-field="proposedWeight" ${attrs} value="${escapeHtml(draft.proposedWeight)}">kg</label>`}
+          ${onlyToday || timedRow ? '' : `<label>Próxima sesión · ${escapeHtml(planExercise.exerciseName || 'Ejercicio')}<input type="text" inputmode="decimal" autocomplete="off" data-group-field="proposedWeight" ${attrs} value="${escapeHtml(draft.proposedWeight)}">kg</label>`}
           <div class="group-confirm-action">
             <button class="primary" type="button" data-group-confirm="${escapeHtml(clientId)}" data-plan-exercise-id="${pid}">Confirmar</button>
             <p class="group-confirm-error${draft.error ? '' : ' hidden'}" role="alert">${escapeHtml(draft.error)}</p>
@@ -2214,7 +2228,111 @@
         </div>
         <button class="gv-end" type="button" data-gv-end>Terminar clase</button>
       </div>
-      ${groupSessionUi.cancelAsk ? renderGroupSessionActions() : ''}`;
+      ${groupSessionUi.cancelAsk ? renderGroupSessionActions() : ''}
+      ${groupSessionUi.endAsk ? renderGroupEndAsk() : ''}`;
+  }
+
+  // ---- v0.9.55 · "Terminar clase" y "No vino" ----
+  // Los alumnos sin ningún dato no bloquean el cierre: una sola pregunta para marcarlos como que
+  // no vinieron. "No vino" = "No asistió" de Hoy (recordAgendaStatus con noDiscount: solo registra la
+  // ausencia, no descuenta sesiones ni cuenta para el pago), y el alumno
+  // sale de la clase (se borra solo lo suyo sin guardar). Lo ya guardado no se toca.
+
+  // ¿Tiene algo hoy en Modo Grupo? Ejercicio o circuito guardado, algo escrito sin guardar o
+  // series que registró él mismo.
+  function groupClientHasData(clientId) {
+    const session = findGroupSessionForClient(clientId);
+    if (session && (getSessionExercises(session).length || (Array.isArray(session.circuits) && session.circuits.length))) {
+      return true;
+    }
+    const prefix = `${clientId}::`;
+    if (Object.keys(groupSessionUi.drafts).some((key) => key.startsWith(prefix) && groupDraftHasData(groupSessionUi.drafts[key]))) {
+      return true;
+    }
+    if (groupDraftApi && Object.keys(groupSessionUi.circuitDrafts || {}).some((key) => key.startsWith(prefix)
+      && groupDraftApi.circuitEntryHasData(groupDraftApi.cleanCircuitEntry(groupSessionUi.circuitDrafts[key])))) {
+      return true;
+    }
+    const context = getGroupDayContext(clientId);
+    return Boolean(context && context.exercises.some((planExercise) => getGroupStudentPrefill(clientId, context, planExercise)));
+  }
+
+  // Asistencia ya marcada en Hoy para la fecha de Modo Grupo (Asistió, No asistió o Reagendada).
+  function groupClientAttendanceMarked(clientId) {
+    return (getClientById(clientId)?.training_attendance || []).some((entry) => entry && entry.date === groupSessionUi.sessionDate);
+  }
+
+  // Los que no anotaron nada (y no tienen asistencia marcada ese día).
+  function getGroupIdleClients() {
+    return groupSessionUi.selectedClientIds.filter((clientId) => !groupClientHasData(clientId) && !groupClientAttendanceMarked(clientId));
+  }
+
+  function renderGroupEndAsk() {
+    const ids = groupSessionUi.endAsk.ids.filter((clientId) => groupSessionUi.selectedClientIds.includes(clientId));
+    const n = ids.length;
+    const today = groupSessionUi.sessionDate === getTodayLocalDate();
+    return `
+      <div class="notice warn gv-end-ask" data-gv-end-ask role="alert">
+        <p><strong>${n === 1 ? '1 no anotó nada: ¿marcarlo como no vino?' : `${n} no anotaron nada: ¿marcarlos como no vinieron?`}</strong></p>
+        <p class="meta" data-gv-end-ask-names>${escapeHtml(endWithPeriod(joinGroupNames(ids.map(getGroupShortName))))}${today ? ' Queda "No asistió" en su asistencia de hoy, sin descontar sesión.' : ''}</p>
+        <div class="group-draft-actions">
+          <button class="primary small" type="button" data-gv-end-absent>${n === 1 ? 'Sí, no vino' : 'Sí, no vinieron'}</button>
+          <button class="secondary small" type="button" data-gv-end-keep>No, terminar igual</button>
+        </div>
+        <button class="gv-link" type="button" data-gv-end-back>Volver a la clase</button>
+      </div>`;
+  }
+
+  // Marca "No vino" y saca al alumno de la clase. Devuelve true si quedó "No asistió" en Hoy.
+  function markGroupClientAbsent(clientId) {
+    let recorded = false;
+    const todayValue = getTodayLocalDate();
+    if (groupSessionUi.sessionDate === todayValue) {
+      const slot = getAgendaSlotsForDate(new Date(`${todayValue}T00:00:00`))
+        .find((item) => item.students.some((student) => student.id === clientId && !student.attendance));
+      if (slot) {
+        recordAgendaStatus(slot.sessionKey, clientId, 'no_show', { noDiscount: true, reason: 'No vino (Modo Grupo)' });
+        recorded = (getClientById(clientId)?.training_attendance || []).some((entry) => entry.sessionKey === slot.sessionKey);
+      }
+    }
+    const prefix = `${clientId}::`;
+    Object.keys(groupSessionUi.drafts).filter((key) => key.startsWith(prefix)).forEach((key) => delete groupSessionUi.drafts[key]);
+    Object.keys(groupSessionUi.circuitDrafts || {}).filter((key) => key.startsWith(prefix)).forEach((key) => delete groupSessionUi.circuitDrafts[key]);
+    ['focus', 'moreOpen', 'history', 'clientNotices', 'openClients'].forEach((name) => {
+      if (groupSessionUi[name]) delete groupSessionUi[name][clientId];
+    });
+    if (groupSessionUi.picker?.clientId === clientId) groupSessionUi.picker = null;
+    if (groupSessionUi.commentEditor?.clientId === clientId) groupSessionUi.commentEditor = null;
+    groupSessionUi.selectedClientIds = groupSessionUi.selectedClientIds.filter((id) => id !== clientId);
+    if (groupSessionUi.activeClientId === clientId) groupSessionUi.activeClientId = groupSessionUi.selectedClientIds[0] || '';
+    if (groupSessionUi.round) {
+      groupSessionUi.round.items = groupSessionUi.round.items.filter((item) => item.clientId !== clientId);
+      groupSessionUi.round.skipped = (groupSessionUi.round.skipped || []).filter((id) => id !== clientId);
+      groupSessionUi.round.absentAsk = '';
+      if (!groupSessionUi.round.items.length) groupSessionUi.round = null;
+    }
+    return recorded;
+  }
+
+  // "Alumno C." ya termina en punto: no se agrega otro.
+  function endWithPeriod(text) {
+    return /\.$/.test(text) ? text : `${text}.`;
+  }
+
+  function absentText(names) {
+    return endWithPeriod(names.length === 1 ? `Marcado como no vino: ${names[0]}` : `Marcados como no vinieron: ${joinGroupNames(names)}`);
+  }
+
+  // Lo de siempre al terminar: el cierre de ronda si hay series sin guardar; si no, vuelve a Hoy.
+  function finishGroupClass(note = '') {
+    groupSessionUi.endAsk = null;
+    if (openGroupRound()) {
+      groupSessionUi.message = note;
+      renderTrainingGroupMode();
+    } else {
+      groupSessionUi.message = '';
+      setTrainingView('today');
+    }
   }
 
   // Barra: círculo con iniciales, nombre corto, serie actual ("S2 de 3" o "S2 ✓" si ya hizo la
@@ -2962,6 +3080,14 @@
             ${decision}
           </div>
           ${stored.error ? `<p class="group-confirm-error" role="alert">${escapeHtml(stored.error)}</p>` : ''}
+          ${round.absentAsk === item.clientId ? `
+          <div class="gv-round-absent-ask" data-gv-round-absent-ask role="alert">
+            <span>¿${escapeHtml(getGroupShortName(item.clientId))} no vino? Se borra lo suyo sin guardar${groupSessionUi.sessionDate === getTodayLocalDate() ? ' y queda "No asistió" hoy, sin descontar sesión' : ''}.</span>
+            <span class="gv-round-absent-actions">
+              <button class="danger small" type="button" data-gv-round-absent-yes data-client-id="${escapeHtml(item.clientId)}">Sí, no vino</button>
+              <button class="secondary small" type="button" data-gv-round-absent-no>Cancelar</button>
+            </span>
+          </div>` : `<button class="gv-link gv-round-absent" type="button" data-gv-round-absent data-client-id="${escapeHtml(item.clientId)}">No vino</button>`}
         </div>`;
     }).join('');
     const withoutRir = rows.filter(({ row }) => !groupRoundReady(row));
@@ -3171,12 +3297,51 @@
       return true;
     }
     if (button('[data-gv-end]')) {
-      if (openGroupRound()) {
+      // v0.9.55: los que no anotaron nada no bloquean: una sola pregunta.
+      const idle = getGroupIdleClients();
+      if (idle.length) {
+        groupSessionUi.endAsk = { ids: idle };
         renderTrainingGroupMode();
+        els.groupSessionRows?.querySelector('[data-gv-end-ask]')?.scrollIntoView({ block: 'nearest' });
       } else {
-        groupSessionUi.message = '';
-        setTrainingView('today');
+        finishGroupClass();
       }
+      return true;
+    }
+    if (button('[data-gv-end-absent]') && groupSessionUi.endAsk) {
+      const ids = groupSessionUi.endAsk.ids.filter((clientId) => groupSessionUi.selectedClientIds.includes(clientId));
+      const names = ids.map(getGroupShortName);
+      ids.forEach((clientId) => markGroupClientAbsent(clientId));
+      finishGroupClass(names.length ? absentText(names) : '');
+      return true;
+    }
+    if (button('[data-gv-end-keep]') && groupSessionUi.endAsk) {
+      finishGroupClass();
+      return true;
+    }
+    if (button('[data-gv-end-back]')) {
+      groupSessionUi.endAsk = null;
+      renderTrainingGroupMode();
+      return true;
+    }
+    const absentButton = button('[data-gv-round-absent]');
+    if (absentButton && groupSessionUi.round) {
+      groupSessionUi.round.absentAsk = absentButton.getAttribute('data-client-id');
+      renderTrainingGroupMode();
+      return true;
+    }
+    if (button('[data-gv-round-absent-no]') && groupSessionUi.round) {
+      groupSessionUi.round.absentAsk = '';
+      renderTrainingGroupMode();
+      return true;
+    }
+    const absentYes = button('[data-gv-round-absent-yes]');
+    if (absentYes && groupSessionUi.round) {
+      const clientId = absentYes.getAttribute('data-client-id');
+      const name = getGroupShortName(clientId);
+      markGroupClientAbsent(clientId);
+      groupSessionUi.message = absentText([name]);
+      renderTrainingGroupMode();
       return true;
     }
     if (button('[data-gv-round-open]')) {
@@ -3304,6 +3469,7 @@
     groupSessionUi.focus = {};
     groupSessionUi.moreOpen = {};
     groupSessionUi.round = null;
+    groupSessionUi.endAsk = null;
   }
 
   function checkGroupDraft() {
@@ -3334,7 +3500,7 @@
     Object.assign(groupSessionUi, {
       selectedClientIds: [], sessionDate: getTodayLocalDate(), dateIsManual: false, dayChoices: {}, openClients: {}, drafts: {},
       message: '', picker: null, history: {}, clientNotices: {}, commentEditor: null, draftNotice: '', pendingDraft: null, cancelAsk: false,
-      activeClientId: '', focus: {}, moreOpen: {}, clientsOpen: null, round: null, importNotice: '',
+      activeClientId: '', focus: {}, moreOpen: {}, clientsOpen: null, round: null, endAsk: null, importNotice: '',
       circuitView: null, circuitTimers: {}, circuitDrafts: {}, circuitNotice: ''
     });
     // Los vínculos de alumnos de la cuenta anterior no valen para esta.
@@ -3392,7 +3558,7 @@
     Object.assign(groupSessionUi, {
       selectedClientIds: [], dateIsManual: false, dayChoices: {}, openClients: {}, drafts: {}, picker: null, history: {},
       clientNotices: {}, commentEditor: null, draftNotice: '', cancelAsk: false,
-      activeClientId: '', focus: {}, moreOpen: {}, clientsOpen: null, round: null,
+      activeClientId: '', focus: {}, moreOpen: {}, clientsOpen: null, round: null, endAsk: null,
       circuitView: null, circuitDrafts: {}, circuitNotice: '',
       message: 'Se descartó lo no confirmado. Lo ya confirmado sigue guardado.'
     });
@@ -3813,8 +3979,8 @@
       fail('Elige Subir, Mantener o Bajar');
       return;
     }
-    const proposedWeight = Number(draft.proposedWeight);
-    if (!onlyToday && (String(draft.proposedWeight ?? '').trim() === '' || !Number.isFinite(proposedWeight) || proposedWeight < 0)) {
+    const proposedWeight = decimalApi.parse(String(draft.proposedWeight ?? ''));
+    if (!onlyToday && (proposedWeight === null || !Number.isFinite(proposedWeight) || proposedWeight < 0)) {
       fail('La próxima sesión necesita un peso válido');
       return;
     }
@@ -3939,7 +4105,8 @@
       const draft = getGroupDraft(clientId, row.planExercise);
       const previousRir = draft.rir;
       // Kilos con coma o punto: en el borrador siempre con punto ("22,5" -> "22.5").
-      draft[field] = /^s\d+Weight$/.test(field) ? groupRoundApi.normalizeWeightText(event.target.value) : event.target.value;
+      // v0.9.55: también "Próxima sesión" (proposedWeight).
+      draft[field] = /^s\d+Weight$/.test(field) || field === 'proposedWeight' ? groupRoundApi.normalizeWeightText(event.target.value) : event.target.value;
       const setField = field.match(/^s(\d+)(Weight|Reps|Seconds)$/);
       if (setField && groupSessionUi.layout === 'compact') {
         updateGroupSetMark(event.target, clientId, row, Number(setField[1]));
@@ -4854,7 +5021,7 @@
       els.programExerciseRestInput.value = String(exercise.restSeconds || 90);
     }
     if (els.programExerciseWeightInput) {
-      els.programExerciseWeightInput.value = Number(exercise.targetWeight || 0) > 0 ? String(exercise.targetWeight) : '';
+      els.programExerciseWeightInput.value = Number(exercise.targetWeight || 0) > 0 ? showDecimal(exercise.targetWeight) : '';
     }
     if (els.programExerciseRepMinInput) {
       els.programExerciseRepMinInput.value = String(exercise.repRangeMin || 8);
@@ -4883,7 +5050,7 @@
         <div class="training-set-item">
           <div><strong>${escapeHtml(approx.label || `A${index + 1}`)}</strong></div>
           <div class="row">
-            <div><label>Peso</label><input data-program-approx-weight="${approx.id}" type="number" min="0" step="0.5" value="${Number(approx.weight || 0)}"></div>
+            <div><label>Peso</label><input data-program-approx-weight="${approx.id}" type="text" inputmode="decimal" autocomplete="off" value="${showDecimal(Number(approx.weight || 0))}"></div>
             <div><label>Reps</label><input data-program-approx-reps="${approx.id}" type="number" min="0" value="${Number(approx.reps || 0)}"></div>
           </div>
         </div>`).join('')
@@ -4893,7 +5060,7 @@
         <div class="training-set-item">
           <div><strong>${escapeHtml(setEntry.label || `S${index + 1}`)}</strong></div>
           <div class="row">
-            <div><label>Peso</label><input data-program-set-weight="${setEntry.id}" type="number" min="0" step="0.5" value="${Number(setEntry.weight || 0)}"></div>
+            <div><label>Peso</label><input data-program-set-weight="${setEntry.id}" type="text" inputmode="decimal" autocomplete="off" value="${showDecimal(Number(setEntry.weight || 0))}"></div>
             <div><label>Reps</label><input data-program-set-reps="${setEntry.id}" type="number" min="0" value="${Number(setEntry.reps || 0)}"></div>
           </div>
         </div>`).join('')
@@ -5332,7 +5499,7 @@
 
         <div class="planning-field-inline">
           <label>PESO OBJETIVO</label>
-          <input type="number" min="0" step="0.5" data-routine-field="targetWeight" value="${routineBuilder.draft.targetWeight === '' ? '' : Number(routineBuilder.draft.targetWeight || 0)}" placeholder="kg">
+          <input type="text" inputmode="decimal" autocomplete="off" data-routine-field="targetWeight" value="${routineBuilder.draft.targetWeight === '' ? '' : escapeHtml(showDecimal(routineBuilder.draft.targetWeight))}" placeholder="kg">
         </div>`;
 
     els.routineBuilderRoot.innerHTML = `
@@ -5390,7 +5557,7 @@
               <div class="planning-approx-item">
                 <div>
                   <label>A${index + 1}</label>
-                  <input type="number" min="0" step="0.5" data-routine-field="approx-weight" data-approx-index="${index}" value="${item.weight === '' || item.weight === null || item.weight === undefined ? '' : Number(item.weight || 0)}" placeholder="kg">
+                  <input type="text" inputmode="decimal" autocomplete="off" data-routine-field="approx-weight" data-approx-index="${index}" value="${item.weight === '' || item.weight === null || item.weight === undefined ? '' : escapeHtml(showDecimal(item.weight))}" placeholder="kg">
                 </div>
                 <div>
                   <label>Reps</label>
@@ -5442,11 +5609,11 @@
       // se escriben los dos para que editar las repeticiones no se pierda.
       repRangeMin: Number(routineBuilder.draft.repMin || 8),
       repRangeMax: Number(routineBuilder.draft.repMax || Number(routineBuilder.draft.repMin || 8)),
-      targetWeight: Number(routineBuilder.draft.targetWeight || 0),
+      targetWeight: readDecimal(routineBuilder.draft.targetWeight, 0),
       approximations: Array.isArray(routineBuilder.draft.approximations) ? routineBuilder.draft.approximations.map((item, index) => ({
         id: dataApi.createId('program-approximation'),
         label: `A${index + 1}`,
-        weight: item.weight === '' || item.weight === null || item.weight === undefined ? '' : Number(item.weight || 0),
+        weight: item.weight === '' || item.weight === null || item.weight === undefined ? '' : readDecimal(item.weight, 0),
         reps: Number(item.reps || 8)
       })) : [],
       zone: routineBuilder.draft.zone || '',
@@ -7253,7 +7420,7 @@
     exercise.notes = String(els.programExerciseNotesInput?.value || '').trim();
     exercise.repRangeMin = Math.max(1, Number(els.programExerciseRepMinInput?.value || 8));
     exercise.repRangeMax = Math.max(exercise.repRangeMin, Number(els.programExerciseRepMaxInput?.value || exercise.repRangeMin));
-    exercise.targetWeight = Number(els.programExerciseWeightInput?.value || 0);
+    exercise.targetWeight = readDecimal(els.programExerciseWeightInput?.value, 0);
     exercise.restSeconds = Math.max(0, Number(els.programExerciseRestInput?.value || 90));
     exercise.zone = String(els.programExerciseZoneInput?.value || '').trim();
 
@@ -7268,7 +7435,7 @@
         return {
           id,
           label: `A${index + 1}`,
-          weight: Number(input.value || 0),
+          weight: readDecimal(input.value, 0),
           reps: Number(repsInput?.value || 0)
         };
       });
@@ -7286,7 +7453,7 @@
         return {
           id,
           label: `S${index + 1}`,
-          weight: Number(input.value || 0),
+          weight: readDecimal(input.value, 0),
           reps: Number(repsInput?.value || 0)
         };
       })
@@ -8124,7 +8291,7 @@
     const plannedSets = Math.max(1, Number(els.templateExerciseSetsInput?.value || 1));
     const plannedRepMin = Math.max(1, Number(els.templateExerciseRepMinInput?.value || 1));
     const plannedRepMax = Math.max(plannedRepMin, Number(els.templateExerciseRepMaxInput?.value || plannedRepMin));
-    const targetWeight = Math.max(0, Number(els.templateExerciseWeightInput?.value || 0));
+    const targetWeight = Math.max(0, readDecimal(els.templateExerciseWeightInput?.value, 0));
     const restSeconds = Math.max(1, Number(els.templateExerciseRestInput?.value || 90));
     const coachNotes = String(els.templateExerciseNotesInput?.value || '').trim();
 
@@ -8313,7 +8480,7 @@
       els.templateExerciseRepMaxInput.value = String(exercise.plannedRepMax);
     }
     if (els.templateExerciseWeightInput) {
-      els.templateExerciseWeightInput.value = String(exercise.targetWeight || 0);
+      els.templateExerciseWeightInput.value = showDecimal(exercise.targetWeight || 0);
     }
     if (els.templateExerciseRestInput) {
       els.templateExerciseRestInput.value = String(exercise.restSeconds);
@@ -8712,6 +8879,37 @@
       });
     });
     return weights.length ? Math.max(...weights) : 0;
+  }
+
+  // v0.9.55: recalcula la marca "Posible nuevo récord" (personalRecord) de todas las series de un alumno
+  // en un ejercicio, con la misma regla del editor de series (saveTrainingSetEntry): peso > mejor peso de
+  // las sesiones anteriores (getTrainingExercisesByClientExercise, en orden de fecha) y peso > 0.
+  // La usa "Revisar pesos" al corregir, para que un peso falso no quede como récord. Los récords de la
+  // ficha y Progreso se calculan en vivo desde los pesos y se corrigen solos. Devuelve cuántas cambió.
+  function recomputeExercisePersonalRecords(clientId, exerciseName) {
+    let best = 0;
+    let changed = 0;
+    let currentSessionId = null;
+    let sessionBest = 0;
+    getTrainingExercisesByClientExercise(clientId, exerciseName).forEach(({ session, exercise }) => {
+      if (session.id !== currentSessionId) {
+        best = Math.max(best, sessionBest);
+        sessionBest = 0;
+        currentSessionId = session.id;
+      }
+      getExerciseSets(exercise).forEach((setEntry) => {
+        const weight = Number(setEntry.weight || 0);
+        const isPr = Number.isFinite(weight) && weight > best && weight > 0;
+        if (Boolean(setEntry.personalRecord) !== isPr) {
+          setEntry.personalRecord = isPr;
+          changed += 1;
+        }
+        if (Number.isFinite(weight) && weight > 0) {
+          sessionBest = Math.max(sessionBest, weight);
+        }
+      });
+    });
+    return changed;
   }
 
   function buildLastSessionSummary(clientId, exerciseName, options = {}) {
@@ -10931,7 +11129,8 @@
       movementKey: normalizeMovementKey(movementName),
       status: payload.status || 'no_evaluado',
       coachNote: payload.coachNote || '',
-      evaluated1rm: payload.evaluated1rm || '',
+      // v0.9.55: "7.5" y "7,5" = 7,5 (vacío o inválido = sin dato, como antes).
+      evaluated1rm: readDecimal(payload.evaluated1rm, '') || '',
       lastEvaluatedOn: payload.lastEvaluatedOn || ''
     });
 
@@ -11290,7 +11489,10 @@
     }
     const student = slot.students.find((item) => item.id === clientId);
     const client = getClientById(clientId);
-    if (!student || !client || student.attendance || Number(client.sessions_used || 0) >= Number(client.sessions_total || 0)) {
+    // v0.9.55: details.noDiscount = solo registra la ausencia ("No vino" de Modo Grupo): no exige saldo
+    // ni descuenta sesión.
+    const noDiscount = details.noDiscount === true;
+    if (!student || !client || student.attendance || (!noDiscount && Number(client.sessions_used || 0) >= Number(client.sessions_total || 0))) {
       return;
     }
     const markedAt = new Date().toISOString();
@@ -11310,11 +11512,28 @@
       noticeDays: details.noticeDays ?? null,
       requestedBy: details.requestedBy || ''
     });
-    if (status !== 'rescheduled') {
+    if (status !== 'rescheduled' && !noDiscount) {
       client.sessions_used = Math.min(Number(client.sessions_total || 0), Number(client.sessions_used || 0) + 1);
     }
     saveSessionState();
     render();
+  }
+
+  // v0.9.55: presentes de una clase según la asistencia de Hoy.
+  //   * Si alguien está marcado "Asistió": solo los marcados "Asistió" (rule 'attended').
+  //   * Si nadie "Asistió" pero hay marcados "No asistió" o "Reagendada": todos menos esos (rule 'absent').
+  //   * Si no se marcó nada: null (Modo Grupo parte con toda la clase, como antes).
+  function groupPresentFromAttendance(slot) {
+    const students = slot?.students || [];
+    const marked = students.filter((student) => student.attendance);
+    if (!marked.length) {
+      return null;
+    }
+    const attended = students.filter((student) => student.attendance?.status === 'attended');
+    if (attended.length) {
+      return { rule: 'attended', ids: attended.map((student) => student.id) };
+    }
+    return { rule: 'absent', ids: students.filter((student) => !student.attendance).map((student) => student.id) };
   }
 
   function openAgendaSlotInGroupMode(sessionKey) {
@@ -11323,10 +11542,19 @@
     if (!slot) {
       return;
     }
-    const clientIds = slot.students.map((student) => student.id);
+    // v0.9.55: si en Hoy se marcó asistencia, Modo Grupo parte solo con los presentes (ver
+    // groupPresentFromAttendance). Los demás se pueden sumar en "Alumnos del grupo · cambiar".
+    const attendance = groupPresentFromAttendance(slot);
+    const clientIds = attendance ? attendance.ids : slot.students.map((student) => student.id);
     groupSessionUi.selectedClientIds = clientIds.slice(0, 4);
     groupSessionUi.openClients = {};
     groupSessionUi.message = clientIds.length > 4 ? 'Modo Grupo admite hasta 4 alumnos: se marcaron los primeros 4.' : '';
+    if (attendance && !groupSessionUi.message) {
+      const left = slot.students.length - attendance.ids.length;
+      groupSessionUi.message = attendance.ids.length
+        ? `Según la asistencia de Hoy: ${attendance.ids.length} ${attendance.ids.length === 1 ? 'presente' : 'presentes'}.${left ? ` ${left} ${left === 1 ? 'queda' : 'quedan'} fuera (${attendance.rule === 'attended' ? 'sin marcar "Asistió"' : 'marcados ausentes'}); ${left === 1 ? 'súmalo' : 'súmalos'} en "Alumnos del grupo".` : ''}`
+        : 'Según la asistencia de Hoy, nadie está presente: elige los alumnos en "Alumnos del grupo".';
+    }
     setTrainingView('group');
     els.trainingGroupView?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
@@ -11535,7 +11763,7 @@
     if (els.setWeightInput && !els.setWeightInput.value && currentExercise) {
       const fallbackWeight = Number(currentExercise.targetWeight || 0);
       if (fallbackWeight > 0) {
-        els.setWeightInput.value = String(fallbackWeight);
+        els.setWeightInput.value = showDecimal(fallbackWeight);
       }
     }
 
@@ -11554,6 +11782,7 @@
     els.coachWhatsAppNumber.value = String(state.settings.coach_whatsapp_number || '');
     renderOnboardingQr();
     renderLastExport();
+    renderWeightReview();
     if (els.accountSettings) {
       els.accountSettings.innerHTML = (state.accounts || []).map((account) => `
         <div class="list-item">
@@ -11568,6 +11797,80 @@
           </div>
         </div>`).join('');
     }
+  }
+
+  // ---- v0.9.55 · Ajustes → Revisar pesos (regla en weight-review-core.js) ----
+  const weightReviewUi = { message: '' };
+
+  function getWeightReviewItems() {
+    ensureTrainingsV08State();
+    const activeIds = new Set((state.clients || []).map((client) => client.id));
+    return weightReviewApi.findSuspects(state.trainingsV08.sessions || []).filter((item) => activeIds.has(item.clientId));
+  }
+
+  function renderWeightReview() {
+    const list = document.getElementById('weightReviewList');
+    const count = document.getElementById('weightReviewCount');
+    const message = document.getElementById('weightReviewMessage');
+    if (!list || !weightReviewApi) {
+      return;
+    }
+    const items = getWeightReviewItems();
+    if (count) {
+      count.textContent = String(items.length);
+      count.className = `st-chip${items.length ? ' st-chip--warn' : ' st-chip--ok'}`;
+    }
+    if (message) {
+      message.textContent = weightReviewUi.message;
+      message.className = weightReviewUi.message ? 'notice ok' : 'notice';
+    }
+    list.innerHTML = items.length ? items.map((item) => {
+      const key = escapeHtml(weightReviewApi.suspectKey(item));
+      const client = getClientById(item.clientId);
+      const setLabel = item.setType === 'A' ? `Aproximación ${item.setNumber}` : `Serie ${item.setNumber}`;
+      const reps = item.reps === null ? '' : ` × ${item.reps}`;
+      return `
+        <div class="st-review-row" data-weight-review-row="${key}">
+          <div><strong>${escapeHtml(client ? getClientDisplayName(client) : 'Alumno')}</strong> · ${escapeHtml(item.exerciseName || 'Ejercicio')}</div>
+          <p class="st-muted">${escapeHtml(formatClientDate(item.date))} · ${escapeHtml(setLabel)} · <span class="st-review-value" data-weight-review-value>${escapeHtml(showDecimal(item.weight))} kg</span>${escapeHtml(reps)} · lo habitual: ${escapeHtml(showDecimal(item.reference))} kg${item.loggedBy === 'student' ? ' · <span data-weight-review-student>anotada por el alumno</span>' : ''}</p>
+          <div class="st-row">
+            <button class="st-review-fix" type="button" data-weight-review-fix="${key}">Corregir a ${escapeHtml(showDecimal(item.suggested))}</button>
+            <button class="st-review-ok" type="button" data-weight-review-ok="${key}">Está bien</button>
+          </div>
+        </div>`;
+    }).join('') : '<p class="st-muted" data-weight-review-empty>No hay pesos raros en las series guardadas.</p>';
+  }
+
+  function handleWeightReviewClick(event) {
+    const fix = event.target.closest('[data-weight-review-fix]');
+    const ok = event.target.closest('[data-weight-review-ok]');
+    if (!fix && !ok) {
+      return;
+    }
+    const key = (fix || ok).getAttribute(fix ? 'data-weight-review-fix' : 'data-weight-review-ok');
+    const item = getWeightReviewItems().find((candidate) => weightReviewApi.suspectKey(candidate) === key);
+    if (!item) {
+      weightReviewUi.message = 'Esa serie ya cambió. Revisa la lista de nuevo.';
+      renderWeightReview();
+      return;
+    }
+    const sessions = state.trainingsV08.sessions || [];
+    const client = getClientById(item.clientId);
+    const who = `${client ? getClientFirstName(client) : 'Alumno'}, ${item.exerciseName || 'ejercicio'} del ${formatClientDate(item.date)}`;
+    const changed = fix ? weightReviewApi.applyFix(sessions, item) : weightReviewApi.markOk(sessions, item);
+    if (!changed) {
+      weightReviewUi.message = 'Esa serie ya cambió. Revisa la lista de nuevo.';
+      renderWeightReview();
+      return;
+    }
+    if (fix) {
+      // Un peso falso no queda como récord: se recalculan los récords de ese alumno en ese ejercicio.
+      recomputeExercisePersonalRecords(item.clientId, item.exerciseName);
+    }
+    weightReviewUi.message = fix
+      ? `✓ Corregido: ${who} quedó en ${showDecimal(item.suggested)} kg.`
+      : `✓ Queda como está: ${who} (${showDecimal(item.weight)} kg).`;
+    persist();
   }
 
   function getOnboardingUrl() {
@@ -11818,11 +12121,11 @@
           <div class="row">
             <div>
               <label>Agua mínima (L)</label>
-              <input id="planWaterMin" name="planWaterMin" type="number" step="0.1" value="${Number((nutritionUi.planDraft || getNutritionPlanDraft()).waterMinLiters || 3)}">
+              <input id="planWaterMin" name="planWaterMin" type="text" inputmode="decimal" autocomplete="off" value="${showDecimal(Number((nutritionUi.planDraft || getNutritionPlanDraft()).waterMinLiters || 3))}">
             </div>
             <div>
               <label>Agua máxima (L)</label>
-              <input id="planWaterMax" name="planWaterMax" type="number" step="0.1" value="${Number((nutritionUi.planDraft || getNutritionPlanDraft()).waterMaxLiters || 5)}">
+              <input id="planWaterMax" name="planWaterMax" type="text" inputmode="decimal" autocomplete="off" value="${showDecimal(Number((nutritionUi.planDraft || getNutritionPlanDraft()).waterMaxLiters || 5))}">
             </div>
           </div>
           <div>
@@ -11943,7 +12246,7 @@
           <div class="row">
             <div>
               <label>Agua consumida (L)</label>
-              <input id="dailyWater" name="waterLiters" type="number" step="0.1" value="0">
+              <input id="dailyWater" name="waterLiters" type="text" inputmode="decimal" autocomplete="off" value="0">
             </div>
             <div>
               <label>Suplementos completados</label>
@@ -11974,7 +12277,7 @@
             </div>
             <div>
               <label>Peso (kg, opcional)</label>
-              <input id="dailyWeight" name="weight" type="number" step="0.1">
+              <input id="dailyWeight" name="weight" type="text" inputmode="decimal" autocomplete="off">
             </div>
           </div>
           <div>
@@ -12199,7 +12502,7 @@
     const plannedRepMin = Math.max(1, Number(payload.plannedRepMin || payload.reps || 1));
     const plannedRepMaxRaw = Number(payload.plannedRepMax || plannedRepMin);
     const plannedRepMax = plannedRepMaxRaw >= plannedRepMin ? plannedRepMaxRaw : plannedRepMin;
-    const targetWeight = Math.max(0, Number(payload.targetWeight || payload.weight || 0));
+    const targetWeight = Math.max(0, readDecimal(payload.targetWeight || payload.weight, 0));
     const restSeconds = payload.restPreset === 'custom'
       ? Math.max(1, parseInt(String(payload.restSeconds || payload.rest || '90').replace(/\D/g, ''), 10) || 90)
       : Math.max(1, Number(payload.restPreset || 90));
@@ -12251,7 +12554,7 @@
     }
     if (els.setWeightInput) {
       const previousSet = getExerciseSets(exercise)[getExerciseSets(exercise).length - 1] || null;
-      els.setWeightInput.value = String(previousSet ? Number(previousSet.weight || 0) : targetWeight || 0);
+      els.setWeightInput.value = showDecimal(previousSet ? Number(previousSet.weight || 0) : targetWeight || 0);
     }
     if (els.setRepsInput) {
       els.setRepsInput.value = '';
@@ -12293,7 +12596,8 @@
       session.status = 'in_progress';
     }
 
-    const weight = Number(els.setWeightInput?.value || 0);
+    const parsedWeight = decimalApi.parse(els.setWeightInput?.value ?? '');
+    const weight = parsedWeight === null ? 0 : parsedWeight;
     const reps = Number(els.setRepsInput?.value || 0);
     const rirValue = String(els.setRirInput?.value || '').trim();
     const rir = rirValue ? Number(rirValue) : null;
@@ -12499,7 +12803,7 @@
       els.plannedRepMaxInput.value = String(Number(exercise.plannedRepMax || 1));
     }
     if (els.targetWeightInput) {
-      els.targetWeightInput.value = String(Number(exercise.targetWeight || 0));
+      els.targetWeightInput.value = showDecimal(Number(exercise.targetWeight || 0));
     }
     if (els.techniqueNotesInput) {
       els.techniqueNotesInput.value = exercise.coachNotes || '';
@@ -12731,8 +13035,8 @@
       description: payload.planDescription || '',
       cycleLength: Number(payload.planCycleLength || 10),
       freeDay: payload.planFreeDay === 'true',
-      waterMinLiters: Number(payload.planWaterMin || 3),
-      waterMaxLiters: Number(payload.planWaterMax || 5),
+      waterMinLiters: readDecimal(payload.planWaterMin, 0) || 3,
+      waterMaxLiters: readDecimal(payload.planWaterMax, 0) || 5,
       active: payload.planActive === 'true',
       days: (draft.days || []).map((day, index) => ({ ...day }))
     };
@@ -12791,12 +13095,12 @@
       cycleDay: Number(payload.cycleDay || 1),
       completedMeals: selectedMeals.length,
       totalMeals: plan?.days?.find((day) => Number(day.dayNumber) === Number(payload.cycleDay || 1))?.meals?.length || 0,
-      waterLiters: Number(payload.waterLiters || 0),
+      waterLiters: readDecimal(payload.waterLiters, 0),
       supplementsCompleted: payload.supplementsCompleted === 'true',
       energy: Number(payload.energy || 3),
       hunger: Number(payload.hunger || 3),
       digestion: payload.digestion || 'Regular',
-      weight: payload.weight ? Number(payload.weight) : '',
+      weight: readDecimal(payload.weight, '') || '',
       notes: payload.notes || '',
       createdAt: new Date().toISOString()
     };
@@ -13641,7 +13945,7 @@
           els.editingSetNumber.value = String(setEditNumber);
         }
         if (els.setWeightInput) {
-          els.setWeightInput.value = String(Number(setEntry.weight || 0));
+          els.setWeightInput.value = showDecimal(Number(setEntry.weight || 0));
         }
         if (els.setRepsInput) {
           els.setRepsInput.value = String(Number(setEntry.reps || 0));
@@ -13665,9 +13969,9 @@
 
     const weightDelta = target.getAttribute('data-weight-delta');
     if (weightDelta && els.setWeightInput) {
-      const current = Number(els.setWeightInput.value || 0);
+      const current = readDecimal(els.setWeightInput.value, 0);
       const next = Math.max(0, Math.round((current + Number(weightDelta)) * 10) / 10);
-      els.setWeightInput.value = String(next);
+      els.setWeightInput.value = showDecimal(next);
       return;
     }
 
@@ -14110,6 +14414,7 @@
   document.getElementById('settingsForm').addEventListener('submit', handleSettingsSubmit);
   els.copyOnboardingUrlBtn?.addEventListener('click', copyOnboardingUrl);
   document.getElementById('exportBtn').addEventListener('click', handleExportClick);
+  document.getElementById('weightReviewList')?.addEventListener('click', handleWeightReviewClick);
   els.fileInput.addEventListener('change', handleImport);
   els.restoreConfirmInput.addEventListener('input', updateRestoreButton);
   els.restoreBtn.addEventListener('click', handleRestoreClick);

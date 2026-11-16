@@ -51,6 +51,22 @@ Guarda primero en localStorage y sincroniza con Supabase (coach_state + tablas d
   Revisión al abrir (con la nube al día) y al guardar (persist y saveSessionState en app.js). paidAt y classesPerPayment
   suben con los alumnos en coach_state; nunca se publican. Pagado sin paidAt = "sin fecha de inicio" y nunca cambia
   solo (no se deduce de finanzas). En Editar, "Inicio del pago" corrige paidAt a mano (startDateFromForm).
+- decimal-core.js — v0.9.55: lector ÚNICO de pesos y decimales (parse: "7.5" = "7,5" = 7,5; un solo separador;
+  el punto nunca es de miles; vacío null, inválido NaN). Todo campo de peso/decimales es type="text"
+  inputmode="decimal" (Chrome en español leía "7.5" como 75 en type="number"); no volver a type="number".
+  app.js lee con readDecimal/showDecimal; group-round-core, self-log-core y client-overrides-core lo usan.
+  Se carga justo después de config.js.
+- weight-review-core.js — v0.9.55: Ajustes → "Revisar pesos": series con peso entre 7,5 y 12,5 veces la mediana
+  del alumno en ese ejercicio en OTRAS fechas (mediana por fecha, solo series S; mínimo 2 fechas). "Corregir"
+  divide solo el peso ÷10 (serie del alumno pasa a loggedBy coach, como en el editor de series); "Está bien"
+  = weightCheck 'ok' en la serie (sube en coach_state; keepUnknown lo conserva).
+- Modo Grupo v0.9.55 (app.js): "Empezar clase" parte solo con los presentes si se marcó asistencia en Hoy
+  (groupPresentFromAttendance); "Terminar clase" pregunta una vez por los que no anotaron nada; "No vino" en
+  cada fila del cierre. "No vino" = recordAgendaStatus 'no_show' con noDiscount (solo registra la ausencia,
+  reason "No vino (Modo Grupo)"; NO descuenta sessions_used ni cuenta para el período de pago) y saca al
+  alumno de la clase (solo lo suyo sin guardar).
+  "Corregir" de Revisar pesos recalcula personalRecord de ese alumno en ese ejercicio
+  (recomputeExercisePersonalRecords, la regla del editor de series: peso > mejor de las sesiones anteriores).
 - onboarding.js — formulario público de ingreso (?onboarding=1), sin login.
 - cloud-data.js — capa de tablas antiguas, desactivada. supabase/ — migración A0 y prueba de RLS (SQL);
   B4: b4_invitaciones.sql, b4_invitaciones_deshacer.sql y b4_prueba_invitaciones.sql (36 pruebas, todo se deshace).
