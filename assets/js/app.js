@@ -20,6 +20,8 @@
   const overridesApi = window.VALHALLA.clientOverrides;
   // v0.9.53: motivo del cambio (molestia, máquina ocupada, otro) y reemplazos sugeridos (swap-reason-core.js).
   const swapReasonApi = window.VALHALLA.swapReason;
+  // v0.9.57: qué rutina hizo en cada sesión ("Lun 16 nov · hizo C"), routine-choice-core.js.
+  const routineChoiceApi = window.VALHALLA.routineChoice || null;
   // Borrador de Modo Grupo guardado solo en este teléfono (group-draft-core.js).
   const groupDraftApi = window.VALHALLA.groupDraftCore;
   // Modo Grupo compacto v2: series hechas, rotación entre alumnos y cierre de ronda (group-round-core.js).
@@ -9501,6 +9503,17 @@
     return { sessions, dates: new Set([...sessions.map((session) => session.date), ...attended.map((entry) => entry.date)]) };
   }
 
+  // v0.9.57: "C" para una sesión con día del programa (también la que trajo de lo que anotó el alumno).
+  function getSessionRoutineLabel(session) {
+    return routineChoiceApi ? routineChoiceApi.sessionRoutineLabel(session, getTrainingAssignments()) : '';
+  }
+
+  // Rutina de la última fecha entrenada (si hubo sesión con día del programa ese día).
+  function getLastSessionRoutine(sessions, date) {
+    const labels = [...new Set(sessions.filter((session) => session.date === date).map(getSessionRoutineLabel).filter(Boolean))];
+    return labels.join(' y ');
+  }
+
   function getClientFichaStats(client) {
     const today = getTodayLocalDate();
     const start = shiftLocalDate(today, -27);
@@ -9538,7 +9551,7 @@
     return {
       attendance,
       records: recordInfo.tracked ? String(recordInfo.count) : '—',
-      lastSession: lastDate ? formatFichaDate(lastDate) : '—',
+      lastSession: lastDate ? `${formatFichaDate(lastDate)}${getLastSessionRoutine(sessions, lastDate) ? ` · hizo ${getLastSessionRoutine(sessions, lastDate)}` : ''}` : '—',
       dates: allDates
     };
   }
@@ -10323,11 +10336,13 @@
     const studentSets = studentImportApi ? studentImportApi.countStudentSets(session) : 0;
     // v0.9.45: "AMRAP 12 · 5 rondas + 12" (un circuito no son series).
     const circuitLines = circuitsApi && Array.isArray(session.circuits) ? session.circuits.map(circuitsApi.formatSessionEntry).filter(Boolean) : [];
+    const routine = getSessionRoutineLabel(session);
     return `
           <button class="pg-session" type="button" data-training-open-session="${escapeHtml(session.id)}">
             <span class="pg-session-date"><span class="pg-session-day">${valid ? date.getDate() : '—'}</span><span class="pg-session-month">${valid ? FICHA_MONTHS[date.getMonth()].toUpperCase() : ''}</span></span>
             <span class="pg-session-body">
               <span class="pg-session-title">${escapeHtml(session.title || 'Sesión')}${valid ? ` · ${PG_WEEKDAYS[date.getDay()]}` : ''}</span>
+              ${routine && routineChoiceApi ? `<span class="pg-session-routine" data-pg-routine>${escapeHtml(routineChoiceApi.sessionLine(session.date, routine))}</span>` : ''}
               ${exercises.length || !circuitLines.length ? `<span class="pg-session-meta">${prPlural(exercises.length, 'ejercicio', 'ejercicios')} · ${done}/${planned} series</span>` : ''}
               ${circuitLines.map((line) => `<span class="pg-session-circuit" data-pg-circuit>${escapeHtml(line)}</span>`).join('')}
               ${studentSets ? `<span class="pg-session-student" data-student-logged>Registrado por el alumno · ${prPlural(studentSets, 'serie', 'series')}</span>` : ''}

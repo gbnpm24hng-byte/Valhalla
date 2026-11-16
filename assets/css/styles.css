@@ -3409,6 +3409,107 @@ details.group-athlete-row[open] > summary h3::before {
   color: var(--sv-ink);
 }
 
+/* v0.9.57: "Lunes — A" + "Cambiar día" y la lista de rutinas. */
+.auth-gate--student .sv-day-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.auth-gate--student .sv-day-title {
+  margin: 0;
+  min-width: 0;
+  font-size: 1.25rem;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.auth-gate--student .sv-day-change,
+.auth-gate--student .sv-day-cancel {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--sv-line);
+  background: var(--sv-card);
+  color: var(--sv-text);
+  font-weight: 700;
+  box-shadow: none;
+}
+
+.auth-gate--student .sv-day-panel {
+  display: grid;
+  gap: 8px;
+}
+
+.auth-gate--student .sv-day-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.auth-gate--student .sv-day-option {
+  width: 100%;
+  display: grid;
+  gap: 2px;
+  text-align: left;
+  padding: 10px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--sv-line);
+  background: var(--sv-card);
+  color: var(--sv-text);
+  box-shadow: none;
+}
+
+.auth-gate--student .sv-day-option.is-active {
+  border-color: var(--sv-accent);
+  box-shadow: inset 0 0 0 1px var(--sv-accent);
+}
+
+.auth-gate--student .sv-day-option-name {
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.auth-gate--student .sv-day-done {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--sv-accent);
+}
+
+.auth-gate--student .sv-day-suggested {
+  color: var(--sv-accent);
+  font-weight: 700;
+}
+
+.auth-gate--student .sv-day-confirm {
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--sv-accent);
+  background: var(--sv-card);
+}
+
+.auth-gate--student .sv-day-confirm p {
+  margin: 0 0 10px;
+  font-weight: 700;
+}
+
+.auth-gate--student .sv-day-confirm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.auth-gate--student .sv-day-confirm-actions .sv-next {
+  flex: 1 1 auto;
+  width: auto;
+  margin: 0;
+}
+
 /* Ejercicios del día. */
 .auth-gate--student .sv-ex-list {
   list-style: none;
@@ -4755,6 +4856,7 @@ button.client-back {
 .pg-session-body { flex: 1 1 auto; min-width: 0; display: grid; gap: 2px; }
 .pg-session-title { font-weight: 700; font-size: 0.98rem; overflow-wrap: anywhere; }
 .pg-session-meta, .pg-session-student { color: var(--pg-muted); font-size: 0.84rem; }
+.pg-session-routine { font-size: 0.84rem; font-weight: 700; }
 .pg-tag { flex: 0 0 auto; padding: 3px 9px; border-radius: 999px; font-size: 0.75rem; font-weight: 700; white-space: nowrap; }
 .pg-tag--record { background: var(--pg-yellow); color: #0E0E0C; }
 .pg-tag--done { background: var(--pg-green-bg); color: var(--pg-green); }

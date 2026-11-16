@@ -82,6 +82,12 @@ Guarda primero en localStorage y sincroniza con Supabase (coach_state + tablas d
   semana completa = días entrenados ≥ días con ejercicios del programa, racha 2/4/8; en Ejercicio: subió kg / reps /
   mismo peso) y saludo con el primer nombre. client.coachMessage (≤140) sube en coach_state y se publica en
   student_programs.data.coachMessage solo si hay texto (publish-core buildPublication extras).
+- routine-choice-core.js — v0.9.57: "Cambiar día" en la vista del alumno ("Lunes — C" + lista de rutinas con
+  "✓ hecha esta semana" = series S suyas o sesión publicada con ese dayName, de lunes a domingo). Sugerencia (solo con
+  can_self_log; apagado = la del calendario como antes, con "Cambiar día" igual): la primera rutina con ejercicios
+  que no hizo esta semana; si hizo todas, la del calendario. Si ya tiene series en la
+  fecha, sigue en ese día. Elegir una ya hecha pregunta "¿Repetirla?". Sin cambios en la nube: student_sets ya
+  guarda day_id. app.js: "hizo C" en la ficha (Última sesión) y en Progreso (sessionRoutineLabel). Se carga antes de app.js.
 - Galería v0.9.56: músculos Abductores (glúteo medio), Aductores (zona nueva 'aductores' de figura-esculpida.svg),
   Deltoides lateral, Trapecio, Lumbar. labels.js entiende los nombres anteriores (Trapecios, Erectores espinales).
 - onboarding.js — formulario público de ingreso (?onboarding=1), sin login.

@@ -15,6 +15,10 @@
   function messagesApi() {
     return window.VALHALLA.studentMessages || null;
   }
+  // v0.9.57: "Cambiar día" (routine-choice-core.js). Sin el módulo, la vista queda como antes.
+  function routineApi() {
+    return window.VALHALLA.routineChoice || null;
+  }
   const CACHE_KEY = 'valhalla_student_cache';
   // v0.9.49: qué hacer con una cuenta sin vínculo ("Tengo un código"); lo pasa auth-gate.js.
   let inviteOpts = { onHaveCode: null, inviteCode: '' };
@@ -671,7 +675,7 @@
   // Una sola vista de alumno abierta a la vez (la del usuario conectado).
   const logState = {
     container: null, cache: null, userId: '', date: '', timer: null, flushing: false, listening: false, offline: false, preview: false,
-    screen: 'today', assignmentId: '', dayId: '', exerciseId: '', feelKey: ''
+    screen: 'today', assignmentId: '', dayId: '', exerciseId: '', feelKey: '', dayPanel: false, confirmDayId: ''
   };
 
   function buildContext(cache) {
@@ -705,12 +709,21 @@
     }
     ctx.assignmentId = program.assignment_id;
     const days = Array.isArray(program.data?.days) ? program.data.days : [];
+    const routine = routineApi();
+    // v0.9.57: rutinas hechas esta semana (sus series S o sesiones publicadas por el entrenador).
+    const done = routine
+      ? routine.doneDayIds({ days, assignmentId: program.assignment_id, date: ctx.date, setRows: ctx.setRows, outbox: ctx.outbox, progress: ctx.progress })
+      : new Set();
+    // La sugerencia "primera rutina que no hizo" es solo para quien puede anotar (can_self_log); con el
+    // interruptor apagado se muestra la del calendario, como antes (y "Cambiar día" sigue disponible).
+    const suggested = routine && ctx.canLog ? routine.suggestDay({ days, done, date: ctx.date }) : null;
     let day = days.find((item) => item.id === logState.dayId);
     if (!day) {
-      // 1) el día con series en la fecha elegida; 2) el del día de la semana; 3) el primero.
+      // 1) el día con series en la fecha elegida; 2) si puede anotar, la primera rutina que no hizo
+      // (si hizo todas, la del calendario); 3) la del día de la semana; 4) la primera.
       const withSets = ctx.canLog ? days.find((item) => (item.exercises || []).some((exercise) => exerciseProgress(ctx, item.id, exercise).done > 0)) : null;
       const weekday = new Date(`${ctx.date}T12:00:00`).getDay();
-      day = withSets || days.find((item) => (item.exercises || []).length && weekdayFromDayName(item.name) === weekday)
+      day = withSets || suggested || days.find((item) => (item.exercises || []).length && weekdayFromDayName(item.name) === weekday)
         || days.find((item) => (item.exercises || []).length) || days[0] || null;
       logState.dayId = day?.id || '';
     }
@@ -718,7 +731,7 @@
     // La pantalla de un ejercicio recorre solo ejercicios (el circuito se ve y se anota en "Hoy").
     const steps = exercises.filter((item) => !isCircuit(item));
     const exerciseIndex = Math.max(steps.findIndex((item) => item.id === logState.exerciseId), 0);
-    return { program, days, day, exercises, steps, exerciseIndex, exercise: steps[exerciseIndex] || null };
+    return { program, days, day, exercises, steps, exerciseIndex, exercise: steps[exerciseIndex] || null, done, suggestedId: suggested?.id || '' };
   }
 
   // ---------------------------------------------------------------------------
@@ -758,10 +771,7 @@
       <div class="sv-chips" role="group" aria-label="Programa">
         ${programs.map((row) => `<button type="button" class="sv-chip${row.assignment_id === program.assignment_id ? ' is-active' : ''}" data-sv-program="${escapeHtml(row.assignment_id || '')}" aria-pressed="${row.assignment_id === program.assignment_id}">${escapeHtml(row.title || row.data?.programName || 'Programa')}</button>`).join('')}
       </div>` : '';
-    const dayButtons = days.length ? `
-      <div class="sv-chips sv-days" role="group" aria-label="Día del programa">
-        ${days.map((item, index) => `<button type="button" class="sv-chip${item.id === day?.id ? ' is-active' : ''}" data-sv-day="${escapeHtml(item.id || '')}" aria-pressed="${item.id === day?.id}">${escapeHtml(item.name || `Día ${index + 1}`)}</button>`).join('')}
-      </div>` : '<p class="sv-meta">Este programa aún no tiene días.</p>';
+    const dayButtons = days.length ? renderDayChooser(ctx, selection) : '<p class="sv-meta">Este programa aún no tiene días.</p>';
     const card = (exercise, memberLabel = '') => {
       const can = ctx.canLog && loggable(exercise);
       const progress = can ? exerciseProgress(ctx, day.id, exercise) : null;
@@ -822,6 +832,58 @@
         ${next}
         ${renderHistory(cache.progress || [])}
       </section>`;
+  }
+
+  // v0.9.57: "Lunes — A" + "Cambiar día". La lista muestra cada rutina del programa con
+  // "✓ hecha esta semana"; elegir una ya hecha pregunta "¿Repetirla?" y deja seguir. Solo cambia
+  // lo que ve (y, si anota, el day_id de lo que anota); la fecha sigue siendo la elegida arriba.
+  function renderDayChooser(ctx, selection) {
+    const { days, day } = selection;
+    const routine = routineApi();
+    const done = selection.done || new Set();
+    if (!routine) {
+      return `
+      <div class="sv-chips sv-days" role="group" aria-label="Día del programa">
+        ${days.map((item, index) => `<button type="button" class="sv-chip${item.id === day?.id ? ' is-active' : ''}" data-sv-day="${escapeHtml(item.id || '')}" aria-pressed="${item.id === day?.id}">${escapeHtml(item.name || `Día ${index + 1}`)}</button>`).join('')}
+      </div>`;
+    }
+    const dayIndex = Math.max(days.findIndex((item) => item.id === day?.id), 0);
+    const canChange = days.length > 1;
+    const open = canChange && logState.dayPanel;
+    const confirmIndex = days.findIndex((item) => item.id === logState.confirmDayId);
+    const confirmDay = open && confirmIndex >= 0 ? days[confirmIndex] : null;
+    const list = open ? `
+      <div class="sv-day-panel" data-sv-day-panel>
+        ${confirmDay ? `
+        <div class="sv-day-confirm" role="alertdialog" aria-label="Repetir rutina" data-sv-day-confirm-box>
+          <p data-sv-day-question>${escapeHtml(routine.repeatQuestion(confirmDay, confirmIndex))}</p>
+          <div class="sv-day-confirm-actions">
+            <button type="button" class="sv-next" data-sv-day-confirm="${escapeHtml(confirmDay.id || '')}">Sí, repetir ${escapeHtml(routine.routineLabel(confirmDay, confirmIndex))}</button>
+            <button type="button" class="sv-day-cancel" data-sv-day-cancel>Elegir otra</button>
+          </div>
+        </div>` : ''}
+        <ul class="sv-day-list" aria-label="Rutinas del programa" data-sv-day-list>
+          ${days.map((item, index) => {
+            const isDone = done.has(item.id);
+            const current = item.id === day?.id;
+            const count = (item.exercises || []).length;
+            const suggestedTag = item.id === selection.suggestedId && !isDone && !current ? ' · <span class="sv-day-suggested" data-sv-day-suggested>sugerida</span>' : '';
+            return `<li>
+            <button type="button" class="sv-day-option${current ? ' is-active' : ''}${isDone ? ' is-done' : ''}" data-sv-day="${escapeHtml(item.id || '')}" data-done="${isDone ? '1' : ''}" aria-pressed="${current}">
+              <span class="sv-day-option-name">${escapeHtml(item.name || `Día ${index + 1}`)}</span>
+              <span class="sv-meta">${count ? escapeHtml(plural(count, 'ejercicio', 'ejercicios')) : 'Sin ejercicios'}${suggestedTag}</span>
+              ${isDone ? '<span class="sv-day-done" data-sv-day-done>✓ hecha esta semana</span>' : ''}
+            </button>
+          </li>`;
+          }).join('')}
+        </ul>
+      </div>` : '';
+    return `
+      <div class="sv-day-head" data-sv-day-head>
+        <h2 class="sv-day-title" data-sv-day-title data-day-id="${escapeHtml(day?.id || '')}">${escapeHtml(routine.headline(ctx.date, day, dayIndex))}</h2>
+        ${canChange ? `<button type="button" class="sv-day-change" data-sv-change-day aria-expanded="${open}">${open ? 'Cerrar' : 'Cambiar día'}</button>` : ''}
+      </div>
+      ${list}`;
   }
 
   // v0.9.45: tarjeta del circuito en "Hoy": formato, estaciones y, si registra, su resultado.
@@ -1652,18 +1714,42 @@
     } else if ((button = pick('[data-sv-summary]'))) {
       logState.screen = 'summary';
       rerenderLog({ scrollTop: true });
-    } else if ((button = pick('[data-sv-day]'))) {
-      logState.dayId = button.getAttribute('data-sv-day');
-      logState.exerciseId = '';
+    } else if ((button = pick('[data-sv-change-day]'))) {
+      logState.dayPanel = !logState.dayPanel;
+      logState.confirmDayId = '';
       rerenderLog();
+    } else if ((button = pick('[data-sv-day-cancel]'))) {
+      logState.confirmDayId = '';
+      rerenderLog();
+    } else if ((button = pick('[data-sv-day-confirm]'))) {
+      chooseDay(button.getAttribute('data-sv-day-confirm'));
+    } else if ((button = pick('[data-sv-day]'))) {
+      const dayId = button.getAttribute('data-sv-day');
+      // v0.9.57: una rutina ya hecha esta semana pregunta antes (la que ya está elegida, no).
+      if (button.getAttribute('data-done') === '1' && dayId !== logState.dayId) {
+        logState.confirmDayId = dayId;
+        rerenderLog();
+      } else {
+        chooseDay(dayId);
+      }
     } else if ((button = pick('[data-sv-program]'))) {
       logState.assignmentId = button.getAttribute('data-sv-program');
       logState.dayId = '';
+      logState.dayPanel = false;
+      logState.confirmDayId = '';
       logState.exerciseId = '';
       rerenderLog();
     } else if ((button = pick('[data-sv-share]'))) {
       shareSummary(button);
     }
+  }
+
+  function chooseDay(dayId) {
+    logState.dayId = dayId;
+    logState.exerciseId = '';
+    logState.dayPanel = false;
+    logState.confirmDayId = '';
+    rerenderLog();
   }
 
   function attachView(container, cache) {
@@ -1678,6 +1764,8 @@
         if (event.target.matches('[data-sv-log-date]')) {
           logState.date = event.target.value;
           logState.dayId = '';
+          logState.dayPanel = false;
+          logState.confirmDayId = '';
           rerenderLog();
         }
       });
@@ -1696,7 +1784,7 @@
     clearTimeout(logState.timer);
     Object.assign(logState, {
       container: null, cache: null, userId: '', date: '', timer: null, preview: false,
-      screen: 'today', assignmentId: '', dayId: '', exerciseId: '', feelKey: ''
+      screen: 'today', assignmentId: '', dayId: '', exerciseId: '', feelKey: '', dayPanel: false, confirmDayId: ''
     });
   }
 
@@ -1766,7 +1854,7 @@
     format: {
       setLine, studentSetLine, setHasData, repsRange, exerciseScheme, noteForStudent, renderProgram,
       feelFromRir, plannedFeel, FEEL_OPTIONS, weekStart, weekDates, weekStreak, localToday, addDays, renderExerciseScreen, renderToday,
-      isCircuit
+      isCircuit, resolveSelection
     }
   };
 })();
