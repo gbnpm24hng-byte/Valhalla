@@ -24,11 +24,12 @@
       hamstrings: 'Femorales',
       glutes: 'Glúteos',
       adductors: 'Aductores',
+      abductors: 'Abductores',
       chest: 'Pecho',
       lats: 'Dorsales',
       upper_back: 'Espalda alta',
       mid_back: 'Espalda media',
-      traps: 'Trapecios',
+      traps: 'Trapecio',
       front_delts: 'Deltoides anterior',
       lateral_delts: 'Deltoides lateral',
       rear_delts: 'Deltoides posterior',
@@ -38,7 +39,7 @@
       core: 'Core',
       abdominals: 'Abdominales',
       obliques: 'Oblicuos',
-      spinal_erectors: 'Erectores espinales',
+      spinal_erectors: 'Lumbar',
       calves: 'Pantorrillas',
       full_body: 'Cuerpo completo',
       other: 'Otro'
@@ -114,14 +115,20 @@
 
   // Texto escrito en el formulario -> códigos. Las etiquetas conocidas vuelven a su
   // código (quadriceps, barbell, ...); lo desconocido se guarda tal como se escribió.
+  // v0.9.56: nombres anteriores de las etiquetas que se siguen entendiendo al escribir.
+  const ALIASES = {
+    muscle: { trapecios: 'traps', 'erectores espinales': 'spinal_erectors', erectores: 'spinal_erectors' }
+  };
+
   function listCodes(kind, text) {
     const table = LABELS[kind] || {};
+    const aliases = ALIASES[kind] || {};
     return String(text || '').split(',').map((item) => item.trim()).filter(Boolean).map((item) => {
       if (Object.prototype.hasOwnProperty.call(table, item)) {
         return item;
       }
       const match = Object.keys(table).find((code) => fold(table[code]) === fold(item) || fold(code) === fold(item));
-      return match || item;
+      return match || aliases[fold(item)] || item;
     });
   }
 
@@ -135,7 +142,7 @@
   const ROUTINE_CATEGORIES = ['PIERNAS', 'PECHO', 'ESPALDA', 'HOMBROS', 'BÍCEPS', 'TRÍCEPS', 'CORE', 'OTROS'];
 
   const MUSCLE_CATEGORY = {
-    quadriceps: 'PIERNAS', hamstrings: 'PIERNAS', glutes: 'PIERNAS', adductors: 'PIERNAS', calves: 'PIERNAS',
+    quadriceps: 'PIERNAS', hamstrings: 'PIERNAS', glutes: 'PIERNAS', adductors: 'PIERNAS', abductors: 'PIERNAS', calves: 'PIERNAS',
     chest: 'PECHO',
     lats: 'ESPALDA', mid_back: 'ESPALDA', upper_back: 'ESPALDA', traps: 'ESPALDA',
     front_delts: 'HOMBROS', lateral_delts: 'HOMBROS', rear_delts: 'HOMBROS',

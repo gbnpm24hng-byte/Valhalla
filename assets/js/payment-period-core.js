@@ -4,6 +4,10 @@
   // primero: las clases del período (clases por semana × 4, 12 si no hay dato, o "Clases por
   // pago" escrito a mano) o 28 días desde paidAt. Al terminar, el pago vuelve a "Pendiente".
   // Campos opcionales en el alumno: paidAt ('AAAA-MM-DD') y classesPerPayment (entero).
+  // v0.9.56: classesUsedBefore (entero 0-99, "Clases ya usadas antes de anotar"): se suma a
+  // las clases contadas (días con "Vino" o con series desde paidAt). Vale solo para el período
+  // en curso: "Marcar pagado" (período nuevo) lo vuelve a 0. Sin el campo = 0, como antes.
+  // Los campos viejos sessions_total / sessions_used ya no se usan (se conservan guardados).
   // Solo cambia payment_status: nunca toca finanzas, montos ni el historial de movimientos.
 
   const PERIOD_DAYS = 28;
@@ -57,6 +61,22 @@
     return Number.isInteger(value) && value >= 1 && value <= MAX_CLASSES ? value : undefined;
   }
 
+  // "Clases ya usadas antes de anotar": entero de 0 a 99 (cualquier otra cosa = 0).
+  function usedBefore(client) {
+    const value = Number(client ? client.classesUsedBefore : 0);
+    return Number.isInteger(value) && value >= 0 && value <= MAX_CLASSES ? value : 0;
+  }
+
+  // Campo de Editar: vacío = 0; entero 0-99; otra cosa = undefined (inválido).
+  function parseUsedBefore(raw) {
+    const text = String(raw ?? '').trim();
+    if (!text) {
+      return 0;
+    }
+    const value = Number(text);
+    return Number.isInteger(value) && value >= 0 && value <= MAX_CLASSES ? value : undefined;
+  }
+
   // Clases del período: a mano; si no, clases por semana × 4; si no hay dato, 12.
   function classesForPeriod(client, perWeek) {
     const manual = manualClasses(client);
@@ -101,7 +121,9 @@
       return { kind: 'no-start' };
     }
     const { total, source } = classesForPeriod(client, perWeek);
-    const used = countUsed(dates, paidAt, today);
+    const counted = countUsed(dates, paidAt, today);
+    const before = usedBefore(client);
+    const used = counted + before;
     const endDate = addDays(paidAt, PERIOD_DAYS); // ese día vuelve a Pendiente
     const lastDay = addDays(paidAt, PERIOD_DAYS - 1); // último día cubierto ("hasta el …")
     const remaining = Math.max(0, total - used);
@@ -115,6 +137,8 @@
       total,
       source,
       used,
+      counted,
+      before,
       remaining,
       lastDay,
       endDate,
@@ -146,6 +170,34 @@
     return '';
   }
 
+  // v0.9.56: línea de la ficha, bajo el nombre. tone: 'ok' | 'warn' | 'muted' (sin rojo en la ficha).
+  //   "Pago: 7 de 12 clases · vence el 30 nov" (vence = día en que vuelve a Pendiente)
+  //   "Pago: Pendiente" y "Pago: Atrasado" (amarillo) · "Pago: Pagado · falta el inicio del pago"
+  const STATUS_LINES = {
+    pending: ['Pendiente', 'warn'],
+    overdue: ['Atrasado', 'warn'], // la ficha no usa rojo (pw-alumnos)
+    uncertain: ['En duda', 'warn'],
+    not_applicable: ['Sin cobro', 'muted']
+  };
+  function headline(client, info) {
+    const status = String(client?.payment_status || 'pending');
+    if (status === 'paid') {
+      if (!info || info.kind === 'no-start' || info.kind === 'none') {
+        return { text: 'Pago: Pagado · falta el inicio del pago', tone: 'warn', kind: 'no-start' };
+      }
+      if (info.kind === 'due') {
+        return { text: 'Pago: Pendiente', tone: 'warn', kind: 'due' };
+      }
+      return {
+        text: `Pago: ${info.used} de ${info.total} clases · vence el ${shortDate(info.endDate)}`,
+        tone: info.warn ? 'warn' : 'ok',
+        kind: 'active'
+      };
+    }
+    const [label, tone] = STATUS_LINES[status] || STATUS_LINES.pending;
+    return { text: `Pago: ${label}`, tone, kind: 'status' };
+  }
+
   // Aviso de Hoy para un alumno (o '' si no hay nada que avisar).
   function notice(info) {
     if (!info) {
@@ -164,8 +216,15 @@
   }
 
   // Al tocar "Marcar pagado" / "Volver a pendiente": solo agrega o quita paidAt.
-  function startPeriod(client, today) {
-    return { ...client, paidAt: today };
+  // v0.9.56: un período nuevo parte sin "clases ya usadas antes de anotar" (before opcional).
+  function startPeriod(client, today, before = 0) {
+    const next = { ...client, paidAt: today };
+    delete next.classesUsedBefore;
+    const value = Number(before);
+    if (Number.isInteger(value) && value > 0 && value <= MAX_CLASSES) {
+      next.classesUsedBefore = value;
+    }
+    return next;
   }
 
   function closePeriod(client) {
@@ -209,6 +268,9 @@
     addDays,
     manualClasses,
     parseManualClasses,
+    usedBefore,
+    parseUsedBefore,
+    headline,
     classesForPeriod,
     countUsed,
     evaluate,

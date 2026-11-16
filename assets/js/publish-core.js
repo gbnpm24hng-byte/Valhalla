@@ -10,8 +10,8 @@
     'monthly_value', 'payment_status', 'amount', 'renewal_date', 'renewal_day', 'payments',
     'movements', 'accounts', 'phone', 'phone_number', 'email', 'injuries', 'observations',
     'emergency_contact', 'emergency_phone', 'birth_date', 'avoid_exercises', 'intake_comment',
-    // v0.9.51: período de pago del alumno.
-    'paidAt', 'classesPerPayment'
+    // v0.9.51: período de pago del alumno. v0.9.56: clases ya usadas antes de anotar.
+    'paidAt', 'classesPerPayment', 'classesUsedBefore'
   ];
 
   // Tipos de serie que acepta la base (student_sets). La app también acepta 'T', pero
@@ -366,9 +366,21 @@
     return { record, omittedSets };
   }
 
+  // v0.9.56: "Mensaje del coach" de la ficha (hasta 140 caracteres). Va dentro del programa
+  // publicado solo si hay texto: sin mensaje, el programa (y su huella) queda igual que antes.
+  const MAX_COACH_MESSAGE = 140;
+  function publishableCoachMessage(value) {
+    return typeof value === 'string' ? value.replace(/\s+/g, ' ').trim().slice(0, MAX_COACH_MESSAGE) : '';
+  }
+
   // Todo lo que se publica para un cliente: su programa activo y su historial.
-  function buildPublication(assignment, sessions, library) {
+  // extras.coachMessage (opcional): el mensaje del coach de la ficha.
+  function buildPublication(assignment, sessions, library, extras = {}) {
     const program = buildPublishedProgram(assignment, library);
+    const coachMessage = publishableCoachMessage(extras?.coachMessage);
+    if (coachMessage) {
+      program.coachMessage = coachMessage;
+    }
     let omittedSets = 0;
     const progress = list(sessions)
       .map(buildPublishedSession)
@@ -407,6 +419,8 @@
     findForbiddenKeys,
     studentNote,
     publishableComment,
+    publishableCoachMessage,
+    MAX_COACH_MESSAGE,
     safeVideoUrl
   };
 })();

@@ -20,6 +20,8 @@
 </path>
 <path d="M18.6 53.4 Q17 62 18 74 Q20.5 76.5 23.5 75 Q26 64 26.2 53.4 Z" data-zona="cuadriceps" stroke-width="0.5" stroke-linejoin="round">
 </path>
+<path d="M24.7 54.2 L26.7 54.2 Q26.6 60.5 24.6 67.5 Q23.7 61 24.7 54.2 Z" data-zona="aductores" stroke-width="0.5" stroke-linejoin="round">
+</path>
 <path d="M10.4 38 Q8.6 44 8.8 50 L11.4 50.5 Q13.6 44 14 38.2 Q12 39.4 10.4 38 Z" fill="#3F3B31" stroke="#26241E" stroke-width="0.5" stroke-linejoin="round">
 </path>
 <path d="M19.3 80.2 Q18 85 19.4 91 L21 90.4 Q20.7 85 21.4 80.7 Z" data-zona="gemelos" stroke-width="0.5" stroke-linejoin="round">
@@ -62,6 +64,8 @@
 <path d="M19 31.5 Q23 32.3 26.4 31.6 L26.4 47 Q22 48 19.8 46 Q18.6 39 19 31.5 Z" data-zona="core" stroke-width="0.5" stroke-linejoin="round">
 </path>
 <path d="M18.6 53.4 Q17 62 18 74 Q20.5 76.5 23.5 75 Q26 64 26.2 53.4 Z" data-zona="cuadriceps" stroke-width="0.5" stroke-linejoin="round">
+</path>
+<path d="M24.7 54.2 L26.7 54.2 Q26.6 60.5 24.6 67.5 Q23.7 61 24.7 54.2 Z" data-zona="aductores" stroke-width="0.5" stroke-linejoin="round">
 </path>
 <path d="M10.4 38 Q8.6 44 8.8 50 L11.4 50.5 Q13.6 44 14 38.2 Q12 39.4 10.4 38 Z" fill="#3F3B31" stroke="#26241E" stroke-width="0.5" stroke-linejoin="round">
 </path>

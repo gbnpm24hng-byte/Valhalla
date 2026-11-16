@@ -79,7 +79,9 @@
     const sessions = (v08.sessions || []).filter((session) => session.clientId === clientId);
     // Con los cambios "de aquí en adelante" de este alumno (Modo Grupo); los de "solo hoy" no se publican.
     const effective = overridesCore ? overridesCore.applyToAssignment(assignment, v08.clientOverrides) : assignment;
-    const publication = publishCore.buildPublication(effective, sessions, state?.exerciseLibrary);
+    // v0.9.56: con el "Mensaje del coach" de la ficha (solo si hay texto).
+    const clientRecord = (state?.clients || []).find((item) => item && item.id === clientId);
+    const publication = publishCore.buildPublication(effective, sessions, state?.exerciseLibrary, { coachMessage: clientRecord?.coachMessage });
     return { assignment, ...publication, contentHash: syncCore.fingerprint({ program: publication.program, progress: publication.progress }) };
   }
 
@@ -270,6 +272,10 @@
         sessionsPublished: current.progress.length,
         contentHash: current.contentHash
       };
+      // v0.9.56: "Mensaje del coach", solo si hay texto (campo por campo, sin spread).
+      if (current.program.coachMessage) {
+        data.coachMessage = current.program.coachMessage;
+      }
       const programResult = await withTimeout(
         client().from('student_programs').upsert({
           owner_id: ownerId,

@@ -67,6 +67,23 @@ Guarda primero en localStorage y sincroniza con Supabase (coach_state + tablas d
   alumno de la clase (solo lo suyo sin guardar).
   "Corregir" de Revisar pesos recalcula personalRecord de ese alumno en ese ejercicio
   (recomputeExercisePersonalRecords, la regla del editor de series: peso > mejor de las sesiones anteriores).
+- attendance-core.js — v0.9.56: asistencia = UNA marca por alumno y fecha en training_attendance ('attended' "Vino",
+  'no_show' "No vino" con noDiscount, 'rescheduled'; otherClass/classLabel = "Vino a otra clase"); la agenda la busca
+  por fecha (entryFor), no solo por sessionKey. "Cambiar de clase · Solo un día" = client.classMoves [{ date, time,
+  modality, groupSize?, slotKey? }] (getAgendaSlotsForDate lo pone en esa clase ese día); "Desde ahora" cambia
+  training_days / schedule_notes / service / training_modality / training_group_size. Se carga antes de data.js.
+  En app.js todo guarda por markClientAttendance / setClientClassMove → updateClientLocal (saveSessionState).
+  Hoy: lista ✓ Vino / ✗ No vino (tocar de nuevo quita) y "+ Agregar alumno a esta clase" (Solo un día + Vino).
+  Ficha: "Marcar asistencia", "Cambiar de clase", línea "Pago: 7 de 12 clases · vence el 30 nov" y "Mensaje del coach".
+  sessions_total / sessions_used ya NO se usan ni se escriben (se conservan; resetClientSessionMonth no se llama).
+  payment-period-core: classesUsedBefore ("Clases ya usadas antes de anotar") se suma a las fechas contadas;
+  "Marcar pagado" (startPeriod) lo vuelve a 0; headline() da la línea de la ficha (sin rojo).
+- student-messages-core.js — v0.9.56: mensajes de la vista del alumno (máximo 2 en Hoy: coach, récord del último día,
+  semana completa = días entrenados ≥ días con ejercicios del programa, racha 2/4/8; en Ejercicio: subió kg / reps /
+  mismo peso) y saludo con el primer nombre. client.coachMessage (≤140) sube en coach_state y se publica en
+  student_programs.data.coachMessage solo si hay texto (publish-core buildPublication extras).
+- Galería v0.9.56: músculos Abductores (glúteo medio), Aductores (zona nueva 'aductores' de figura-esculpida.svg),
+  Deltoides lateral, Trapecio, Lumbar. labels.js entiende los nombres anteriores (Trapecios, Erectores espinales).
 - onboarding.js — formulario público de ingreso (?onboarding=1), sin login.
 - cloud-data.js — capa de tablas antiguas, desactivada. supabase/ — migración A0 y prueba de RLS (SQL);
   B4: b4_invitaciones.sql, b4_invitaciones_deshacer.sql y b4_prueba_invitaciones.sql (36 pruebas, todo se deshace).

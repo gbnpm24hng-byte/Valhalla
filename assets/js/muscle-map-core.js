@@ -4,8 +4,9 @@
   // de assets/images/figura-esculpida.svg, y la figura en línea para pintarla con CSS
   // (.vk-musculos [data-zona].is-main / .is-sec en styles.css). No guarda ni sube nada.
 
+  // v0.9.56: + aductores (placa de la cara interna del muslo, vista de frente).
   const ZONES = ['pechoSup', 'pechoInf', 'trapecio', 'espaldaMedia', 'dorsales', 'lumbar', 'hombros', 'biceps', 'triceps',
-    'core', 'gluteoMayor', 'gluteoMedio', 'cuadriceps', 'isquios', 'gemelos'];
+    'core', 'gluteoMayor', 'gluteoMedio', 'cuadriceps', 'aductores', 'isquios', 'gemelos'];
 
   const ZONE_LABELS = {
     pechoSup: 'Pecho superior',
@@ -21,18 +22,20 @@
     gluteoMayor: 'Glúteo mayor',
     gluteoMedio: 'Glúteo medio',
     cuadriceps: 'Cuádriceps',
+    aductores: 'Aductores',
     isquios: 'Isquios',
     gemelos: 'Gemelos'
   };
 
   // Músculo de la galería → zona. chest se decide por el nombre (chestZones). forearms,
-  // adductors, full_body, other o vacío no tienen zona.
+  // full_body, other o vacío no tienen zona. v0.9.56: adductors → aductores (antes sin zona).
   const MUSCLE_ZONE = {
     quadriceps: 'cuadriceps',
     hamstrings: 'isquios',
     calves: 'gemelos',
     glutes: 'gluteoMayor',
     abductors: 'gluteoMedio',
+    adductors: 'aductores',
     lats: 'dorsales',
     upper_back: 'espaldaMedia',
     mid_back: 'espaldaMedia',

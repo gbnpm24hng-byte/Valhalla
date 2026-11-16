@@ -49,15 +49,14 @@
     return exercise?.measure === 'time';
   }
 
+  // v0.9.56 · Asistencia ("Vino", "No vino", "Vino a otra clase") y cambios de clase
+  // ("Solo un día" / "Desde ahora") (attendance-core.js).
+  const attendanceApi = window.VALHALLA.attendanceCore;
+
   const state = dataApi.loadState();
-  const currentSessionMonth = getTodayLocalDate().slice(0, 7);
-  let sessionMonthChanged = false;
-  state.clients.forEach((client) => {
-    sessionMonthChanged = dataApi.resetClientSessionMonth(client, currentSessionMonth) || sessionMonthChanged;
-  });
-  if (sessionMonthChanged) {
-    dataApi.saveState(state);
-  }
+  // v0.9.56: "Sesiones mensuales" / "Sesiones usadas" (sessions_total, sessions_used) ya no se usan:
+  // las clases del pago se cuentan con la asistencia desde "Inicio del pago". Ya no se reinician
+  // cada mes (dataApi.resetClientSessionMonth queda, sin usar): sus valores guardados no cambian.
   const nutritionUi = {
     selectedClientId: state.clients[0]?.id || '',
     editingPlanId: null,
@@ -7553,8 +7552,8 @@
 
   function getLibraryMuscleOptions() {
     return [
-      'quadriceps', 'hamstrings', 'glutes', 'chest', 'lats', 'mid_back', 'front_delts', 'rear_delts',
-      'biceps', 'triceps', 'core', 'calves', 'full_body', 'other'
+      'quadriceps', 'hamstrings', 'glutes', 'abductors', 'adductors', 'chest', 'lats', 'mid_back', 'traps', 'spinal_erectors',
+      'front_delts', 'lateral_delts', 'rear_delts', 'biceps', 'triceps', 'core', 'calves', 'full_body', 'other'
     ];
   }
 
@@ -9120,8 +9119,7 @@
       clientService: 'Personalizado',
       clientStatus: 'active',
       clientPaymentStatus: 'pending',
-      clientSessionsTotal: '8',
-      clientSessionsUsed: '0',
+      clientClassesUsedBefore: '',
       clientTrainingModality: 'personalized',
       clientTrainingGroupSize: ''
     };
@@ -9134,6 +9132,28 @@
     const clientIdInput = document.getElementById('clientId');
     if (clientIdInput) {
       clientIdInput.value = '';
+    }
+    updatePaidAtPrompt(false);
+  }
+
+  // v0.9.56: Estado de pago "Pagado" sin "Inicio del pago" → se pide ahí mismo, con hoy por
+  // defecto (fillToday). El aviso se ve mientras esté Pagado y la fecha la haya puesto la app.
+  function updatePaidAtPrompt(fillToday) {
+    const status = document.getElementById('clientPaymentStatus')?.value;
+    const input = document.getElementById('clientPaidAt');
+    const prompt = document.getElementById('clientPaidAtPrompt');
+    if (!input) {
+      return;
+    }
+    if (status === 'paid' && !input.value && fillToday) {
+      input.value = getTodayLocalDate();
+      input.dataset.autoFilled = '1';
+    }
+    if (status !== 'paid') {
+      delete input.dataset.autoFilled;
+    }
+    if (prompt) {
+      prompt.classList.toggle('hidden', !(status === 'paid' && input.dataset.autoFilled === '1'));
     }
   }
 
@@ -9153,8 +9173,11 @@
     els.clientAge.value = client?.age || '';
     document.getElementById('clientTrainingDays').value = client?.training_days || '';
     document.getElementById('clientSchedule').value = client?.schedule_notes || '';
-    document.getElementById('clientSessionsTotal').value = Number(client?.sessions_total ?? 0);
-    document.getElementById('clientSessionsUsed').value = Number(client?.sessions_used ?? 0);
+    // v0.9.56: "Sesiones mensuales" y "Sesiones usadas" ya no están en el formulario (se conservan).
+    const usedBeforeInput = document.getElementById('clientClassesUsedBefore');
+    if (usedBeforeInput) {
+      usedBeforeInput.value = periodApi?.usedBefore(client) || '';
+    }
     const classesInput = document.getElementById('clientClassesPerPayment');
     if (classesInput) {
       classesInput.value = periodApi?.manualClasses(client) || '';
@@ -9164,6 +9187,7 @@
     if (paidAtInput) {
       paidAtInput.value = periodApi?.isDate(client?.paidAt) ? client.paidAt : '';
       paidAtInput.max = getTodayLocalDate();
+      delete paidAtInput.dataset.autoFilled;
     }
     document.getElementById('clientTrainingModality').value = client?.training_modality || 'personalized';
     document.getElementById('clientTrainingGroupSize').value = client?.training_modality === 'group' ? Number(client?.training_group_size || 2) : '';
@@ -9177,6 +9201,13 @@
     document.getElementById('clientObservations').value = client?.observations || '';
     document.getElementById('clientEmergencyContact').value = client?.emergency_contact || '';
     document.getElementById('clientEmergencyPhone').value = client?.emergency_phone || '';
+    updatePaidAtPrompt(true);
+    // "Más datos" se abre solo si alguno de sus campos tiene algo.
+    const more = document.getElementById('clientMoreData');
+    if (more) {
+      more.open = ['email', 'birth_date', 'age', 'emergency_contact', 'emergency_phone', 'intake_comment', 'observations']
+        .some((field) => String(client?.[field] ?? '').trim());
+    }
   }
 
   function toggleClientForm(open = true, client = null) {
@@ -9221,6 +9252,10 @@
     document.getElementById('clientInjuries').value = parsed.injuries || '';
     els.clientAvoidExercises.value = parsed.avoidExercises || '';
     els.clientIntakeComment.value = parsed.comment || '';
+    const moreData = document.getElementById('clientMoreData');
+    if (moreData && (parsed.age || parsed.comment)) {
+      moreData.open = true;
+    }
     els.whatsAppImportPanel.classList.add('hidden');
     els.whatsAppImportMessage.textContent = '';
     const formMessage = document.getElementById('clientFormMessage');
@@ -9255,6 +9290,11 @@
     }
     if (periodApi && periodApi.parseStartDate(payload.paidAt, getTodayLocalDate()) === undefined) {
       errors.push('Inicio del pago: una fecha válida que no sea futura (o vacío)');
+    } else if (periodApi && payload.paymentStatus === 'paid' && !String(payload.paidAt || '').trim()) {
+      errors.push('Inicio del pago: falta la fecha (con Pagado se cuentan las clases desde ese día)');
+    }
+    if (periodApi && periodApi.parseUsedBefore(payload.classesUsedBefore) === undefined) {
+      errors.push(`Clases ya usadas antes de anotar: un número entero de 0 a ${periodApi.MAX_CLASSES}`);
     }
 
     ['birthDate', 'startDate', 'renewalDate'].forEach((field) => {
@@ -9306,6 +9346,13 @@
         today: getTodayLocalDate()
       });
       periodFields = paidAt ? { ...periodFields, paidAt } : periodApi.closePeriod(periodFields);
+      // v0.9.56: "Clases ya usadas antes de anotar" (0 o vacío = sin el campo).
+      const before = periodApi.parseUsedBefore(payload.classesUsedBefore);
+      if (before) {
+        periodFields.classesUsedBefore = before;
+      } else {
+        delete periodFields.classesUsedBefore;
+      }
     }
 
     return normalizeClientRecord({
@@ -9325,8 +9372,9 @@
       payment_status: paymentStatus,
       status: paymentStatus,
       schedule_notes: payload.schedule || '',
-      sessions_total: Math.max(0, Math.floor(Number(payload.sessionsTotal || 0))),
-      sessions_used: Math.max(0, Math.floor(Number(payload.sessionsUsed || 0))),
+      // v0.9.56: campos viejos fuera del formulario: se conservan tal cual.
+      sessions_total: Number(existingClient?.sessions_total || 0),
+      sessions_used: Number(existingClient?.sessions_used || 0),
       sessions_month: existingClient?.sessions_month || getTodayLocalDate().slice(0, 7),
       training_modality: payload.trainingModality === 'group' ? 'group' : 'personalized',
       training_group_size: payload.trainingModality === 'group' ? Math.max(2, Math.min(4, Math.floor(Number(payload.trainingGroupSize || 2)))) : 1,
@@ -9354,7 +9402,6 @@
   function renderClientDetailFields(client) {
     const text = (value) => String(value ?? '').trim();
     const monthly = Number(client.monthly_value ?? client.amount ?? 0);
-    const sessionsTotal = Number(client.sessions_total || 0);
     // v0.9.51: período de pago ("8 de 12 clases · hasta el 3 dic") y "Clases por pago".
     const period = getClientPaymentPeriod(client);
     const periodText = periodApi ? periodApi.describe(period) : '';
@@ -9371,7 +9418,7 @@
       ['Estado de pago', text(getClientStatusLabel(client))],
       ['Clases del pago', periodText, periodTone],
       ['Clases por pago', classesText],
-      ['Sesiones disponibles', sessionsTotal > 0 ? `${Math.max(0, sessionsTotal - Number(client.sessions_used || 0))}/${sessionsTotal}` : ''],
+      ['Clases ya usadas antes de anotar', periodApi?.usedBefore(client) ? String(periodApi.usedBefore(client)) : ''],
       ['Estado del cliente', text(getClientPresenceLabel(client))],
       ['Teléfono', text(client.phone)],
       ['Horario', text(client.schedule_notes)],
@@ -9387,7 +9434,7 @@
     ];
     const filled = fields.filter(([, value]) => value);
     // "Clases del pago" solo aplica a los pagados: no se pide como dato faltante.
-    const missing = fields.filter(([label, value]) => !value && label !== 'Clases del pago').map(([label]) => label.toLowerCase());
+    const missing = fields.filter(([label, value]) => !value && label !== 'Clases del pago' && label !== 'Clases ya usadas antes de anotar').map(([label]) => label.toLowerCase());
     return `
         <div class="client-detail-grid">
           ${filled.map(([label, value, tone = '']) => `<div${label === 'Clases del pago' ? ' data-client-period' : ''}><strong>${escapeHtml(label)}</strong><div class="meta${tone ? ` client-period${tone}` : ''}">${escapeHtml(value)}</div></div>`).join('')}
@@ -9639,6 +9686,277 @@
         </div>`;
   }
 
+  // ---- v0.9.56 · Ficha: pago, asistencia, cambio de clase y mensaje del coach ----
+
+  // "Pago: 7 de 12 clases · vence el 30 nov" bajo el nombre. Pagado sin "Inicio del pago":
+  // lo pide ahí mismo (por defecto hoy).
+  function renderClientPayLine(client) {
+    if (!periodApi) {
+      return '';
+    }
+    const line = periodApi.headline(client, getClientPaymentPeriod(client));
+    const today = getTodayLocalDate();
+    if (line.kind === 'no-start') {
+      return `
+          <form class="client-ficha-pay is-warn client-ficha-pay-form" data-ficha-paid-at-form="${escapeHtml(client.id)}">
+            <span data-ficha-pay>${escapeHtml(line.text)}</span>
+            <label>Inicio del pago<input type="date" name="paidAt" value="${today}" max="${today}" required></label>
+            <button class="primary small" type="submit">Guardar</button>
+          </form>`;
+    }
+    return `<p class="client-ficha-pay is-${escapeHtml(line.tone)}" data-ficha-pay>${escapeHtml(line.text)}</p>`;
+  }
+
+  // Clase de un alumno en una fecha (la de la agenda), para no ofrecerla como "otra clase".
+  function getClientSlotOn(clientId, date) {
+    return getAgendaSlotsForDate(new Date(`${date}T00:00:00`)).find((slot) => slot.students.some((student) => student.id === clientId)) || null;
+  }
+
+  function slotOptionLabel(slot) {
+    return `${slot.time} · ${slot.modality === 'group' ? `Grupo (${slot.groupSize})` : `Personalizado${slot.students.length ? ` (${getGroupShortNames(slot.students.map((student) => student.id)).join(', ')})` : ''}`}`;
+  }
+
+  // Otras clases de ese día: value "slot|<clave>".
+  function otherSlotOptions(clientId, date, selected) {
+    const own = getClientSlotOn(clientId, date);
+    return getAgendaSlotsForDate(new Date(`${date}T00:00:00`))
+      .filter((slot) => slot.key !== own?.key)
+      .map((slot) => `<option value="slot|${escapeHtml(slot.key)}"${selected === `slot|${slot.key}` ? ' selected' : ''}>${escapeHtml(slotOptionLabel(slot))}</option>`)
+      .join('');
+  }
+
+  function renderModalitySelect(name, value) {
+    return `<select name="${name}"><option value="group"${value === 'group' ? ' selected' : ''}>Grupo</option><option value="personalized"${value !== 'group' ? ' selected' : ''}>Personalizado</option></select>`;
+  }
+
+  function renderAttendanceSheet(client, sheet) {
+    const id = escapeHtml(client.id);
+    const today = getTodayLocalDate();
+    const date = attendanceApi.isDate(sheet.date) && sheet.date <= today ? sheet.date : today;
+    const status = ['attended', 'no_show', 'other'].includes(sheet.status) ? sheet.status : 'attended';
+    const current = attendanceApi.entryFor(client, date);
+    const withSets = getClientClassDates(client, today).sessions.some((session) => session.date === date);
+    const options = status === 'other' ? otherSlotOptions(client.id, date, sheet.target) : '';
+    const target = sheet.target || (options ? '' : 'custom');
+    const custom = status === 'other' && (!options || target === 'custom');
+    const option = (value, label) => `<label class="client-sheet-option"><input type="radio" name="status" value="${value}"${status === value ? ' checked' : ''}> ${label}</label>`;
+    return `
+        <form class="client-sheet" data-ficha-sheet-form="attendance" data-client-id="${id}">
+          <h3>Marcar asistencia</h3>
+          <label>Fecha<input type="date" name="date" value="${date}" max="${today}" required></label>
+          <p class="meta" data-ficha-att-current>${date === today ? 'Hoy' : 'Ese día'}: ${escapeHtml(current ? attendanceApi.statusLabel(current) : 'sin marcar')}${withSets ? ' · tiene series anotadas (ya cuenta como clase)' : ''}.</p>
+          <div class="client-sheet-options" role="radiogroup" aria-label="Asistencia">
+            ${option('attended', 'Vino')}${option('no_show', 'No vino')}${option('other', 'Vino a otra clase')}
+          </div>
+          ${status === 'other' ? `
+          <div class="client-sheet-row">
+            ${options ? `<label>Clase<select name="target">${options}<option value="custom"${target === 'custom' ? ' selected' : ''}>Otra hora…</option></select></label>` : ''}
+            ${custom ? `<label>Hora<input type="time" name="time" value="${escapeHtml(sheet.time || '')}"></label><label>Tipo${renderModalitySelect('modality', sheet.modality || 'personalized')}</label>` : ''}
+          </div>` : ''}
+          <p class="meta">"Vino" cuenta como clase usada aunque no tenga series; si ese día ya tiene series, cuenta una sola vez. "No vino" nunca descuenta clase.</p>
+          <div class="inline-actions">
+            <button class="primary small" type="submit">Guardar</button>
+            <button class="secondary small" type="button" data-ficha-sheet-close>Cancelar</button>
+            ${current ? `<button class="ghost small" type="button" data-ficha-att-clear="${escapeHtml(date)}" data-client-id="${id}">Quitar la marca de ese día</button>` : ''}
+          </div>
+        </form>`;
+  }
+
+  function renderMoveSheet(client, sheet) {
+    const id = escapeHtml(client.id);
+    const today = getTodayLocalDate();
+    const mode = sheet.mode === 'permanent' ? 'permanent' : 'day';
+    const tab = (value, label) => `<label class="client-sheet-option"><input type="radio" name="mode" value="${value}"${mode === value ? ' checked' : ''}> ${label}</label>`;
+    let body;
+    if (mode === 'day') {
+      const date = attendanceApi.isDate(sheet.date) && sheet.date >= today ? sheet.date : today;
+      const options = otherSlotOptions(client.id, date, sheet.target);
+      const target = sheet.target || (options ? '' : 'custom');
+      const custom = !options || target === 'custom';
+      const upcoming = attendanceApi.moves(client).filter((move) => move.date >= today);
+      body = `
+          <label>Fecha<input type="date" name="date" value="${date}" min="${today}" required></label>
+          <div class="client-sheet-row">
+            ${options ? `<label>Clase<select name="target">${options}<option value="custom"${target === 'custom' ? ' selected' : ''}>Otra hora…</option></select></label>` : ''}
+            ${custom ? `<label>Hora<input type="time" name="time" value="${escapeHtml(sheet.time || '')}" required></label><label>Tipo${renderModalitySelect('modality', sheet.modality || 'personalized')}</label>` : ''}
+          </div>
+          <p class="meta">Ese día aparece en esa clase (Hoy y Modo Grupo) y no en la suya. Sus días y horario no cambian.</p>
+          ${upcoming.length ? `<ul class="client-sheet-moves" data-ficha-moves>${upcoming.map((move) => `<li>${escapeHtml(formatFichaDate(move.date))} → ${escapeHtml(attendanceApi.classLabel(move))}<button class="ghost small" type="button" data-ficha-move-remove="${escapeHtml(move.date)}" data-client-id="${id}">Quitar</button></li>`).join('')}</ul>` : ''}`;
+    } else {
+      const weekdays = sheet.weekdays || getClientAgendaWeekdays(client);
+      const time = sheet.time ?? (String(client.schedule_notes || '').match(/\b([01]?\d|2[0-3])[:.]([0-5]\d)\b/) ? attendanceApi.cleanTime(String(client.schedule_notes).match(/\b([01]?\d|2[0-3])[:.]([0-5]\d)\b/)[0]) : '');
+      const modality = sheet.modality || (client.training_modality === 'group' ? 'group' : 'personalized');
+      const service = sheet.service || client.service || 'Personalizado';
+      const services = [...(document.getElementById('clientService')?.options || [])].map((option) => option.value);
+      if (!services.includes(service)) {
+        services.push(service);
+      }
+      const letters = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+      body = `
+          <fieldset class="client-sheet-days"><legend>Días</legend>
+            ${letters.map((letter, index) => `<label class="client-sheet-day" title="${attendanceApi.WEEKDAY_NAMES[index]}"><input type="checkbox" name="weekday" value="${index + 1}"${weekdays.includes(index + 1) ? ' checked' : ''}><span>${letter}</span></label>`).join('')}
+          </fieldset>
+          <div class="client-sheet-row">
+            <label>Hora<input type="time" name="time" value="${escapeHtml(time)}" required></label>
+            <label>Servicio<select name="service">${services.map((value) => `<option value="${escapeHtml(value)}"${value === service ? ' selected' : ''}>${escapeHtml(value)}</option>`).join('')}</select></label>
+          </div>
+          <div class="client-sheet-row">
+            <label>Modalidad${renderModalitySelect('modality', modality)}</label>
+            ${modality === 'group' ? `<label>Personas en grupo<input type="number" name="groupSize" min="2" max="4" step="1" value="${Number(sheet.groupSize || client.training_group_size || 2)}"></label>` : ''}
+          </div>
+          <p class="meta">Ahora: ${escapeHtml(getClientGroupLabel(client))}${client.training_days ? ` · ${escapeHtml(client.training_days)}` : ''}. Cambia sus días, horario y servicio desde hoy (los mismos datos de Editar).</p>`;
+    }
+    return `
+        <form class="client-sheet" data-ficha-sheet-form="move" data-client-id="${id}">
+          <h3>Cambiar de clase</h3>
+          <div class="client-sheet-options" role="radiogroup" aria-label="Cambio">${tab('day', 'Solo un día')}${tab('permanent', 'Desde ahora')}</div>
+          ${body}
+          <div class="inline-actions">
+            <button class="primary small" type="submit">Guardar</button>
+            <button class="secondary small" type="button" data-ficha-sheet-close>Cancelar</button>
+          </div>
+        </form>`;
+  }
+
+  function renderClientSheet(client) {
+    const sheet = clientUi.sheet;
+    if (!attendanceApi || !sheet || sheet.clientId !== client.id) {
+      return '';
+    }
+    return sheet.type === 'move' ? renderMoveSheet(client, sheet) : renderAttendanceSheet(client, sheet);
+  }
+
+  function renderCoachMessageForm(client) {
+    const message = String(client.coachMessage || '');
+    const id = escapeHtml(client.id);
+    return `
+        <form class="client-coach-msg" data-coach-msg-form="${id}">
+          <label for="coachMessage-${id}">Mensaje del coach <span class="meta">· lo ve arriba en Hoy cuando publicas</span></label>
+          <textarea id="coachMessage-${id}" name="coachMessage" maxlength="140" rows="2" placeholder="Ej: ¡Gran semana! Este jueves subimos peso en sentadilla.">${escapeHtml(message)}</textarea>
+          <div class="inline-actions">
+            <span class="meta" data-coach-msg-count>${message.length}/140</span>
+            <button class="secondary small" type="submit">Guardar mensaje</button>
+            ${message ? '<button class="ghost small" type="button" data-coach-msg-clear>Borrar</button>' : ''}
+          </div>
+        </form>`;
+  }
+
+  // Lee el formulario de una hoja abierta y lo guarda en clientUi.sheet (para redibujar sin perderlo).
+  function readClientSheet(form) {
+    const data = new FormData(form);
+    const sheet = { ...(clientUi.sheet || {}) };
+    ['date', 'status', 'target', 'time', 'modality', 'mode', 'service', 'groupSize'].forEach((name) => {
+      if (data.has(name)) {
+        sheet[name] = String(data.get(name) || '');
+      }
+    });
+    if (form.querySelector('[name="weekday"]')) {
+      sheet.weekdays = data.getAll('weekday').map(Number);
+    }
+    return sheet;
+  }
+
+  function closeClientSheet() {
+    clientUi.sheet = null;
+    renderClients();
+  }
+
+  function fichaToast(message, tone = 'ok') {
+    setClientNotice(message, tone);
+    showClientToast(message, tone);
+  }
+
+  function submitClientSheet(form) {
+    const clientId = form.getAttribute('data-client-id');
+    const client = getClientById(clientId);
+    const sheet = readClientSheet(form);
+    clientUi.sheet = sheet;
+    if (!client || !attendanceApi) {
+      return;
+    }
+    const today = getTodayLocalDate();
+    const name = getGroupShortName(clientId);
+    // Clase elegida: una de ese día ("slot|clave") u "Otra hora…" (hora y tipo).
+    const chosenTarget = (date) => {
+      if (sheet.target && sheet.target.startsWith('slot|')) {
+        const key = sheet.target.slice(5);
+        const slot = getAgendaSlotsForDate(new Date(`${date}T00:00:00`)).find((item) => item.key === key);
+        return slot ? { time: slot.time === 'Sin hora' ? '' : slot.time, modality: slot.modality, groupSize: slot.groupSize, slotKey: key } : null;
+      }
+      const time = attendanceApi.cleanTime(sheet.time);
+      return time ? { time, modality: sheet.modality === 'group' ? 'group' : 'personalized', groupSize: client.training_group_size || 2 } : null;
+    };
+    if (form.getAttribute('data-ficha-sheet-form') === 'attendance') {
+      const date = sheet.date;
+      if (!attendanceApi.isDate(date) || date > today) {
+        fichaToast('Elige una fecha de hoy o anterior.', 'bad');
+        return;
+      }
+      if (sheet.status === 'other') {
+        const target = chosenTarget(date);
+        if (!target) {
+          fichaToast('Elige la clase a la que vino (o escribe la hora).', 'bad');
+          return;
+        }
+        if (date === today) {
+          setClientClassMove(clientId, date, target);
+        }
+        markClientAttendance(clientId, date, 'attended', { time: target.time, otherClass: true, classLabel: attendanceApi.classLabel(target) });
+      } else {
+        markClientAttendance(clientId, date, sheet.status === 'no_show' ? 'no_show' : 'attended', {
+          time: getClientSlotOn(clientId, date)?.time || '',
+          reason: sheet.status === 'no_show' ? 'No vino (ficha)' : ''
+        });
+      }
+      clientUi.sheet = null;
+      fichaToast(`${name}: ${sheet.status === 'no_show' ? 'No vino' : sheet.status === 'other' ? 'Vino a otra clase' : 'Vino'} el ${formatFichaDate(date)}.`);
+      renderClients();
+      return;
+    }
+    if (sheet.mode === 'permanent') {
+      const change = attendanceApi.scheduleChange({ weekdays: sheet.weekdays, time: sheet.time, service: sheet.service, modality: sheet.modality, groupSize: sheet.groupSize });
+      if (!change) {
+        fichaToast('Marca al menos un día y escribe la hora.', 'bad');
+        return;
+      }
+      updateClientLocal(clientId, () => change);
+      clientUi.sheet = null;
+      fichaToast(`${name}: desde ahora ${attendanceApi.classLabel({ time: change.schedule_notes, modality: change.training_modality })} · ${change.training_days}.`);
+      renderClients();
+      return;
+    }
+    const date = sheet.date;
+    const target = attendanceApi.isDate(date) && date >= today ? chosenTarget(date) : null;
+    if (!target) {
+      fichaToast('Elige la fecha (hoy o después) y la clase.', 'bad');
+      return;
+    }
+    setClientClassMove(clientId, date, target);
+    clientUi.sheet = null;
+    fichaToast(`${name}: el ${formatFichaDate(date)} va a ${attendanceApi.classLabel(target)}.`);
+    renderClients();
+  }
+
+  function saveCoachMessage(clientId, text) {
+    const clean = String(text || '').replace(/\s+/g, ' ').trim().slice(0, 140);
+    updateClientLocal(clientId, () => ({ coachMessage: clean || undefined }));
+    fichaToast(clean ? 'Mensaje guardado. Publica para que le llegue.' : 'Mensaje borrado. Publica para quitárselo.');
+    renderClients();
+  }
+
+  function saveFichaPaidAt(form) {
+    const clientId = form.getAttribute('data-ficha-paid-at-form');
+    const value = String(new FormData(form).get('paidAt') || '').trim();
+    const parsed = periodApi ? periodApi.parseStartDate(value, getTodayLocalDate()) : undefined;
+    if (!parsed) {
+      fichaToast('Inicio del pago: una fecha válida que no sea futura.', 'bad');
+      return;
+    }
+    updateClientLocal(clientId, () => ({ paidAt: parsed }));
+    fichaToast('Inicio del pago guardado.');
+    renderClients();
+  }
+
   function renderClientFicha(client) {
     const id = escapeHtml(client.id);
     const name = escapeHtml(getClientDisplayName(client));
@@ -9664,6 +9982,7 @@
           <p class="client-ficha-state"><span class="client-dot ${dot.tone}" aria-hidden="true"></span>${escapeHtml(dot.label)}</p>
           <h2 class="client-ficha-name">${name}</h2>
           <div class="client-ficha-sub">${escapeHtml(getClientGroupLabel(client))}</div>
+          ${renderClientPayLine(client)}
           <p class="client-ficha-program">${assignment ? `<span class="meta">Programa actual</span> <strong>${escapeHtml(assignment.programName || 'Programa')}</strong>` : '<span class="meta">Sin programa asignado</span>'}</p>
         </header>
         <div class="client-ficha-stats">
@@ -9671,6 +9990,12 @@
           <div class="client-stat"><small>Récords este mes</small><strong>${escapeHtml(stats.records)}</strong></div>
         </div>
         <p class="client-ficha-last">Última sesión: <strong>${escapeHtml(stats.lastSession)}</strong></p>
+        ${attendanceApi ? `
+        <div class="client-ficha-quick" data-ficha-quick>
+          <button class="${clientUi.sheet?.clientId === client.id && clientUi.sheet.type === 'attendance' ? 'primary' : 'secondary'}" type="button" data-ficha-sheet="attendance" data-client-id="${id}">Marcar asistencia</button>
+          <button class="${clientUi.sheet?.clientId === client.id && clientUi.sheet.type === 'move' ? 'primary' : 'secondary'}" type="button" data-ficha-sheet="move" data-client-id="${id}">Cambiar de clase</button>
+        </div>
+        ${renderClientSheet(client)}` : ''}
         ${shownNotes.length ? `
         <div class="client-ficha-internal">
           <h3>Notas internas</h3>
@@ -9679,6 +10004,7 @@
         </div>` : ''}
         ${renderClientRecentPain(client)}
         <div class="client-ficha-actions">
+          ${renderCoachMessageForm(client)}
           ${assignment && window.VALHALLA.publish ? window.VALHALLA.publish.renderStatus(client.id, assignment) : '<p class="meta">Para publicar al alumno, primero asígnale un programa.</p>'}
           <div class="client-ficha-buttons">
             <button class="secondary" type="button" data-client-progress="${id}" ${canProgress ? '' : 'disabled'}>Ver progreso</button>
@@ -10970,7 +11296,7 @@
     try {
       // v0.9.51: "Marcar pagado" empieza un período (paidAt = hoy); "Volver a pendiente" lo cierra.
       const withPeriod = !periodApi ? existingClient : nextStatus === 'paid'
-        ? periodApi.startPeriod(existingClient, getTodayLocalDate())
+        ? periodApi.startPeriod(existingClient, getTodayLocalDate()) // v0.9.56: también vuelve a 0 las clases "antes de anotar"
         : periodApi.closePeriod(existingClient);
       const nextClient = normalizeClientRecord({ ...withPeriod, payment_status: nextStatus });
       await storeClientRecord(nextClient, existingClient, { keepOrder: true });
@@ -10984,6 +11310,11 @@
         if (paidAtInput) {
           paidAtInput.value = nextClient.paidAt || '';
         }
+        const usedBeforeInput = document.getElementById('clientClassesUsedBefore');
+        if (usedBeforeInput) {
+          usedBeforeInput.value = periodApi?.usedBefore(nextClient) || '';
+        }
+        updatePaidAtPrompt(false);
       }
       const message = nextStatus === 'paid' ? 'Pago registrado' : 'Pago vuelto a pendiente';
       setClientNotice(message, 'ok');
@@ -11246,19 +11577,34 @@
     ];
     const slotsByKey = new Map();
     getActiveTrainingClients().forEach((client) => {
-      if (!getClientAgendaWeekdays(client).includes(weekday)) {
-        return;
+      // v0.9.56: "Cambiar de clase \u00b7 Solo un d\u00eda": ese d\u00eda va a esa clase y no a la suya.
+      const move = attendanceApi ? attendanceApi.moveFor(client, dateValue) : null;
+      let time;
+      let modality;
+      let groupSize;
+      let slotKey;
+      let usual = '';
+      if (move) {
+        time = move.time || 'Sin hora';
+        modality = move.modality === 'group' ? 'group' : 'personalized';
+        groupSize = modality === 'group' ? Number(move.groupSize || client.training_group_size || 2) : 1;
+        slotKey = move.slotKey || (modality === 'group' ? `${time}:group:${groupSize}` : `${time}:client:${client.id}`);
+        usual = getClientGroupLabel(client);
+      } else {
+        if (!getClientAgendaWeekdays(client).includes(weekday)) {
+          return;
+        }
+        const schedule = String(client.schedule_notes || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const namedTimes = [...schedule.matchAll(/\b(lunes|lun|martes|mar|miercoles|mie|jueves|jue|viernes|vie|sabado|sab|domingo|dom)\s+([01]?\d|2[0-3]):([0-5]\d)\b/g)];
+        const dayTime = namedTimes.find((match) => dayAliases[weekday - 1].includes(match[1]));
+        const timeMatch = dayTime || schedule.match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/);
+        const hour = dayTime ? dayTime[2] : timeMatch?.[1];
+        const minute = dayTime ? dayTime[3] : timeMatch?.[2];
+        time = timeMatch ? `${hour.padStart(2, '0')}:${minute}` : 'Sin hora';
+        modality = client.training_modality === 'group' ? 'group' : 'personalized';
+        groupSize = modality === 'group' ? Number(client.training_group_size || 2) : 1;
+        slotKey = modality === 'group' ? `${time}:group:${groupSize}` : `${time}:client:${client.id}`;
       }
-      const schedule = String(client.schedule_notes || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-      const namedTimes = [...schedule.matchAll(/\b(lunes|lun|martes|mar|miercoles|mie|jueves|jue|viernes|vie|sabado|sab|domingo|dom)\s+([01]?\d|2[0-3]):([0-5]\d)\b/g)];
-      const dayTime = namedTimes.find((match) => dayAliases[weekday - 1].includes(match[1]));
-      const timeMatch = dayTime || schedule.match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/);
-      const hour = dayTime ? dayTime[2] : timeMatch?.[1];
-      const minute = dayTime ? dayTime[3] : timeMatch?.[2];
-      const time = timeMatch ? `${hour.padStart(2, '0')}:${minute}` : 'Sin hora';
-      const modality = client.training_modality === 'group' ? 'group' : 'personalized';
-      const groupSize = modality === 'group' ? Number(client.training_group_size || 2) : 1;
-      const slotKey = modality === 'group' ? `${time}:group:${groupSize}` : `${time}:client:${client.id}`;
       if (!slotsByKey.has(slotKey)) {
         slotsByKey.set(slotKey, { time, modality, groupSize, students: [] });
       }
@@ -11266,17 +11612,20 @@
         id: client.id,
         name: getClientDisplayName(client),
         routine: getAgendaRoutine(client.id, dateValue),
-        total: Number(client.sessions_total || 0),
-        used: Number(client.sessions_used || 0),
+        movedFrom: usual,
         attendance: null
       });
     });
     return Array.from(slotsByKey.entries()).map(([slotKey, slot]) => {
       const clientIds = slot.students.map((student) => student.id).sort();
       const sessionKey = `${dateValue}:${slotKey}:${clientIds.join(',')}`;
+      // v0.9.56: la marca del d\u00eda se busca por fecha (la de esta clase primero), as\u00ed no se pierde
+      // si alguien se suma o sale de la clase (antes cambiaba la clave y la marca no se ve\u00eda).
       slot.students.forEach((student) => {
         const client = getClientById(student.id);
-        student.attendance = (client?.training_attendance || []).find((entry) => entry.sessionKey === sessionKey) || null;
+        student.attendance = attendanceApi
+          ? attendanceApi.entryFor(client, dateValue, sessionKey)
+          : (client?.training_attendance || []).find((entry) => entry.sessionKey === sessionKey) || null;
       });
       return { ...slot, sessionKey, dateValue, key: slotKey };
     }).sort((first, second) => first.time.localeCompare(second.time));
@@ -11295,29 +11644,28 @@
 
   // Un alumno de la agenda con sus controles de asistencia. La usan la agenda (en "Más")
   // y el panel "Asistencia" de cada tarjeta de Hoy: mismos botones y mismas funciones.
+  // v0.9.56: sin "Sesiones disponibles" (campo viejo): las clases del pago se cuentan con la
+  // asistencia. "Vino" y "No vino" siempre se pueden marcar; "No vino" nunca descuenta clase.
   function renderAgendaStudent(slot, student, showAttendanceAction) {
     const statusLabels = { attended: 'Asistió', rescheduled: 'Reagendada', no_show: 'No asistió' };
     return `
           <div class="training-agenda-student">
-            <div><strong>${escapeHtml(student.name)}</strong><div class="meta">${escapeHtml(student.routine)}</div></div>
+            <div><strong>${escapeHtml(student.name)}</strong><div class="meta">${escapeHtml(student.routine)}${student.movedFrom ? ` · cambiado de ${escapeHtml(student.movedFrom)}` : ''}</div></div>
             <div class="training-agenda-student-actions">
-              <span class="training-session-balance">Sesiones disponibles: ${Math.max(0, student.total - student.used)}/${student.total} — puedes reagendar durante la semana sin problema.</span>
               ${showAttendanceAction ? student.attendance
                 ? `<span class="training-attendance-status ${escapeHtml(student.attendance.status)}">${statusLabels[student.attendance.status] || 'Asistió'}</span>`
-                : student.total > student.used
-                  ? `<button class="secondary small" type="button" data-agenda-attend="${escapeHtml(slot.sessionKey)}" data-client-id="${escapeHtml(student.id)}">Marcar asistencia</button>
+                : `<button class="secondary small" type="button" data-agenda-attend="${escapeHtml(slot.sessionKey)}" data-client-id="${escapeHtml(student.id)}">✓ Vino</button>
                     <button class="secondary small" type="button" data-agenda-reschedule="${escapeHtml(slot.sessionKey)}" data-client-id="${escapeHtml(student.id)}">Cancelar / reagendar</button>
-                    <button class="ghost small" type="button" data-agenda-no-show="${escapeHtml(slot.sessionKey)}" data-client-id="${escapeHtml(student.id)}">Marcar no asistió</button>`
-                  : '<span class="meta">Plan sin sesiones disponibles</span>'
+                    <button class="ghost small" type="button" data-agenda-no-show="${escapeHtml(slot.sessionKey)}" data-client-id="${escapeHtml(student.id)}">✗ No vino</button>`
                 : ''}
             </div>
-            ${showAttendanceAction && !student.attendance && student.total > student.used ? `
+            ${showAttendanceAction && !student.attendance ? `
               <form class="agenda-reschedule-form hidden" data-agenda-reschedule-form="${escapeHtml(slot.sessionKey)}" data-client-id="${escapeHtml(student.id)}">
                 <label>Fecha de la sesión original<input type="date" name="sessionDate" value="${escapeHtml(slot.dateValue)}" readonly></label>
                 <label>Días de anticipación<input type="number" name="noticeDays" min="0" step="1" required></label>
                 <label>¿Quién pidió el cambio?<select name="requestedBy" required><option value="">Selecciona</option><option value="student">El alumno</option><option value="coach">El entrenador</option></select></label>
                 <label>Motivo<textarea name="reason" rows="2"></textarea></label>
-                <p class="notice">Con 7 o más días de aviso, o si lo pidió el entrenador, queda como Reagendada sin descuento. Con menos de 7 días pedido por el alumno, se registra como No asistió y descuenta la sesión.</p>
+                <p class="notice">Con 7 o más días de aviso, o si lo pidió el entrenador, queda como Reagendada. Con menos de 7 días pedido por el alumno, queda como No vino. Ninguna de las dos descuenta clase.</p>
                 <div class="inline-actions"><button class="primary small" type="submit">Confirmar decisión</button><button class="secondary small" type="button" data-agenda-reschedule-close>Cancelar</button></div>
               </form>` : ''}
           </div>`;
@@ -11327,6 +11675,8 @@
 
   // Tarjetas de Hoy con el panel "Asistencia" desplegado (solo en memoria).
   const todayAttendanceOpen = new Set();
+  // v0.9.56: tarjetas de Hoy con "+ Agregar alumno a esta clase" abierto (fecha|clase, en memoria).
+  const todayAddOpen = new Set();
 
   // Alumnos activos cuyo último entrenamiento registrado (con series efectivas) fue hace
   // 7 días o más. Los que nunca registraron nada no aparecen.
@@ -11425,12 +11775,44 @@
     classesEl.innerHTML = todaySlots.map((slot) => {
       const isNext = slot.sessionKey === nextKey;
       const open = todayAttendanceOpen.has(slot.sessionKey);
-      const people = slot.students.map((student) => {
-        const attended = student.attendance?.status === 'attended';
+      const slotId = `${slot.dateValue}|${slot.key}`;
+      const shortNames = getGroupShortNames(slot.students.map((student) => student.id));
+      // v0.9.56: lista de la clase con un toque para "✓ Vino" / "✗ No vino" (tocar de nuevo la
+      // marca elegida la quita). Misma asistencia que la agenda, la ficha y Modo Grupo.
+      const people = slot.students.map((student, index) => {
+        const status = student.attendance?.status || '';
+        const attended = status === 'attended';
+        const absent = status === 'no_show';
         const notes = [fresh.has(student.id) ? 'registro nuevo' : '', attended ? 'asistió' : ''].filter(Boolean).join(' · ');
+        const id = escapeHtml(student.id);
+        const key = escapeHtml(slot.sessionKey);
         return `
-        <span class="today-avatar${fresh.has(student.id) ? ' is-new' : ''}${attended ? ' is-attended' : ''}" title="${escapeHtml(student.name)}${notes ? ` · ${notes}` : ''}" data-today-student="${escapeHtml(student.id)}">${escapeHtml(getInitials(student.name))}${attended ? '<span class="today-avatar-check" data-today-attended aria-label="Asistió">✓</span>' : ''}</span>`;
+        <li class="today-roll-row${attended ? ' is-attended' : ''}${absent ? ' is-absent' : ''}" data-today-row="${id}">
+          <span class="today-avatar${fresh.has(student.id) ? ' is-new' : ''}${attended ? ' is-attended' : ''}" title="${escapeHtml(student.name)}${notes ? ` · ${notes}` : ''}" data-today-student="${id}">${escapeHtml(getInitials(student.name))}${attended ? '<span class="today-avatar-check" data-today-attended aria-label="Asistió">✓</span>' : ''}</span>
+          <span class="today-roll-name">${escapeHtml(shortNames[index] || student.name)}</span>
+          <span class="today-roll-marks">
+            <button class="today-mark today-mark--yes${attended ? ' is-on' : ''}" type="button" data-today-mark="attended" data-today-slot="${key}" data-client-id="${id}" aria-pressed="${attended}">✓ Vino</button>
+            <button class="today-mark today-mark--no${absent ? ' is-on' : ''}" type="button" data-today-mark="no_show" data-today-slot="${key}" data-client-id="${id}" aria-pressed="${absent}">✗ No vino</button>
+          </span>
+          ${student.movedFrom ? `<small class="today-roll-note" data-today-moved>Solo hoy · de ${escapeHtml(student.movedFrom)} <button class="today-unmove" type="button" data-today-unmove="${id}" data-today-date="${escapeHtml(slot.dateValue)}">Quitar de esta clase</button></small>` : status === 'rescheduled' ? '<small class="today-roll-note">Reagendada</small>' : ''}
+        </li>`;
       }).join('');
+      const addOpen = todayAddOpen.has(slotId);
+      const inClass = new Set(slot.students.map((student) => student.id));
+      const candidates = addOpen ? getActiveTrainingClients().filter((client) => !inClass.has(client.id))
+        .sort((a, b) => getClientDisplayName(a).localeCompare(getClientDisplayName(b), 'es')) : [];
+      const addPanel = addOpen ? `
+          <div class="today-add" data-today-add-panel>
+            ${candidates.length ? `
+            <label class="today-add-label">Alumno que viene de otro horario
+              <select data-today-add-select>${candidates.map((client) => `<option value="${escapeHtml(client.id)}">${escapeHtml(getClientDisplayName(client))} · ${escapeHtml(getClientGroupLabel(client))}</option>`).join('')}</select>
+            </label>
+            <p class="meta">Queda en esta clase solo hoy, marcado "Vino".</p>
+            <div class="inline-actions">
+              <button class="primary small" type="button" data-today-add-confirm="${escapeHtml(slotId)}">Agregar</button>
+              <button class="secondary small" type="button" data-today-add-cancel="${escapeHtml(slotId)}">Cancelar</button>
+            </div>` : `<p class="meta">No hay más alumnos activos para agregar.</p><button class="secondary small" type="button" data-today-add-cancel="${escapeHtml(slotId)}">Cerrar</button>`}
+          </div>` : '';
       // v0.9.53: "Beto: molestia en hombro izq. el miércoles" en su primera clase después.
       const painIds = swapReasonApi ? slot.students.map((student) => student.id) : [];
       const painNames = getGroupShortNames(painIds);
@@ -11444,11 +11826,12 @@
             <h3 class="today-class-time">${escapeHtml(slot.time)} · ${slot.modality === 'group' ? 'GRUPO' : 'PERSONAL'}</h3>
             <span class="today-class-day">${escapeHtml(getClassDayLabel(slot, todayValue))}</span>
           </div>
-          <div class="today-class-people" aria-label="Alumnos de la clase">${people}</div>
+          <ul class="today-roll" aria-label="Alumnos de la clase" data-today-roll>${people}</ul>
+          ${addOpen ? addPanel : `<button class="gv-link today-add-btn" type="button" data-today-add="${escapeHtml(slotId)}">+ Agregar alumno a esta clase</button>`}
           ${pains ? `<div class="today-class-pains" data-today-pains>${pains}</div>` : ''}
           <div class="today-class-actions">
             <button class="${isNext ? 'primary' : 'secondary today-outline'} today-class-btn" type="button" data-agenda-group="${escapeHtml(slot.sessionKey)}">${isNext ? 'Empezar clase' : 'Ver clase'}</button>
-            <button class="secondary today-outline today-attendance-btn" type="button" data-today-attendance="${escapeHtml(slot.sessionKey)}" aria-expanded="${open}">Asistencia</button>
+            <button class="secondary today-outline today-attendance-btn" type="button" data-today-attendance="${escapeHtml(slot.sessionKey)}" aria-expanded="${open}">Reagendar…</button>
           </div>
           ${open ? `<div class="today-attendance training-agenda-students" data-today-attendance-panel>${slot.students.map((student) => renderAgendaStudent(slot, student, true)).join('')}</div>` : ''}
         </article>`;
@@ -11481,6 +11864,59 @@
     }
   }
 
+  // v0.9.56: cambia un alumno en el estado (y en la lista de Alumnos) y guarda como la asistencia
+  // de siempre (saveSessionState revisa los períodos de pago). change(client) devuelve los campos nuevos.
+  function updateClientLocal(clientId, change) {
+    const index = (state.clients || []).findIndex((client) => client && client.id === clientId);
+    if (index < 0) {
+      return null;
+    }
+    const next = normalizeClientRecord({ ...state.clients[index], ...change(state.clients[index]), updatedAt: new Date().toISOString() });
+    state.clients[index] = next;
+    clientUi.records = (clientUi.records || []).map((client) => (client.id === clientId ? next : client));
+    saveSessionState();
+    render();
+    // saveSessionState pudo pasar el pago a Pendiente: la lista toma el estado guardado.
+    return getClientById(clientId);
+  }
+
+  // v0.9.56: marca la asistencia de un alumno en una fecha (una marca por día; status '' la quita).
+  // "No vino" nunca descuenta clase: las clases del pago se cuentan por fechas con "Vino" o series.
+  function markClientAttendance(clientId, date, status, details = {}) {
+    if (!attendanceApi || !getClientById(clientId) || !attendanceApi.isDate(date) || date > getTodayLocalDate()) {
+      return false;
+    }
+    updateClientLocal(clientId, (client) => ({
+      training_attendance: attendanceApi.withMark(client, {
+        date,
+        status,
+        time: details.time,
+        sessionKey: details.sessionKey,
+        otherClass: details.otherClass,
+        classLabel: details.classLabel,
+        reason: details.reason,
+        noticeDays: details.noticeDays,
+        requestedBy: details.requestedBy,
+        now: new Date().toISOString()
+      })
+    }));
+    return true;
+  }
+
+  // v0.9.56: "Cambiar de clase · Solo un día" (target null = quitar el cambio de ese día).
+  function setClientClassMove(clientId, date, target) {
+    if (!attendanceApi || !getClientById(clientId) || !attendanceApi.isDate(date)) {
+      return false;
+    }
+    updateClientLocal(clientId, (client) => ({
+      classMoves: target ? attendanceApi.withMove(client, { ...target, date }, new Date().toISOString()) : attendanceApi.withoutMove(client, date)
+    }));
+    return true;
+  }
+
+  // Asistencia desde la agenda o desde Hoy (slot de hoy). Si ya tiene marca ese día, no la pisa
+  // (para cambiarla: ✓ / ✗ de la tarjeta de Hoy o "Marcar asistencia" en la ficha).
+  // details.noDiscount (v0.9.55, Modo Grupo) se acepta igual: ninguna ausencia descuenta clase.
   function recordAgendaStatus(sessionKey, clientId, status, details = {}) {
     const today = new Date(`${getTodayLocalDate()}T00:00:00`);
     const slot = getAgendaSlotsForDate(today).find((item) => item.sessionKey === sessionKey);
@@ -11488,35 +11924,41 @@
       return;
     }
     const student = slot.students.find((item) => item.id === clientId);
-    const client = getClientById(clientId);
-    // v0.9.55: details.noDiscount = solo registra la ausencia ("No vino" de Modo Grupo): no exige saldo
-    // ni descuenta sesión.
-    const noDiscount = details.noDiscount === true;
-    if (!student || !client || student.attendance || (!noDiscount && Number(client.sessions_used || 0) >= Number(client.sessions_total || 0))) {
+    if (!student || student.attendance) {
       return;
     }
-    const markedAt = new Date().toISOString();
-    if (!Array.isArray(client.training_attendance)) {
-      client.training_attendance = [];
-    }
-    if (client.training_attendance.some((entry) => entry.sessionKey === sessionKey)) {
+    markClientAttendance(clientId, slot.dateValue, status, { ...details, sessionKey, time: slot.time });
+  }
+
+  // Hoy: ✓ Vino / ✗ No vino. Tocar la marca que ya tiene la quita.
+  function toggleTodayMark(sessionKey, clientId, status) {
+    const today = new Date(`${getTodayLocalDate()}T00:00:00`);
+    const slot = getAgendaSlotsForDate(today).find((item) => item.sessionKey === sessionKey);
+    const student = slot?.students.find((item) => item.id === clientId);
+    if (!student) {
       return;
     }
-    client.training_attendance.push({
+    const same = student.attendance?.status === status;
+    markClientAttendance(clientId, slot.dateValue, same ? '' : status, {
       sessionKey,
-      date: slot.dateValue,
       time: slot.time,
-      markedAt,
-      status,
-      reason: String(details.reason || '').trim(),
-      noticeDays: details.noticeDays ?? null,
-      requestedBy: details.requestedBy || ''
+      reason: status === 'no_show' && !same ? 'No vino (Hoy)' : ''
     });
-    if (status !== 'rescheduled' && !noDiscount) {
-      client.sessions_used = Math.min(Number(client.sessions_total || 0), Number(client.sessions_used || 0) + 1);
+  }
+
+  // Hoy: "+ Agregar alumno a esta clase" = Solo un día en esta clase + "Vino".
+  function addStudentToTodayClass(slotId, clientId) {
+    const [dateValue, ...rest] = String(slotId || '').split('|');
+    const slotKey = rest.join('|');
+    const slot = getAgendaSlotsForDate(new Date(`${dateValue}T00:00:00`)).find((item) => item.key === slotKey);
+    const client = getClientById(clientId);
+    if (!slot || !client) {
+      return;
     }
-    saveSessionState();
-    render();
+    todayAddOpen.delete(slotId);
+    setClientClassMove(clientId, dateValue, { time: slot.time === 'Sin hora' ? '' : slot.time, modality: slot.modality, groupSize: slot.groupSize, slotKey });
+    const label = attendanceApi.classLabel({ time: slot.time, modality: slot.modality });
+    markClientAttendance(clientId, dateValue, 'attended', { time: slot.time, otherClass: true, classLabel: label });
   }
 
   // v0.9.55: presentes de una clase según la asistencia de Hoy.
@@ -13260,6 +13702,37 @@
       return;
     }
 
+    // v0.9.56 · Hoy: ✓ Vino / ✗ No vino, "+ Agregar alumno a esta clase" y × (quitar el cambio de hoy).
+    const todayMarkButton = target.closest('[data-today-mark]');
+    if (todayMarkButton) {
+      toggleTodayMark(todayMarkButton.getAttribute('data-today-slot'), todayMarkButton.getAttribute('data-client-id'), todayMarkButton.getAttribute('data-today-mark'));
+      return;
+    }
+    const todayAddButton = target.closest('[data-today-add]');
+    if (todayAddButton) {
+      todayAddOpen.add(todayAddButton.getAttribute('data-today-add'));
+      renderTrainingAgenda();
+      document.querySelector('[data-today-add-select]')?.focus();
+      return;
+    }
+    const todayAddConfirm = target.closest('[data-today-add-confirm]');
+    if (todayAddConfirm) {
+      const select = todayAddConfirm.closest('[data-today-add-panel]')?.querySelector('[data-today-add-select]');
+      addStudentToTodayClass(todayAddConfirm.getAttribute('data-today-add-confirm'), select?.value || '');
+      return;
+    }
+    const todayAddCancel = target.closest('[data-today-add-cancel]');
+    if (todayAddCancel) {
+      todayAddOpen.delete(todayAddCancel.getAttribute('data-today-add-cancel'));
+      renderTrainingAgenda();
+      return;
+    }
+    const todayUnmove = target.closest('[data-today-unmove]');
+    if (todayUnmove) {
+      setClientClassMove(todayUnmove.getAttribute('data-today-unmove'), todayUnmove.getAttribute('data-today-date'), null);
+      return;
+    }
+
     // Hoy: "Asistencia" despliega en la tarjeta los mismos controles de la agenda.
     const todayAttendanceButton = target.closest('[data-today-attendance]');
     if (todayAttendanceButton) {
@@ -13361,6 +13834,42 @@
 
     // Ficha del alumno: "◀ Alumnos" y los plegables (Programa actual, Ficha deportiva,
     // Datos y pagos, Editar). El botón "Cerrar ficha deportiva" del panel también la pliega.
+    // v0.9.56 · Ficha: "Marcar asistencia", "Cambiar de clase" y "Mensaje del coach".
+    const fichaSheetButton = target.closest('[data-ficha-sheet]');
+    if (fichaSheetButton) {
+      const type = fichaSheetButton.getAttribute('data-ficha-sheet');
+      const clientId = fichaSheetButton.getAttribute('data-client-id');
+      clientUi.sheet = clientUi.sheet?.clientId === clientId && clientUi.sheet.type === type ? null : { type, clientId };
+      renderClients();
+      document.querySelector('[data-ficha-sheet-form]')?.scrollIntoView?.({ block: 'nearest' });
+      return;
+    }
+    if (target.closest('[data-ficha-sheet-close]')) {
+      closeClientSheet();
+      return;
+    }
+    const fichaAttClear = target.closest('[data-ficha-att-clear]');
+    if (fichaAttClear) {
+      const clientId = fichaAttClear.getAttribute('data-client-id');
+      const date = fichaAttClear.getAttribute('data-ficha-att-clear');
+      markClientAttendance(clientId, date, '');
+      clientUi.sheet = null;
+      fichaToast(`${getGroupShortName(clientId)}: sin marca el ${formatFichaDate(date)}.`);
+      renderClients();
+      return;
+    }
+    const fichaMoveRemove = target.closest('[data-ficha-move-remove]');
+    if (fichaMoveRemove) {
+      setClientClassMove(fichaMoveRemove.getAttribute('data-client-id'), fichaMoveRemove.getAttribute('data-ficha-move-remove'), null);
+      renderClients();
+      return;
+    }
+    const coachMsgClear = target.closest('[data-coach-msg-clear]');
+    if (coachMsgClear) {
+      saveCoachMessage(coachMsgClear.closest('[data-coach-msg-form]')?.getAttribute('data-coach-msg-form'), '');
+      return;
+    }
+
     const clientPayButton = target.closest('[data-client-pay]');
     if (clientPayButton) {
       event.preventDefault();
@@ -14067,6 +14576,22 @@
       handleAgendaRescheduleSubmit(form);
       return;
     }
+    // v0.9.56 · Ficha: hojas de asistencia y cambio de clase, mensaje del coach e inicio del pago.
+    if (form.matches('[data-ficha-sheet-form]')) {
+      event.preventDefault();
+      submitClientSheet(form);
+      return;
+    }
+    if (form.matches('[data-coach-msg-form]')) {
+      event.preventDefault();
+      saveCoachMessage(form.getAttribute('data-coach-msg-form'), new FormData(form).get('coachMessage'));
+      return;
+    }
+    if (form.matches('[data-ficha-paid-at-form]')) {
+      event.preventDefault();
+      saveFichaPaidAt(form);
+      return;
+    }
     if (form.id === 'sportsProfileForm') {
       event.preventDefault();
       saveSportsProfileForm(form).then(() => {
@@ -14421,6 +14946,50 @@
   els.coachWhatsAppNumber.addEventListener('change', saveCoachWhatsApp);
   els.saveWhatsAppBtn.addEventListener('click', saveCoachWhatsApp);
   els.toggleQrBtn.addEventListener('click', toggleOnboardingQr);
+  // v0.9.56 · Hojas de la ficha: fecha, opción, clase o modo cambian lo que se muestra (se redibuja
+  // con lo elegido guardado en clientUi.sheet). Mensaje del coach: contador de caracteres.
+  document.addEventListener('change', (event) => {
+    const field = event.target;
+    const form = field?.closest?.('[data-ficha-sheet-form]');
+    if (form && ['date', 'status', 'target', 'mode', 'modality'].includes(field.name)) {
+      clientUi.sheet = readClientSheet(form);
+      if (field.name === 'mode' || field.name === 'date') {
+        delete clientUi.sheet.target;
+      }
+      renderClients();
+      return;
+    }
+    // Editar: al elegir "Pagado" sin "Inicio del pago", se pide ahí mismo (por defecto hoy).
+    if (field?.id === 'clientPaymentStatus') {
+      updatePaidAtPrompt(true);
+    }
+  });
+  document.addEventListener('input', (event) => {
+    const field = event.target;
+    if (field?.name === 'coachMessage' && field.closest?.('[data-coach-msg-form]')) {
+      const count = field.closest('[data-coach-msg-form]').querySelector('[data-coach-msg-count]');
+      if (count) {
+        count.textContent = `${field.value.length}/140`;
+      }
+    }
+    if (field?.id === 'clientPaidAt') {
+      updatePaidAtPrompt(false);
+    }
+  });
+  // Ayudas de Editar detrás de un "?".
+  document.addEventListener('click', (event) => {
+    const help = event.target?.closest?.('[data-help-toggle]');
+    if (!help) {
+      return;
+    }
+    event.preventDefault();
+    const text = document.getElementById(help.getAttribute('aria-controls'));
+    if (text) {
+      const open = text.classList.toggle('hidden') === false;
+      help.setAttribute('aria-expanded', String(open));
+    }
+  });
+
   els.clientSearch?.addEventListener('input', (event) => {
     clientUi.search = event.target.value || '';
     renderClients();

@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Bebas+Neue&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <title>VALHALLA</title>
-  <link rel="stylesheet" href="./assets/css/styles.css?v=0.9.55">
+  <link rel="stylesheet" href="./assets/css/styles.css?v=0.9.56">
 </head>
 <!-- Clase "solo-entrenamientos": oculta Inicio, Registrar (finanzas) y Nutrición sin borrarlos. Quitarla los vuelve a mostrar. -->
 <body class="solo-entrenamientos">
@@ -31,7 +31,7 @@
       <div class="header-actions">
         <span class="user-pill">Usuario</span>
         <span class="badge" id="cloudModeBadge">Modo Local</span>
-        <span class="badge">v0.9.55</span>
+        <span class="badge">v0.9.56</span>
       </div>
     </header>
 
@@ -272,20 +272,6 @@
           </div>
           <div class="row">
             <div>
-              <label for="clientEmail">Correo</label>
-              <input id="clientEmail" name="email" type="email">
-            </div>
-            <div>
-              <label for="clientBirthDate">Fecha de nacimiento</label>
-              <input id="clientBirthDate" name="birthDate" type="date">
-            </div>
-            <div>
-              <label for="clientAge">Edad (años)</label>
-              <input id="clientAge" name="age" type="number" min="1" max="120">
-            </div>
-          </div>
-          <div class="row">
-            <div>
               <label for="clientTrainingDays">Días de entrenamiento</label>
               <input id="clientTrainingDays" name="trainingDays" type="text" placeholder="Lun, Mié y Vie">
             </div>
@@ -294,26 +280,24 @@
               <input id="clientSchedule" name="schedule" type="text" placeholder="19:00 - 20:00">
             </div>
           </div>
+          <!-- v0.9.56: sin "Sesiones mensuales" / "Sesiones usadas" (campos viejos, se conservan guardados).
+               Las clases del pago = días con "Vino" o con series desde "Inicio del pago" + ajuste manual. -->
           <div class="row">
             <div>
-              <label for="clientSessionsTotal">Sesiones mensuales</label>
-              <input id="clientSessionsTotal" name="sessionsTotal" type="number" min="0" step="1" value="8">
-            </div>
-            <div>
-              <label for="clientSessionsUsed">Sesiones usadas</label>
-              <input id="clientSessionsUsed" name="sessionsUsed" type="number" min="0" step="1" value="0">
-            </div>
-          </div>
-          <div class="row">
-            <div>
-              <label for="clientClassesPerPayment">Clases por pago</label>
-              <input id="clientClassesPerPayment" name="classesPerPayment" type="number" min="1" max="99" step="1" inputmode="numeric" placeholder="Automático">
-              <p class="meta">Vacío: clases por semana × 4 (12 si no hay dato). El pago vuelve a Pendiente al usarlas o a los 28 días.</p>
-            </div>
-            <div>
-              <label for="clientPaidAt">Inicio del pago</label>
+              <label for="clientPaidAt">Inicio del pago <button class="help-q" type="button" data-help-toggle aria-controls="helpPaidAt" aria-expanded="false" aria-label="Ayuda: Inicio del pago">?</button></label>
               <input id="clientPaidAt" name="paidAt" type="date">
-              <p class="meta">Se llena con hoy al marcar pagado; corrígela si te pagó otro día. Solo cuenta con el estado Pagado.</p>
+              <p class="notice warn client-paid-at-prompt hidden" id="clientPaidAtPrompt" data-paid-at-prompt>¿Desde cuándo pagó? Quedó hoy; cámbiala si pagó otro día.</p>
+              <p class="meta hidden" id="helpPaidAt">Desde este día se cuentan sus clases. Se llena con hoy al marcar pagado; corrígela si te pagó otro día. Solo cuenta con el estado Pagado.</p>
+            </div>
+            <div>
+              <label for="clientClassesPerPayment">Clases por pago <button class="help-q" type="button" data-help-toggle aria-controls="helpClassesPerPayment" aria-expanded="false" aria-label="Ayuda: Clases por pago">?</button></label>
+              <input id="clientClassesPerPayment" name="classesPerPayment" type="number" min="1" max="99" step="1" inputmode="numeric" placeholder="Automático">
+              <p class="meta hidden" id="helpClassesPerPayment">Vacío: clases por semana × 4 (12 si no hay dato). El pago vuelve a Pendiente al usarlas o a los 28 días.</p>
+            </div>
+            <div>
+              <label for="clientClassesUsedBefore">Clases ya usadas antes de anotar <button class="help-q" type="button" data-help-toggle aria-controls="helpClassesUsedBefore" aria-expanded="false" aria-label="Ayuda: Clases ya usadas antes de anotar">?</button></label>
+              <input id="clientClassesUsedBefore" name="classesUsedBefore" type="number" min="0" max="99" step="1" inputmode="numeric" placeholder="0">
+              <p class="meta hidden" id="helpClassesUsedBefore">Clases de este pago que vino antes de que empezaras a marcar asistencia. Se suman a las marcadas. Al marcar un pago nuevo vuelve a 0.</p>
             </div>
           </div>
           <div class="row">
@@ -359,27 +343,45 @@
             </div>
           </div>
           <div>
-            <label for="clientIntakeComment">Comentario de ingreso</label>
-            <textarea id="clientIntakeComment" name="intakeComment"></textarea>
-          </div>
-          <div>
             <label for="clientInjuries">Lesiones</label>
             <input id="clientInjuries" name="injuries" type="text">
           </div>
-          <div>
-            <label for="clientObservations">Observaciones</label>
-            <textarea id="clientObservations" name="observations"></textarea>
-          </div>
-          <div class="row">
-            <div>
-              <label for="clientEmergencyContact">Contacto de emergencia</label>
-              <input id="clientEmergencyContact" name="emergencyContact" type="text">
+          <!-- v0.9.56: lo que se usa poco, plegado (los campos siguen en el formulario y se guardan igual). -->
+          <details class="client-form-more" id="clientMoreData">
+            <summary>Más datos <span class="meta">correo, nacimiento, emergencia, comentarios</span></summary>
+            <div class="row">
+              <div>
+                <label for="clientEmail">Correo</label>
+                <input id="clientEmail" name="email" type="email">
+              </div>
+              <div>
+                <label for="clientBirthDate">Fecha de nacimiento</label>
+                <input id="clientBirthDate" name="birthDate" type="date">
+              </div>
+              <div>
+                <label for="clientAge">Edad (años)</label>
+                <input id="clientAge" name="age" type="number" min="1" max="120">
+              </div>
+            </div>
+            <div class="row">
+              <div>
+                <label for="clientEmergencyContact">Contacto de emergencia</label>
+                <input id="clientEmergencyContact" name="emergencyContact" type="text">
+              </div>
+              <div>
+                <label for="clientEmergencyPhone">Teléfono de emergencia</label>
+                <input id="clientEmergencyPhone" name="emergencyPhone" type="tel">
+              </div>
             </div>
             <div>
-              <label for="clientEmergencyPhone">Teléfono de emergencia</label>
-              <input id="clientEmergencyPhone" name="emergencyPhone" type="tel">
+              <label for="clientIntakeComment">Comentario de ingreso</label>
+              <textarea id="clientIntakeComment" name="intakeComment"></textarea>
             </div>
-          </div>
+            <div>
+              <label for="clientObservations">Observaciones</label>
+              <textarea id="clientObservations" name="observations"></textarea>
+            </div>
+          </details>
           <div class="client-form-actions">
             <button class="primary" id="clientSubmitBtn" type="submit">Guardar cliente</button>
           </div>
@@ -797,7 +799,7 @@
           </div>
           <div>
             <label for="libraryExerciseSecondaryMuscles">Músculos secundarios</label>
-            <input id="libraryExerciseSecondaryMuscles" type="text" placeholder="Ej: glúteos, femorales">
+            <input id="libraryExerciseSecondaryMuscles" type="text" placeholder="Ej: glúteos, femorales, aductores">
           </div>
           <div>
             <label for="libraryExerciseEquipments">Equipamiento</label>
@@ -1147,42 +1149,44 @@
     </div>
   </nav>
 
-  <script src="./assets/js/config.js?v=0.9.55"></script>
-  <script src="./assets/js/decimal-core.js?v=0.9.55"></script>
+  <script src="./assets/js/config.js?v=0.9.56"></script>
+  <script src="./assets/js/decimal-core.js?v=0.9.56"></script>
   <!-- supabase-js fijado a una versión exacta; integrity = SHA-384 del archivo publicado en npm -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js" integrity="sha384-Rj26LVGvoeRVR6+mwQmFfcR3QOBEwT+ZmuCWpuiqeTzJpCs0ER4ITAWGb4Hiy3Ok" crossorigin="anonymous"></script>
-  <script src="./assets/js/circuits-core.js?v=0.9.55"></script>
-  <script src="./assets/js/blocks-core.js?v=0.9.55"></script>
-  <script src="./assets/js/monthly-card-core.js?v=0.9.55"></script>
-  <script src="./assets/js/data.js?v=0.9.55"></script>
-  <script src="./assets/js/supabase.js?v=0.9.55"></script>
-  <script src="./assets/js/auth.js?v=0.9.55"></script>
-  <script src="./assets/js/invite-core.js?v=0.9.55"></script>
-  <script src="./assets/js/cloud-data.js?v=0.9.55"></script>
-  <script src="./assets/js/finance.js?v=0.9.55"></script>
-  <script src="./assets/js/qrcode-generator.js?v=0.9.55"></script>
-  <script src="./assets/js/onboarding.js?v=0.9.55"></script>
-  <script src="./assets/js/sync-core.js?v=0.9.55"></script>
-  <script src="./assets/js/cloud-sync.js?v=0.9.55"></script>
-  <script src="./assets/js/client-overrides-core.js?v=0.9.55"></script>
-  <script src="./assets/js/swap-reason-core.js?v=0.9.55"></script>
-  <script src="./assets/js/muscle-map-core.js?v=0.9.55"></script>
-  <script src="./assets/js/publish-core.js?v=0.9.55"></script>
-  <script src="./assets/js/publish.js?v=0.9.55"></script>
-  <script src="./assets/js/invites.js?v=0.9.55"></script>
-  <script src="./assets/js/self-log-core.js?v=0.9.55"></script>
-  <script src="./assets/js/student-view.js?v=0.9.55"></script>
-  <script src="./assets/js/auth-gate.js?v=0.9.55"></script>
-  <script src="./assets/js/labels.js?v=0.9.55"></script>
-  <script src="./assets/js/student-import-core.js?v=0.9.55"></script>
-  <script src="./assets/js/coach-sets-core.js?v=0.9.55"></script>
-  <script src="./assets/js/group-draft-core.js?v=0.9.55"></script>
-  <script src="./assets/js/group-round-core.js?v=0.9.55"></script>
-  <script src="./assets/js/program-import-core.js?v=0.9.55"></script>
-  <script src="./assets/js/settings-core.js?v=0.9.55"></script>
-  <script src="./assets/js/monthly-card.js?v=0.9.55"></script>
-  <script src="./assets/js/payment-period-core.js?v=0.9.55"></script>
-  <script src="./assets/js/weight-review-core.js?v=0.9.55"></script>
-  <script src="./assets/js/app.js?v=0.9.55"></script>
+  <script src="./assets/js/circuits-core.js?v=0.9.56"></script>
+  <script src="./assets/js/blocks-core.js?v=0.9.56"></script>
+  <script src="./assets/js/monthly-card-core.js?v=0.9.56"></script>
+  <script src="./assets/js/attendance-core.js?v=0.9.56"></script>
+  <script src="./assets/js/data.js?v=0.9.56"></script>
+  <script src="./assets/js/supabase.js?v=0.9.56"></script>
+  <script src="./assets/js/auth.js?v=0.9.56"></script>
+  <script src="./assets/js/invite-core.js?v=0.9.56"></script>
+  <script src="./assets/js/cloud-data.js?v=0.9.56"></script>
+  <script src="./assets/js/finance.js?v=0.9.56"></script>
+  <script src="./assets/js/qrcode-generator.js?v=0.9.56"></script>
+  <script src="./assets/js/onboarding.js?v=0.9.56"></script>
+  <script src="./assets/js/sync-core.js?v=0.9.56"></script>
+  <script src="./assets/js/cloud-sync.js?v=0.9.56"></script>
+  <script src="./assets/js/client-overrides-core.js?v=0.9.56"></script>
+  <script src="./assets/js/swap-reason-core.js?v=0.9.56"></script>
+  <script src="./assets/js/muscle-map-core.js?v=0.9.56"></script>
+  <script src="./assets/js/publish-core.js?v=0.9.56"></script>
+  <script src="./assets/js/publish.js?v=0.9.56"></script>
+  <script src="./assets/js/invites.js?v=0.9.56"></script>
+  <script src="./assets/js/self-log-core.js?v=0.9.56"></script>
+  <script src="./assets/js/student-messages-core.js?v=0.9.56"></script>
+  <script src="./assets/js/student-view.js?v=0.9.56"></script>
+  <script src="./assets/js/auth-gate.js?v=0.9.56"></script>
+  <script src="./assets/js/labels.js?v=0.9.56"></script>
+  <script src="./assets/js/student-import-core.js?v=0.9.56"></script>
+  <script src="./assets/js/coach-sets-core.js?v=0.9.56"></script>
+  <script src="./assets/js/group-draft-core.js?v=0.9.56"></script>
+  <script src="./assets/js/group-round-core.js?v=0.9.56"></script>
+  <script src="./assets/js/program-import-core.js?v=0.9.56"></script>
+  <script src="./assets/js/settings-core.js?v=0.9.56"></script>
+  <script src="./assets/js/monthly-card.js?v=0.9.56"></script>
+  <script src="./assets/js/payment-period-core.js?v=0.9.56"></script>
+  <script src="./assets/js/weight-review-core.js?v=0.9.56"></script>
+  <script src="./assets/js/app.js?v=0.9.56"></script>
 </body>
 </html>

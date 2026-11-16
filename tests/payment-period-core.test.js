@@ -182,7 +182,14 @@ test('app.js: Marcar pagado y Editar usan el período; la revisión corre al abr
   // Guardados de sesión/asistencia que no pasan por persist() también revisan los pagos.
   const saveSession = app.slice(app.indexOf('function saveSessionState'), app.indexOf('function escapeHtml'));
   assert.match(saveSession, /if \(paymentCheck\.ready\) \{\s*applyPaymentPeriods\(\);\s*\}\s*dataApi\.saveState\(state\);/);
-  ['recordAgendaStatus', 'confirmGroupExercise', 'saveGroupCircuitResults'].forEach((name) => {
+  // v0.9.56: la asistencia (agenda, Hoy, ficha, Modo Grupo) guarda en updateClientLocal.
+  const bodyOf = (name) => {
+    const start = app.indexOf(`function ${name}(`);
+    return app.slice(start, app.indexOf('\n  }\n', start));
+  };
+  assert.match(bodyOf('recordAgendaStatus'), /markClientAttendance\(/);
+  assert.match(bodyOf('markClientAttendance'), /updateClientLocal\(/);
+  ['updateClientLocal', 'confirmGroupExercise', 'saveGroupCircuitResults'].forEach((name) => {
     const start = app.indexOf(`function ${name}(`);
     const body = app.slice(start, app.indexOf('\n  }\n', start));
     assert.match(body, /saveSessionState\(\);/, `${name} debe guardar con saveSessionState()`);

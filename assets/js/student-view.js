@@ -11,6 +11,10 @@
 
   const authApi = window.VALHALLA.auth;
   const selfLog = window.VALHALLA.selfLogCore;
+  // v0.9.56: mensajes cortos y alegres (student-messages-core.js). Sin el módulo, no se muestran.
+  function messagesApi() {
+    return window.VALHALLA.studentMessages || null;
+  }
   const CACHE_KEY = 'valhalla_student_cache';
   // v0.9.49: qué hacer con una cuenta sin vínculo ("Tengo un código"); lo pasa auth-gate.js.
   let inviteOpts = { onHaveCode: null, inviteCode: '' };
@@ -807,6 +811,7 @@
     }
     return `
       <section class="sv-screen sv-today" data-student-program data-sv-screen="today" data-assignment-id="${escapeHtml(program.assignment_id || '')}">
+        ${renderMessages(todayMessages(ctx, cache, selection, programs))}
         ${renderDayMuscles(exercises)}
         ${renderWeek(ctx, cache)}
         <p class="sv-program-title"><span class="sv-meta">Tu programa</span> ${escapeHtml(program.title || program.data?.programName || 'Programa')}</p>
@@ -1016,7 +1021,7 @@
       <div class="sv-ref" data-sv-ref>
         <div class="sv-ref-cell"><span class="sv-ref-label">Récord</span><strong data-sv-record-value>${reference.record ? `${formatNumber(reference.record)} ${unit}` : '—'}</strong></div>
         <div class="sv-ref-cell"><span class="sv-ref-label">Última vez</span><strong>${reference.last ? escapeHtml(formatDate(reference.last.date)) : '—'}</strong>${lastText ? `<span class="sv-meta">${escapeHtml(lastText)}</span>` : ''}</div>
-      </div>`;
+      </div>${renderExerciseCheer(ctx, exercise)}`;
     let body;
     if (!effective) {
       body = '<p class="sv-log-undefined" data-sv-log-undefined>Tu entrenador aún no definió las series de este ejercicio</p>';
@@ -1070,6 +1075,63 @@
       </section>`;
   }
 
+  // v0.9.56: "Subiste 5 kg 💪" / "Hiciste 2 reps más" / "Mismo peso, más control…", comparado con
+  // la última vez (mismo historial que "Última vez"). Lo de hoy es lo anotado en la fecha elegida;
+  // en solo lectura, la última sesión contra la anterior. Sin sesión anterior no sale nada.
+  function exerciseCheer(ctx, exercise) {
+    const api = messagesApi();
+    if (!api || !exercise || isCircuit(exercise)) {
+      return null;
+    }
+    const history = exerciseHistory(ctx, exercise).filter((entry) => entry.sets.some(setHasData) && entry.date <= ctx.date);
+    let index = history.findIndex((entry) => entry.date === ctx.date);
+    if (index < 0 && !ctx.canLog) {
+      index = history.length - 1;
+    }
+    if (index < 1) {
+      return null;
+    }
+    return api.exerciseComparison(history[index], history[index - 1], isTimed(exercise));
+  }
+
+  function renderExerciseCheer(ctx, exercise) {
+    const cheer = exerciseCheer(ctx, exercise);
+    return cheer ? `<p class="sv-cheer" data-sv-cheer="${escapeHtml(cheer.kind)}">${escapeHtml(cheer.text)}</p>` : '';
+  }
+
+  // v0.9.56: mensajes de "Hoy" (máximo 2): mensaje del coach, récord del último día entrenado,
+  // semana completa y racha de 2, 4 u 8 semanas. Ver student-messages-core.js.
+  function todayMessages(ctx, cache, selection, programs) {
+    const api = messagesApi();
+    if (!api) {
+      return [];
+    }
+    const today = localToday();
+    const newest = programs.slice().sort((a, b) => String(b.published_at || '').localeCompare(String(a.published_at || '')))[0];
+    const active = activityDates(cache, ctx.outbox);
+    const lastDate = [...active].filter((date) => date <= today).sort().pop() || '';
+    const allExercises = programs.flatMap((row) => (row.data?.days || []).flatMap((item) => item.exercises || []));
+    const records = lastDate ? findRecords(ctx, allExercises, new Set([lastDate])) : [];
+    const target = (selection.days || []).filter((item) => (item.exercises || []).length).length;
+    const done = weekDates(today).filter((date) => active.has(date)).length;
+    return api.pick({
+      coach: newest?.data?.coachMessage,
+      record: api.recordMessage(records, lastDate, today),
+      week: api.weekMessage(done, target),
+      streak: api.streakMessage(weekStreak(active, today))
+    });
+  }
+
+  function renderMessages(list) {
+    if (!list.length) {
+      return '';
+    }
+    return `
+        <div class="sv-messages" data-sv-messages>
+          ${list.map((item) => `<p class="sv-msg sv-msg--${escapeHtml(item.kind)}" data-sv-msg="${escapeHtml(item.kind)}">${item.kind === 'coach' ? '<span class="sv-msg-from">Mensaje del coach</span>' : ''}${escapeHtml(item.text)}</p>`).join('')}
+        </div>`;
+  }
+
   // ---------------------------------------------------------------------------
   // Resumen del día
   // ---------------------------------------------------------------------------
@@ -1101,6 +1163,7 @@
     return `
       <section class="sv-screen sv-summary" data-student-program data-sv-screen="summary" data-assignment-id="${escapeHtml(program.assignment_id || '')}">
         <p class="sv-summary-kicker">¡Hazaña cumplida!</p>
+        ${today.length && messagesApi() ? renderMessages([messagesApi().recordMessage(today, ctx.date, ctx.date)].filter(Boolean)) : ''}
         <h2 class="sv-summary-title">${escapeHtml(day?.name || 'Día')} terminado</h2>
         <div class="sv-stats">
           <div class="sv-stat"><strong data-sv-stat="exercises">${stats.exercises}</strong><span>${stats.exercises === 1 ? 'ejercicio' : 'ejercicios'}</span></div>
@@ -1162,6 +1225,12 @@
   // Armado de la vista
   // ---------------------------------------------------------------------------
 
+  // v0.9.56: el saludo usa solo el primer nombre ("Hola, Ana").
+  function greetName(name) {
+    const api = messagesApi();
+    return api ? api.firstName(name) : String(name || '').trim();
+  }
+
   function shell(container, { name, userId, onSignOut, preview = false }) {
     container.innerHTML = `
       <div class="student-view">
@@ -1176,7 +1245,7 @@
           ${preview ? '' : '<button class="sv-ghost" type="button" data-auth-logout>Cerrar sesión</button>'}
         </header>
         <div class="sv-hello">
-          <h1 class="sv-hello-name">${name ? `Hola, ${escapeHtml(name)}` : 'Hola'}</h1>
+          <h1 class="sv-hello-name">${greetName(name) ? `Hola, ${escapeHtml(greetName(name))}` : 'Hola'}</h1>
           <span class="sv-streak hidden" data-sv-streak></span>
         </div>
         <div data-sv-logout-confirm class="hidden"></div>

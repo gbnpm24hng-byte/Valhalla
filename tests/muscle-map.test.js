@@ -21,11 +21,20 @@ test('mapa: cada músculo de la galería va a su zona', () => {
   Object.entries(cases).forEach(([muscle, zone]) => assert.deepEqual(map.zonesFor(muscle, [], 'X'), { main: [zone], sec: [] }, muscle));
 });
 
-test('mapa: forearms, adductors, full_body, other, vacío o desconocido no pintan nada', () => {
-  ['forearms', 'adductors', 'full_body', 'other', '', null, undefined, 'inventado', '__proto__', 'toString'].forEach((muscle) => {
+test('mapa: forearms, full_body, other, vacío o desconocido no pintan nada', () => {
+  ['forearms', 'full_body', 'other', '', null, undefined, 'inventado', '__proto__', 'toString'].forEach((muscle) => {
     assert.deepEqual(map.zonesFor(muscle, [muscle], 'X'), { main: [], sec: [] }, String(muscle));
   });
-  assert.equal(map.figureHtml(map.zonesFor('forearms', ['adductors'], 'X')), '');
+  assert.equal(map.figureHtml(map.zonesFor('forearms', ['other'], 'X')), '');
+});
+
+test('v0.9.56: aductores pinta su placa (cara interna del muslo); abductores sigue en glúteo medio', () => {
+  assert.deepEqual(map.zonesFor('adductors', [], 'Aducción'), { main: ['aductores'], sec: [] });
+  assert.deepEqual(map.zonesFor('abductors', ['adductors'], 'Abducción'), { main: ['gluteoMedio'], sec: ['aductores'] });
+  assert.equal(map.mainLabel(map.zonesFor('adductors', [], 'Aducción')), 'ADUCTORES');
+  assert.equal(map.zoneLabel('aductores'), 'Aductores');
+  const raw = fs.readFileSync(path.join(__dirname, '..', 'assets', 'images', 'figura-esculpida.svg'), 'utf8');
+  assert.equal((raw.match(/data-zona="aductores"/g) || []).length, 2, 'una placa en cada pierna, vista de frente');
 });
 
 test('mapa: pecho según el nombre (sin tildes ni mayúsculas)', () => {
@@ -70,7 +79,7 @@ test('etiquetas, aria-label y lugar de la figura', () => {
   assert.deepEqual(Object.keys(map.ZONE_LABELS), map.ZONES);
 });
 
-test('el SVG trae las 15 zonas y se limpia de metadatos y estilo al insertarlo', () => {
+test('el SVG trae las 16 zonas y se limpia de metadatos y estilo al insertarlo', () => {
   const raw = fs.readFileSync(path.join(__dirname, '..', 'assets', 'images', 'figura-esculpida.svg'), 'utf8');
   const zones = new Set([...raw.matchAll(/data-zona="([^"]+)"/g)].map((match) => match[1]));
   assert.deepEqual([...zones].sort(), map.ZONES.slice().sort());
@@ -99,7 +108,7 @@ test('publicación: sin galería, inactivo o sin zonas, las claves no existen (p
   const exercise = { libraryExerciseId: 'lib-1', exerciseName: 'Antebrazo' };
   [
     [],
-    [{ id: 'lib-1', name: 'Antebrazo', primaryMuscle: 'forearms', secondaryMuscles: ['adductors'] }],
+    [{ id: 'lib-1', name: 'Antebrazo', primaryMuscle: 'forearms', secondaryMuscles: ['other'] }],
     [{ id: 'lib-1', name: 'Antebrazo', primaryMuscle: 'full_body' }],
     [{ id: 'lib-1', name: 'Antebrazo', primaryMuscle: 'biceps', active: false }],
     [{ id: 'otro', name: 'Otro', primaryMuscle: 'biceps' }]

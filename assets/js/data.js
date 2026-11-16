@@ -781,7 +781,9 @@
       sessions_month: String(client.sessions_month || ''),
       training_modality: client.training_modality === 'group' ? 'group' : 'personalized',
       training_group_size: Math.max(2, Math.min(4, Math.floor(Number(client.training_group_size || 2)))),
-      training_attendance: Array.isArray(client.training_attendance) ? client.training_attendance.map((entry) => ({
+      // v0.9.56: cada marca conserva lo que no conoce (otherClass, classLabel, noDiscount…).
+      training_attendance: Array.isArray(client.training_attendance) ? client.training_attendance.filter((entry) => entry && typeof entry === 'object').map((entry) => ({
+        ...entry,
         sessionKey: String(entry.sessionKey || ''),
         date: String(entry.date || ''),
         time: String(entry.time || ''),
