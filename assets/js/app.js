@@ -22,6 +22,8 @@
   const swapReasonApi = window.VALHALLA.swapReason;
   // v0.9.57: qué rutina hizo en cada sesión ("Lun 16 nov · hizo C"), routine-choice-core.js.
   const routineChoiceApi = window.VALHALLA.routineChoice || null;
+  // v0.9.58: imagen de cómo se hace cada ejercicio (exercise-images-core.js).
+  const exerciseImagesApi = window.VALHALLA.exerciseImages || null;
   // Borrador de Modo Grupo guardado solo en este teléfono (group-draft-core.js).
   const groupDraftApi = window.VALHALLA.groupDraftCore;
   // Modo Grupo compacto v2: series hechas, rotación entre alumnos y cierre de ronda (group-round-core.js).
@@ -1959,6 +1961,7 @@
     const changeButton = pickerHere ? '' : `
       ${comment.block}
       <div class="group-change-actions">
+        ${renderGroupHowToButton(planExercise, 'ghost small')}
         ${comment.button}
         <button class="ghost small group-change-btn" type="button" data-group-change ${attrs}>Cambiar ejercicio</button>
         ${planExercise.overrideId ? `<button class="ghost small group-revert-btn" type="button" data-group-revert="${escapeHtml(planExercise.overrideId)}" ${attrs}>Quitar cambio</button>` : ''}
@@ -2518,6 +2521,7 @@
     const editingComment = groupSessionUi.commentEditor?.clientId === clientId && groupSessionUi.commentEditor.planExerciseId === planExercise.id;
     const links = `
       <div class="gv-links">
+        ${renderGroupHowToButton(planExercise, 'gv-link')}
         ${confirmed ? '' : `<button class="gv-link" type="button" data-group-change ${attrs}>Cambiar ejercicio</button>`}
         ${editingComment ? '' : `<button class="gv-link" type="button" data-group-comment-open ${attrs}>Comentario</button>`}
         <button class="gv-link gv-more${moreHasData ? ' has-data' : ''}" type="button" data-group-more data-client-id="${cid}" aria-expanded="${moreOpen}" aria-label="Más opciones${moreHasData ? ' (tiene datos)' : ''}">⋯</button>
@@ -4139,10 +4143,50 @@
     }
   }
 
+  // v0.9.58: imagen del ejercicio (galería enlazada o nombre). null si no hay.
+  function getExerciseImage(exercise) {
+    return exerciseImagesApi ? exerciseImagesApi.imageFor(exercise, Array.isArray(state.exerciseLibrary) ? state.exerciseLibrary : []) : null;
+  }
+
+  // Botón chico "Ver cómo se hace" de Modo Grupo (solo si hay imagen).
+  function renderGroupHowToButton(planExercise, className) {
+    const image = getExerciseImage(planExercise);
+    return image
+      ? `<button class="${className} group-howto-btn" type="button" data-group-howto="${escapeHtml(image.file)}" data-group-howto-alt="${escapeHtml(image.alt)}">Ver cómo se hace</button>`
+      : '';
+  }
+
+  // Imagen grande encima de todo; se cierra tocando afuera (o la imagen, o ×).
+  function openExerciseImageViewer(file, alt) {
+    if (!exerciseImagesApi || !Object.prototype.hasOwnProperty.call(exerciseImagesApi.FILES, file)) {
+      return;
+    }
+    document.getElementById('exerciseImageViewer')?.remove();
+    const overlay = document.createElement('div');
+    overlay.id = 'exerciseImageViewer';
+    overlay.className = 'sync-modal howto-modal';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.setAttribute('aria-label', alt || 'Cómo se hace');
+    overlay.innerHTML = `
+      <div class="howto-card" data-howto-card>
+        ${exerciseImagesApi.imgHtml({ src: exerciseImagesApi.FOLDER + file, alt: alt || 'Ejercicio' })}
+        <p class="howto-caption">${escapeHtml(alt || '')}</p>
+      </div>
+      <button class="howto-close" type="button" aria-label="Cerrar">×</button>`;
+    overlay.addEventListener('click', () => overlay.remove());
+    document.body.appendChild(overlay);
+  }
+
   function handleGroupClick(target) {
     // Borrador de otro día sin elegir: en Modo Grupo solo responden "Retomarlo" y "Descartarlo".
     if (groupSessionUi.pendingDraft && els.trainingGroupView?.contains(target)) {
       handleGroupDraftClick(target);
+      return true;
+    }
+    const howTo = target.closest('[data-group-howto]');
+    if (howTo) {
+      openExerciseImageViewer(howTo.getAttribute('data-group-howto'), howTo.getAttribute('data-group-howto-alt'));
       return true;
     }
     if (handleGroupPickerClick(target) || handleGroupCommentClick(target) || handleGroupDraftClick(target) || handleGroupV2Click(target)) {
@@ -7714,8 +7758,10 @@
           const alternatives = findAlternativesForExercise(exercise);
           const baseName = findLibraryExerciseByName(exercise.baseExerciseId)?.name || '';
           const expanded = libraryExpandedIds.has(exercise.id);
+          const image = exerciseImagesApi ? exerciseImagesApi.imageFor({ name: exercise.name, normalizedName: exercise.normalizedName }, null) : null;
           return `
-        <div class="training-set-item library-exercise-item${expanded ? ' is-open' : ''}">
+        <div class="training-set-item library-exercise-item${expanded ? ' is-open' : ''}${image ? ' has-thumb' : ''}">
+          ${image ? `<span class="library-thumb" data-library-thumb>${exerciseImagesApi.imgHtml(image)}</span>` : ''}
           <div class="library-exercise-main">
             <button class="library-exercise-toggle" type="button" data-library-exercise-toggle="${escapeHtml(exercise.id)}" aria-expanded="${expanded}">
               <strong>${escapeHtml(exercise.name || 'Ejercicio')}</strong>

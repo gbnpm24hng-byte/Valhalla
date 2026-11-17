@@ -5391,3 +5391,17 @@ body.sv-preview-open { overflow: hidden; }
 .sv-msg-from { display: block; margin-bottom: 2px; color: var(--sv-accent); font-size: 0.72rem; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; }
 .sv-msg--record, .sv-msg--week, .sv-msg--streak { border-left-color: var(--success); }
 .sv-cheer { margin: 8px 0 0; padding: 8px 12px; border-radius: 12px; background: var(--sv-card); color: var(--sv-accent); font-weight: 700; font-size: 0.92rem; overflow-wrap: anywhere; }
+
+/* v0.9.58: imagen de cómo se hace (exercise-images-core.js). Nunca se deforma (contain). */
+.auth-gate--student .sv-ex-image { justify-self: stretch; width: 100%; border-radius: 12px; background: #0E0E0C; overflow: hidden; }
+.auth-gate--student .sv-ex-image img { display: block; width: 100%; height: auto; max-height: 220px; object-fit: contain; }
+.auth-gate--student .sv-muscles-ex--image-only { padding: 0; border: 0; background: none; }
+.group-mode-view--compact .gv-link.group-howto-btn { color: var(--gv-yellow); }
+.howto-modal { cursor: zoom-out; }
+.howto-card { display: grid; gap: 8px; width: 100%; max-width: 520px; padding: 10px; border-radius: 16px; background: #0E0E0C; border: 1px solid rgba(255, 204, 26, 0.35); }
+.howto-card img { display: block; width: 100%; height: auto; max-height: calc(100dvh - 120px); object-fit: contain; border-radius: 10px; }
+.howto-caption { margin: 0; text-align: center; color: var(--accent); font-weight: 700; overflow-wrap: anywhere; }
+.howto-close { position: fixed; top: 12px; right: 12px; width: 44px; height: 44px; min-height: 44px; padding: 0; border-radius: 50%; border: 1px solid rgba(255, 204, 26, 0.35); background: #0E0E0C; color: var(--accent); font-size: 1.5rem; line-height: 1; }
+.library-exercise-item.has-thumb { justify-content: flex-start; }
+.library-thumb { flex: 0 0 48px; width: 48px; height: 48px; border-radius: 10px; background: #0E0E0C; overflow: hidden; }
+.library-thumb img { display: block; width: 100%; height: 100%; object-fit: contain; }

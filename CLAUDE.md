@@ -88,6 +88,11 @@ Guarda primero en localStorage y sincroniza con Supabase (coach_state + tablas d
   que no hizo esta semana; si hizo todas, la del calendario. Si ya tiene series en la
   fecha, sigue en ese día. Elegir una ya hecha pregunta "¿Repetirla?". Sin cambios en la nube: student_sets ya
   guarda day_id. app.js: "hizo C" en la ficha (Última sesión) y en Progreso (sessionRoutineLabel). Se carga antes de app.js.
+- exercise-images-core.js — v0.9.58: imagen de cómo se hace (assets/images/ejercicios/*.webp; FILES = copia de
+  imagenes-ejercicios.json, la prueba revisa que coincidan). imageFor: image publicado (solo de FILES) → galería
+  enlazada (libraryExerciseId → su nombre) → nombre, sin tildes ni mayúsculas. Se publica solo image = archivo.
+  Alumno: arriba en la tarjeta de músculos; Modo Grupo: "Ver cómo se hace" (visor, se cierra tocando);
+  Galería: miniatura. service-worker: caché aparte valhalla-ejercicios-v1 (al verlas, no se borra al subir versión).
 - Galería v0.9.56: músculos Abductores (glúteo medio), Aductores (zona nueva 'aductores' de figura-esculpida.svg),
   Deltoides lateral, Trapecio, Lumbar. labels.js entiende los nombres anteriores (Trapecios, Erectores espinales).
 - onboarding.js — formulario público de ingreso (?onboarding=1), sin login.

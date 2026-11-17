@@ -316,14 +316,27 @@
   }
 
   // Pantalla Ejercicio: figura grande con "TRABAJA: …" y "AYUDAN: …".
+  // v0.9.58: arriba, la imagen de cómo se hace (exercise-images-core.js), a todo el ancho de la tarjeta.
+  // Sin imagen ni zonas, nada (sin espacio vacío).
   function renderExerciseMuscles(exercise) {
     const map = muscleMap();
     const zones = exerciseZones(exercise);
-    if (!map || !map.hasZones(zones)) {
+    const images = window.VALHALLA.exerciseImages || null;
+    const image = images ? images.imageFor(exercise, null) : null;
+    const hasZones = Boolean(map && map.hasZones(zones));
+    if (!hasZones && !image) {
       return '';
+    }
+    const picture = image ? `<div class="sv-ex-image" data-sv-ex-image>${images.imgHtml(image)}</div>` : '';
+    if (!hasZones) {
+      return `
+      <div class="sv-muscles-ex sv-muscles-ex--image-only">
+        ${picture}
+      </div>`;
     }
     return `
       <div class="sv-muscles-ex" data-sv-muscles-ex>
+        ${picture}
         ${map.figureHtml(zones, 'lg')}
         <div class="sv-muscles-lines">
           ${zones.main.length ? `<p><span>Trabaja:</span> ${escapeHtml(map.joinLabels(zones.main))}</p>` : ''}

@@ -161,6 +161,12 @@
     if (videoUrl) {
       picked.videoUrl = videoUrl;
     }
+    // v0.9.58: imagen de cómo se hace (exercise-images-core.js): solo el nombre del archivo y solo si hay.
+    const images = (typeof window !== 'undefined' && window.VALHALLA && window.VALHALLA.exerciseImages) || null;
+    const image = images ? images.imageFor(exercise, library) : null;
+    if (image) {
+      picked.image = image.file;
+    }
     const muscles = musclesFor(exercise, library);
     if (muscles) {
       picked.primaryMuscle = text(muscles.primaryMuscle, 40);
