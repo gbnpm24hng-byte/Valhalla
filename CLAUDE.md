@@ -93,6 +93,13 @@ Guarda primero en localStorage y sincroniza con Supabase (coach_state + tablas d
   enlazada (libraryExerciseId → su nombre) → nombre, sin tildes ni mayúsculas. Se publica solo image = archivo.
   Alumno: arriba en la tarjeta de músculos; Modo Grupo: "Ver cómo se hace" (visor, se cierra tocando);
   Galería: miniatura. service-worker: caché aparte valhalla-ejercicios-v1 (al verlas, no se borra al subir versión).
+- free-training-core.js — v0.9.59 (B5): "Entrenamiento libre" del alumno (solo con can_self_log y si lo publicado trae
+  data.library = galería con SOLO id, name, muscle, image; publish-core también agrega libraryId al ejercicio enlazado).
+  Series en student_sets con day_id 'libre' y exercise_id = id de la galería; la base las acepta solo con
+  supabase/b5_entrenamiento_libre.sql (S, 1 a 10, ids de data.library). Hasta 8 ejercicios; lo elegido sin series vive
+  en valhalla_free_training:<cuenta> (fuera del estado). sameExercise junta programa y libre (galería enlazada, si no
+  nombre) para récords y "Última vez". Racha sí; "Semana completa", "✓ hecha" y sugerencia no. Coach: "Traer registros"
+  crea la sesión con freeTraining: true; getClientClassDates la deja fuera (pago y asistencia); ficha y Progreso "· libre".
 - Galería v0.9.56: músculos Abductores (glúteo medio), Aductores (zona nueva 'aductores' de figura-esculpida.svg),
   Deltoides lateral, Trapecio, Lumbar. labels.js entiende los nombres anteriores (Trapecios, Erectores espinales).
 - onboarding.js — formulario público de ingreso (?onboarding=1), sin login.

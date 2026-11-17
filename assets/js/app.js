@@ -22,6 +22,9 @@
   const swapReasonApi = window.VALHALLA.swapReason;
   // v0.9.57: qué rutina hizo en cada sesión ("Lun 16 nov · hizo C"), routine-choice-core.js.
   const routineChoiceApi = window.VALHALLA.routineChoice || null;
+  // v0.9.59: Entrenamiento libre del alumno (free-training-core.js). No es una clase.
+  const freeTrainingApi = window.VALHALLA.freeTraining || null;
+  const isFreeTrainingSession = (session) => Boolean(freeTrainingApi && freeTrainingApi.isFreeSession(session));
   // v0.9.58: imagen de cómo se hace cada ejercicio (exercise-images-core.js).
   const exerciseImagesApi = window.VALHALLA.exerciseImages || null;
   // Borrador de Modo Grupo guardado solo en este teléfono (group-draft-core.js).
@@ -1509,8 +1512,9 @@
   }
 
   // Fechas en que el alumno entrenó (con series o circuito), para el aviso de Hoy.
+  // v0.9.59: sin el Entrenamiento libre (no es una clase; Hoy no cambia).
   function getClientWorkDates(clientId) {
-    return getTrainingSessionsByClient(clientId).filter((session) => session.date && sessionHasWork(session)).map((session) => session.date);
+    return getTrainingSessionsByClient(clientId).filter((session) => session.date && sessionHasWork(session) && !isFreeTrainingSession(session)).map((session) => session.date);
   }
 
   function renderGroupReasonPicker(picker) {
@@ -4513,7 +4517,7 @@
       // Lo que el entrenador todavía tiene pendiente de subir no se toca (su corrección gana).
       const pending = new Set(coachSetsApi ? readCoachSetsOutbox(coachId).map((item) => item.key) : []);
       const studentSetIds = () => state.trainingsV08.sessions.flatMap((session) => getSessionExercises(session)
-        .flatMap((exercise) => getExerciseSets(exercise).filter((entry) => entry.studentSetId).map((entry) => ({ id: entry.studentSetId, clientId: session.clientId }))));
+        .flatMap((exercise) => getExerciseSets(exercise).filter((entry) => entry.studentSetId).map((entry) => ({ id: entry.studentSetId, clientId: session.clientId, free: isFreeTrainingSession(session) }))));
       const knownBefore = new Set(studentSetIds().map((item) => item.id));
       const summary = studentImportApi.mergeStudentSets(state, result.data || [], {
         coachId,
@@ -4528,7 +4532,8 @@
       // Modo Grupo: la línea pequeña muestra los avisos de dos sesiones (o se limpia).
       groupSessionUi.importNotice = splits.join(' ');
       // Hoy: aviso de registros nuevos (series que no estaban antes de traer).
-      const arrived = studentSetIds().filter((item) => !knownBefore.has(item.id));
+      // v0.9.59: lo del Entrenamiento libre no avisa en Hoy (no es una clase).
+      const arrived = studentSetIds().filter((item) => !knownBefore.has(item.id) && !item.free);
       studentImportUi.lastNew = arrived.length ? { count: arrived.length, clientIds: [...new Set(arrived.map((item) => item.clientId))] } : null;
       if (summary.added || summary.updated || summary.sessionsCreated) {
         persist();
@@ -9543,14 +9548,19 @@
   // Récords: fechas de este mes en que la carga máxima de un ejercicio superó todo lo anterior.
   // Días en que el alumno entrenó: sesiones con trabajo (incluye "Hecho sin datos") y asistencia
   // marcada en Hoy, sin repetir el mismo día. La usan la ficha y el período de pago.
+  // v0.9.59: el Entrenamiento libre del alumno no es una clase: no entra en estas fechas (pago y
+  // asistencia). workSessions = todas las sesiones con trabajo (con las libres), para récords y
+  // "Última sesión".
   function getClientClassDates(client, today = getTodayLocalDate()) {
-    const sessions = getTrainingSessionsByClient(client.id).filter((session) => session.date && session.date <= today && sessionHasWork(session));
+    const workSessions = getTrainingSessionsByClient(client.id).filter((session) => session.date && session.date <= today && sessionHasWork(session));
+    const sessions = workSessions.filter((session) => !isFreeTrainingSession(session));
     const attended = (client.training_attendance || []).filter((entry) => entry && entry.status === 'attended' && entry.date && entry.date <= today);
-    return { sessions, dates: new Set([...sessions.map((session) => session.date), ...attended.map((entry) => entry.date)]) };
+    return { sessions, workSessions, dates: new Set([...sessions.map((session) => session.date), ...attended.map((entry) => entry.date)]) };
   }
 
   // v0.9.57: "C" para una sesión con día del programa (también la que trajo de lo que anotó el alumno).
   function getSessionRoutineLabel(session) {
+    if (isFreeTrainingSession(session)) return '';
     return routineChoiceApi ? routineChoiceApi.sessionRoutineLabel(session, getTrainingAssignments()) : '';
   }
 
@@ -9560,10 +9570,16 @@
     return labels.join(' y ');
   }
 
+  // v0.9.59: nombres de los ejercicios de una sesión ("Sentadilla, Remo y Press").
+  function getSessionExerciseNames(session) {
+    const names = [...new Set(getSessionExercises(session).filter((exercise) => getExerciseSets(exercise).length).map((exercise) => String(exercise.exerciseName || 'Ejercicio')))];
+    return names.length <= 1 ? (names[0] || '') : `${names.slice(0, -1).join(', ')} y ${names[names.length - 1]}`;
+  }
+
   function getClientFichaStats(client) {
     const today = getTodayLocalDate();
     const start = shiftLocalDate(today, -27);
-    const { sessions, dates: allDates } = getClientClassDates(client, today);
+    const { sessions: classSessions, workSessions: sessions, dates: allDates } = getClientClassDates(client, today);
 
     let attendance = '—';
     if (allDates.size) {
@@ -9593,11 +9609,15 @@
       isTimed: isTimedExercise
     }) || { count: 0, tracked: 0 };
 
-    const lastDate = [...allDates].sort().pop() || '';
+    // v0.9.59: la última sesión puede ser un Entrenamiento libre ("Sáb 22 nov · libre").
+    const lastDate = [...new Set([...allDates, ...sessions.map((session) => session.date)])].sort().pop() || '';
+    const lastRoutine = lastDate ? getLastSessionRoutine(classSessions, lastDate) : '';
+    const lastFree = lastDate ? sessions.filter((session) => session.date === lastDate && isFreeTrainingSession(session)) : [];
     return {
       attendance,
       records: recordInfo.tracked ? String(recordInfo.count) : '—',
-      lastSession: lastDate ? `${formatFichaDate(lastDate)}${getLastSessionRoutine(sessions, lastDate) ? ` · hizo ${getLastSessionRoutine(sessions, lastDate)}` : ''}` : '—',
+      lastSession: lastDate ? `${formatFichaDate(lastDate)}${lastRoutine ? ` · hizo ${lastRoutine}` : ''}${lastFree.length ? ' · libre' : ''}` : '—',
+      lastFreeExercises: lastFree.map(getSessionExerciseNames).filter(Boolean).join(' · '),
       dates: allDates
     };
   }
@@ -10049,6 +10069,7 @@
           <div class="client-stat"><small>Récords este mes</small><strong>${escapeHtml(stats.records)}</strong></div>
         </div>
         <p class="client-ficha-last">Última sesión: <strong>${escapeHtml(stats.lastSession)}</strong></p>
+        ${stats.lastFreeExercises ? `<p class="client-ficha-last client-ficha-free" data-ficha-free>Libre: ${escapeHtml(stats.lastFreeExercises)}</p>` : ''}
         ${attendanceApi ? `
         <div class="client-ficha-quick" data-ficha-quick>
           <button class="${clientUi.sheet?.clientId === client.id && clientUi.sheet.type === 'attendance' ? 'primary' : 'secondary'}" type="button" data-ficha-sheet="attendance" data-client-id="${id}">Marcar asistencia</button>
@@ -10389,6 +10410,7 @@
             <span class="pg-session-body">
               <span class="pg-session-title">${escapeHtml(session.title || 'Sesión')}${valid ? ` · ${PG_WEEKDAYS[date.getDay()]}` : ''}</span>
               ${routine && routineChoiceApi ? `<span class="pg-session-routine" data-pg-routine>${escapeHtml(routineChoiceApi.sessionLine(session.date, routine))}</span>` : ''}
+              ${isFreeTrainingSession(session) ? `<span class="pg-session-routine pg-session-free" data-pg-free>${escapeHtml(freeTrainingApi.sessionLine(session.date))}${getSessionExerciseNames(session) ? ` · ${escapeHtml(getSessionExerciseNames(session))}` : ''}</span>` : ''}
               ${exercises.length || !circuitLines.length ? `<span class="pg-session-meta">${prPlural(exercises.length, 'ejercicio', 'ejercicios')} · ${done}/${planned} series</span>` : ''}
               ${circuitLines.map((line) => `<span class="pg-session-circuit" data-pg-circuit>${escapeHtml(line)}</span>`).join('')}
               ${studentSets ? `<span class="pg-session-student" data-student-logged>Registrado por el alumno · ${prPlural(studentSets, 'serie', 'series')}</span>` : ''}

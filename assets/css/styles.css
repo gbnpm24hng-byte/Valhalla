@@ -5405,3 +5405,28 @@ body.sv-preview-open { overflow: hidden; }
 .library-exercise-item.has-thumb { justify-content: flex-start; }
 .library-thumb { flex: 0 0 48px; width: 48px; height: 48px; border-radius: 10px; background: #0E0E0C; overflow: hidden; }
 .library-thumb img { display: block; width: 100%; height: 100%; object-fit: contain; }
+
+/* v0.9.59 · Entrenamiento libre (vista del alumno): opción en "Cambiar día", buscador de la galería
+   con miniatura y filtro por zona, "×" para quitar un ejercicio sin series y "+ Agregar serie". */
+.auth-gate--student .sv-day-option--free { border-style: dashed; }
+.auth-gate--student .sv-day-option--free .sv-day-option-name { color: var(--sv-accent); }
+.auth-gate--student .sv-ex-list .sv-exercise--free { display: flex; align-items: stretch; gap: 6px; }
+.auth-gate--student .sv-exercise--free .sv-ex-card { flex: 1 1 auto; min-width: 0; }
+.auth-gate--student .sv-free-remove { flex: 0 0 44px; width: 44px; min-height: 44px; padding: 0; border-radius: 14px; border: 1px solid var(--sv-line); background: var(--sv-card); color: var(--sv-muted); font-size: 1.4rem; line-height: 1; box-shadow: none; }
+.auth-gate--student .sv-free-add, .auth-gate--student .sv-free-add-set { margin-top: 4px; }
+.auth-gate--student .sv-free-picker { display: grid; gap: 10px; padding: 12px; border-radius: 16px; border: 1px solid var(--sv-line); background: var(--sv-card); min-width: 0; }
+.auth-gate--student .sv-free-picker-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.auth-gate--student .sv-free-picker-title { margin: 0; font-weight: 700; }
+.auth-gate--student .sv-free-search { width: 100%; min-height: 44px; padding: 8px 12px; border-radius: 12px; border: 1px solid var(--sv-line); background: var(--sv-bg); color: var(--sv-text); font-size: 1rem; box-sizing: border-box; }
+.auth-gate--student .sv-free-zones { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; }
+.auth-gate--student .sv-free-zones .sv-chip { flex: 0 0 auto; }
+.auth-gate--student .sv-free-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-height: 52vh; overflow-y: auto; }
+.auth-gate--student .sv-free-item.hidden { display: none; }
+.auth-gate--student .sv-free-option { width: 100%; display: flex; align-items: center; gap: 10px; padding: 6px 10px 6px 6px; border-radius: 12px; border: 1px solid var(--sv-line); background: var(--sv-card-2); color: var(--sv-text); text-align: left; box-shadow: none; min-height: 56px; }
+.auth-gate--student .sv-free-option.is-added { border-color: var(--sv-accent); box-shadow: inset 0 0 0 1px var(--sv-accent); }
+.auth-gate--student .sv-free-option:disabled { opacity: 0.55; }
+.auth-gate--student .sv-free-thumb { flex: 0 0 44px; width: 44px; height: 44px; border-radius: 10px; background: var(--sv-bg); overflow: hidden; display: block; }
+.auth-gate--student .sv-free-thumb img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.auth-gate--student .sv-free-text { flex: 1 1 auto; min-width: 0; display: grid; gap: 2px; overflow-wrap: anywhere; }
+.auth-gate--student .sv-free-mark { flex: 0 0 auto; width: 28px; text-align: center; font-weight: 800; color: var(--sv-accent); font-size: 1.2rem; }
+.client-ficha-free { margin-top: -4px; color: var(--muted); }

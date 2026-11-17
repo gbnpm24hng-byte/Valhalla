@@ -163,10 +163,19 @@ test('publicación: un videoUrl escrito en el programa se ignora; solo manda la 
   assert.equal('videoUrl' in publishedExercise({ exerciseName: 'Sentadilla', videoUrl: VIDEO }, []), false);
 });
 
-test('publicación: sin videos, el programa es idéntico al de antes (no aparece "cambios sin publicar")', () => {
+// v0.9.59: con galería, lo único nuevo es data.library (Entrenamiento libre) y libraryId en el ejercicio
+// enlazado; sin videos, el resto del programa es idéntico al de antes.
+function withoutFreeTrainingFields(program) {
+  const { library, ...rest } = program;
+  return { ...rest, days: rest.days.map((day) => ({ ...day, exercises: day.exercises.map(({ libraryId, ...exercise }) => exercise) })) };
+}
+
+test('publicación: sin videos, el programa es idéntico al de antes salvo library y libraryId (v0.9.59)', () => {
   const library = [{ id: 'lib-1', name: 'Sentadilla' }, { id: 'lib-2', name: 'Otro', videoUrl: VIDEO }];
-  assert.deepEqual(publish.buildPublishedProgram(poisonedAssignment(), library), publish.buildPublishedProgram(poisonedAssignment()));
-  assert.equal(JSON.stringify(publish.buildPublishedProgram(poisonedAssignment(), library)).includes('videoUrl'), false);
+  const program = publish.buildPublishedProgram(poisonedAssignment(), library);
+  assert.deepEqual(withoutFreeTrainingFields(program), publish.buildPublishedProgram(poisonedAssignment()));
+  assert.equal(JSON.stringify(program).includes('videoUrl'), false);
+  assert.deepEqual(program.library, [{ id: 'lib-2', name: 'Otro' }, { id: 'lib-1', name: 'Sentadilla' }]);
 });
 
 test('publicación: el video no agrega ningún otro dato de la galería ni claves prohibidas', () => {
@@ -174,9 +183,12 @@ test('publicación: el video no agrega ningún otro dato de la galería ni clave
   const assignment = videoAssignment({ libraryExerciseId: 'lib-1', exerciseName: 'Sentadilla' });
   const { program } = publish.buildPublication(assignment, [], library);
   const withoutLibrary = publish.buildPublishedProgram(assignment);
-  const { videoUrl, ...rest } = program.days[0].exercises[0];
+  const { videoUrl, libraryId, ...rest } = program.days[0].exercises[0];
   assert.equal(videoUrl, VIDEO);
+  assert.equal(libraryId, 'lib-1');
   assert.deepEqual(rest, withoutLibrary.days[0].exercises[0]);
+  // La galería publicada: solo id y nombre (sin músculo conocido ni imagen en este ejemplo).
+  assert.deepEqual(program.library, [{ id: 'lib-1', name: 'Sentadilla' }]);
   assert.deepEqual(publish.findForbiddenKeys(program), []);
   assert.equal(JSON.stringify(program).includes('Descripción privada'), false);
 });

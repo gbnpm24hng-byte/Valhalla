@@ -79,8 +79,24 @@
     return (Array.isArray(day?.blocks) ? day.blocks : []).find((block) => block && block.type === 'circuit' && block.id === row.exercise_id) || null;
   }
 
+  // v0.9.59 · Entrenamiento libre: day_id 'libre' y exercise_id = id del ejercicio de la galería.
+  const FREE_DAY_ID = 'libre';
+  const FREE_DAY_NAME = 'Entrenamiento libre';
+
+  function isFreeRow(row) {
+    return String(row?.day_id || '') === FREE_DAY_ID;
+  }
+
   function findPlan(state, row) {
     const assignment = (state.trainingsV08?.assignments || []).find((item) => item.id === row.assignment_id) || null;
+    if (isFreeRow(row)) {
+      const item = (state.exerciseLibrary || []).find((entry) => entry && entry.id === row.exercise_id) || null;
+      return {
+        assignment,
+        day: { id: FREE_DAY_ID, name: FREE_DAY_NAME },
+        exercise: { id: row.exercise_id, libraryExerciseId: row.exercise_id, exerciseName: item?.name || 'Ejercicio', free: true }
+      };
+    }
     const day = (assignment?.days || []).find((item) => item.id === row.day_id) || null;
     // Un ejercicio cambiado o agregado solo para este alumno (Modo Grupo) vive en clientOverrides.
     const exercise = (day?.exercises || []).find((item) => item.id === row.exercise_id)
@@ -98,7 +114,8 @@
     (rows || []).forEach((row) => pairs.set(`${row.client_id}|${row.session_date}`, { clientId: row.client_id, date: row.session_date }));
     const splits = [];
     pairs.forEach(({ clientId, date }) => {
-      const sameDay = sessions.filter((session) => session.clientId === clientId && session.date === date && session.programDayId);
+      // v0.9.59: el Entrenamiento libre es aparte (no es "otro día del programa" el mismo día).
+      const sameDay = sessions.filter((session) => session.clientId === clientId && session.date === date && session.programDayId && session.programDayId !== FREE_DAY_ID);
       const dayIds = [...new Set(sameDay.map((session) => session.programDayId))];
       if (dayIds.length < 2) return;
       const dayNames = dayIds.map((dayId) => {
@@ -159,6 +176,10 @@
           notes: '',
           exercises: []
         };
+        // v0.9.59: día libre del alumno: no es una clase (no cuenta para el pago ni la asistencia).
+        if (isFreeRow(row)) {
+          session.freeTraining = true;
+        }
         sessions.push(session);
         summary.sessionsCreated += 1;
       }
@@ -246,6 +267,10 @@
         session.exercises.push(exercise);
       }
       if (!Array.isArray(exercise.sets)) exercise.sets = [];
+      // v0.9.59: en el libre las series planeadas son las que hizo (crece con cada serie traída).
+      if (plan.exercise?.free) {
+        exercise.plannedSets = Math.max(Number(exercise.plannedSets) || 0, Number(row.set_number) || 0);
+      }
       const sets = exercise.sets;
 
       // Ya traída antes: solo se actualiza si sigue siendo del alumno y cambió.
@@ -315,5 +340,5 @@
     return (Array.isArray(session?.circuits) ? session.circuits : []).filter(isStudentSet).length;
   }
 
-  window.VALHALLA.studentImportCore = { mergeStudentSets, findDaySplits, isStudentSet, countStudentSets, countStudentCircuits, rowId };
+  window.VALHALLA.studentImportCore = { mergeStudentSets, findDaySplits, isStudentSet, countStudentSets, countStudentCircuits, rowId, isFreeRow, FREE_DAY_ID, FREE_DAY_NAME };
 })();

@@ -19,6 +19,10 @@
   function routineApi() {
     return window.VALHALLA.routineChoice || null;
   }
+  // v0.9.59: "Entrenamiento libre" (free-training-core.js). Sin el módulo, no aparece.
+  function freeApi() {
+    return window.VALHALLA.freeTraining || null;
+  }
   const CACHE_KEY = 'valhalla_student_cache';
   // v0.9.49: qué hacer con una cuenta sin vínculo ("Tengo un código"); lo pasa auth-gate.js.
   let inviteOpts = { onHaveCode: null, inviteCode: '' };
@@ -254,6 +258,8 @@
   // "3 × 10-12", "3 × reps por definir" o "Series por definir".
   function exerciseScheme(exercise) {
     const sets = hasValue(exercise.sets) ? Math.floor(Number(exercise.sets)) : 0;
+    // v0.9.59: libre: solo cuántas series (sin repeticiones ni peso sugerido).
+    if (exercise.free) return plural(sets, 'serie', 'series');
     if (!sets) return 'Series por definir';
     if (isTimed(exercise)) return `${sets} × ${hasValue(exercise.durationSeconds) ? `${Number(exercise.durationSeconds)} s` : 'tiempo por definir'}`;
     if (!hasValue(exercise.repMin)) return `${sets} × reps por definir`;
@@ -413,11 +419,16 @@
   }
 
   // Día que entrena: con series propias, pendientes o sesiones publicadas por el entrenador.
-  function activityDates(cache, outbox) {
+  // v0.9.59: programOnly deja fuera el Entrenamiento libre (no cuenta para "Semana completa";
+  // sí para la racha y los puntos de la semana).
+  function activityDates(cache, outbox, { programOnly = false } = {}) {
+    const free = freeApi();
+    const skip = (dayId) => programOnly && free && free.isFreeDayId(dayId);
     const dates = new Set();
-    (cache.setRows || []).forEach((row) => row.session_date && dates.add(row.session_date));
-    (outbox || []).filter((item) => item.status !== 'rejected').forEach((item) => item.sessionDate && dates.add(item.sessionDate));
+    (cache.setRows || []).forEach((row) => row.session_date && !skip(row.day_id) && dates.add(row.session_date));
+    (outbox || []).filter((item) => item.status !== 'rejected' && !skip(item.dayId)).forEach((item) => item.sessionDate && dates.add(item.sessionDate));
     (cache.progress || []).forEach((row) => {
+      if (programOnly && free && free.isFreeProgress(row)) return;
       const date = row.session_date || row.data?.date;
       if (date) dates.add(date);
     });
@@ -581,7 +592,10 @@
     return { status, result, text: api.formatResult(circuitOf(exercise), result), error: rejected?.error || '' };
   }
 
+  // v0.9.59: el Entrenamiento libre no tiene un final fijo (se agregan series y ejercicios): nunca
+  // salta solo al resumen; "Ver resumen" aparece con la primera serie hecha.
   function dayComplete(ctx, day) {
+    if (day?.free) return false;
     const exercises = (day?.exercises || []).filter(loggable);
     return ctx.canLog && exercises.length > 0 && exercises.every((exercise) => {
       const progress = exerciseProgress(ctx, day.id, exercise);
@@ -589,20 +603,36 @@
     });
   }
 
+  // v0.9.59: ¿la serie (student_sets o cola) es de este ejercicio? Una serie libre y una del programa
+  // del mismo ejercicio se juntan (free-training-core sameExercise: el de la galería enlazado y, si no,
+  // el nombre). Si no se encuentra a qué ejercicio apunta, como antes: por exercise_id.
+  function setBelongsTo(ctx, exercise, assignmentId, dayId, exerciseId) {
+    const free = freeApi();
+    if (!free) return exerciseId === exercise.id;
+    const memo = ctx.setExercise || (ctx.setExercise = new Map());
+    const key = `${assignmentId}|${dayId}|${exerciseId}`;
+    if (!memo.has(key)) memo.set(key, free.exerciseForSet(ctx.programs, assignmentId, dayId, exerciseId));
+    const target = memo.get(key);
+    if (!target) return exerciseId === exercise.id && !free.isFreeDayId(dayId);
+    return target === exercise || (exerciseId === exercise.id && Boolean(exercise.free) === free.isFreeDayId(dayId)) || free.sameExercise(target, exercise);
+  }
+
   // Historial de un ejercicio: por fecha, sus series efectivas. Lo registrado por el alumno
   // (base y teléfono) manda; las sesiones publicadas por el entrenador se usan por nombre
   // para las fechas sin registro propio.
+  // v0.9.59: con las series del Entrenamiento libre del mismo ejercicio (y al revés). Si el mismo día
+  // hay series del programa y libres del mismo ejercicio, quedan como series seguidas de ese día.
   function exerciseHistory(ctx, exercise) {
     const byDate = new Map();
-    const put = (date, setNumber, weight, reps, rir) => {
+    const put = (date, setNumber, weight, reps, rir, group = '') => {
       if (!date) return;
       if (!byDate.has(date)) byDate.set(date, new Map());
-      byDate.get(date).set(setNumber, { setNumber, weight, reps, rir });
+      byDate.get(date).set(`${group}|${setNumber}`, { setNumber, weight, reps, rir, group });
     };
-    ctx.setRows.filter((row) => row.exercise_id === exercise.id && row.set_type === 'S')
-      .forEach((row) => put(row.session_date, Number(row.set_number), row.weight, row.reps, row.rir));
-    ctx.outbox.filter((item) => item.exerciseId === exercise.id && item.setType === 'S' && item.status !== 'rejected')
-      .forEach((item) => put(item.sessionDate, item.setNumber, item.weight, item.reps, item.rir));
+    ctx.setRows.filter((row) => row.set_type === 'S' && setBelongsTo(ctx, exercise, row.assignment_id, row.day_id, row.exercise_id))
+      .forEach((row) => put(row.session_date, Number(row.set_number), row.weight, row.reps, row.rir, `${row.day_id}|${row.exercise_id}`));
+    ctx.outbox.filter((item) => item.setType === 'S' && item.status !== 'rejected' && setBelongsTo(ctx, exercise, item.assignmentId, item.dayId, item.exerciseId))
+      .forEach((item) => put(item.sessionDate, item.setNumber, item.weight, item.reps, item.rir, `${item.dayId}|${item.exerciseId}`));
     const name = foldText(exercise.name);
     (ctx.progress || []).forEach((row) => {
       const date = row.session_date || row.data?.date;
@@ -616,7 +646,18 @@
         });
       });
     });
-    return [...byDate.keys()].sort().map((date) => ({ date, sets: [...byDate.get(date).values()].sort((a, b) => a.setNumber - b.setNumber) }));
+    return [...byDate.keys()].sort().map((date) => {
+      const sets = [...byDate.get(date).values()];
+      if (new Set(sets.map((set) => set.group)).size < 2) {
+        return { date, sets: sets.sort((a, b) => a.setNumber - b.setNumber).map(({ group, ...set }) => set) };
+      }
+      // Programa y libre el mismo día: una serie detrás de otra (S1…Sn).
+      return {
+        date,
+        sets: sets.sort((a, b) => a.group.localeCompare(b.group) || a.setNumber - b.setNumber)
+          .map(({ group, ...set }, index) => ({ ...set, setNumber: index + 1 }))
+      };
+    });
   }
 
   function maxWeight(sets) {
@@ -643,9 +684,14 @@
   function findRecords(ctx, exercises, dates) {
     const records = [];
     const seen = new Set();
+    const seenList = [];
+    const free = freeApi();
     exercises.forEach((exercise) => {
       if (!exercise?.id || seen.has(exercise.id) || isCircuit(exercise)) return;
+      // v0.9.59: el mismo ejercicio en el programa y en el libre cuenta una sola vez.
+      if (free && seenList.some((item) => free.sameExercise(item, exercise))) return;
       seen.add(exercise.id);
+      seenList.push(exercise);
       let best = 0;
       exerciseHistory(ctx, exercise).forEach((entry) => {
         const top = maxValue(exercise, entry.sets);
@@ -688,7 +734,8 @@
   // Una sola vista de alumno abierta a la vez (la del usuario conectado).
   const logState = {
     container: null, cache: null, userId: '', date: '', timer: null, flushing: false, listening: false, offline: false, preview: false,
-    screen: 'today', assignmentId: '', dayId: '', exerciseId: '', feelKey: '', dayPanel: false, confirmDayId: ''
+    screen: 'today', assignmentId: '', dayId: '', exerciseId: '', feelKey: '', dayPanel: false, confirmDayId: '',
+    freePicker: false, freeQuery: '', freeZone: ''
   };
 
   function buildContext(cache) {
@@ -705,6 +752,7 @@
       canLog,
       date: logState.date,
       dates,
+      programs: cache.programs || [],
       setRows: cache.setRows || [],
       progress: cache.progress || [],
       outbox,
@@ -730,13 +778,19 @@
     // La sugerencia "primera rutina que no hizo" es solo para quien puede anotar (can_self_log); con el
     // interruptor apagado se muestra la del calendario, como antes (y "Cambiar día" sigue disponible).
     const suggested = routine && ctx.canLog ? routine.suggestDay({ days, done, date: ctx.date }) : null;
-    let day = days.find((item) => item.id === logState.dayId);
+    // v0.9.59: Entrenamiento libre, solo si puede anotar y lo publicado trae la galería.
+    const free = freeApi();
+    const freeAvailable = Boolean(free && free.isAvailable(program, ctx.canLog));
+    const freeDay = freeAvailable ? buildFreeDay(ctx, program) : null;
+    let day = freeDay && free.isFreeDayId(logState.dayId) ? freeDay : days.find((item) => item.id === logState.dayId);
     if (!day) {
       // 1) el día con series en la fecha elegida; 2) si puede anotar, la primera rutina que no hizo
       // (si hizo todas, la del calendario); 3) la del día de la semana; 4) la primera.
+      // v0.9.59: si en la fecha solo hay series libres, sigue en el Entrenamiento libre.
       const withSets = ctx.canLog ? days.find((item) => (item.exercises || []).some((exercise) => exerciseProgress(ctx, item.id, exercise).done > 0)) : null;
+      const freeWithSets = !withSets && freeDay && freeDay.exercises.some((exercise) => exercise.loggedSets > 0) ? freeDay : null;
       const weekday = new Date(`${ctx.date}T12:00:00`).getDay();
-      day = withSets || suggested || days.find((item) => (item.exercises || []).length && weekdayFromDayName(item.name) === weekday)
+      day = withSets || freeWithSets || suggested || days.find((item) => (item.exercises || []).length && weekdayFromDayName(item.name) === weekday)
         || days.find((item) => (item.exercises || []).length) || days[0] || null;
       logState.dayId = day?.id || '';
     }
@@ -744,7 +798,154 @@
     // La pantalla de un ejercicio recorre solo ejercicios (el circuito se ve y se anota en "Hoy").
     const steps = exercises.filter((item) => !isCircuit(item));
     const exerciseIndex = Math.max(steps.findIndex((item) => item.id === logState.exerciseId), 0);
-    return { program, days, day, exercises, steps, exerciseIndex, exercise: steps[exerciseIndex] || null, done, suggestedId: suggested?.id || '' };
+    return { program, days, day, exercises, steps, exerciseIndex, exercise: steps[exerciseIndex] || null, done, suggestedId: suggested?.id || '', freeAvailable };
+  }
+
+  // ---------------------------------------------------------------------------
+  // v0.9.59 · Entrenamiento libre (lo elegido sin series vive en el teléfono)
+  // ---------------------------------------------------------------------------
+
+  function freeChosen(ctx, assignmentId) {
+    const free = freeApi();
+    return free && ctx.userId ? free.chosenItems(free.readStore(localStorage, ctx.userId), assignmentId, ctx.date) : [];
+  }
+
+  function saveFreeChosen(ctx, assignmentId, list) {
+    const free = freeApi();
+    if (!free || !ctx.userId) return false;
+    const days = free.readStore(localStorage, ctx.userId);
+    days[free.dayKey(assignmentId, ctx.date)] = list;
+    return free.writeStore(localStorage, ctx.userId, days, ctx.dates[0]);
+  }
+
+  function buildFreeDay(ctx, program) {
+    return freeApi().buildDay({
+      program,
+      assignmentId: program.assignment_id,
+      date: ctx.date,
+      chosen: freeChosen(ctx, program.assignment_id),
+      setRows: ctx.setRows,
+      outbox: ctx.outbox
+    });
+  }
+
+  // Ejercicios libres con series (cualquier fecha), para los récords de "Hoy".
+  function freeLoggedExercises(ctx) {
+    const free = freeApi();
+    if (!free) return [];
+    const out = new Map();
+    const add = (assignmentId, dayId, exerciseId) => {
+      if (!free.isFreeDayId(dayId) || out.has(`${assignmentId}|${exerciseId}`)) return;
+      const exercise = free.exerciseForSet(ctx.programs, assignmentId, dayId, exerciseId);
+      if (exercise) out.set(`${assignmentId}|${exerciseId}`, exercise);
+    };
+    ctx.setRows.forEach((row) => add(row.assignment_id, row.day_id, row.exercise_id));
+    ctx.outbox.filter((item) => item.status !== 'rejected').forEach((item) => add(item.assignmentId, item.dayId, item.exerciseId));
+    return [...out.values()];
+  }
+
+  // Buscador de la galería: nombre (sin tildes ni mayúsculas), zona y miniatura. Hasta 8.
+  function renderFreePicker(ctx, selection) {
+    const free = freeApi();
+    const map = muscleMap();
+    const images = window.VALHALLA.exerciseImages || null;
+    const library = free.libraryOf(selection.program);
+    const chosenIds = new Set(selection.day.exercises.map((exercise) => exercise.id));
+    const full = chosenIds.size >= free.MAX_EXERCISES;
+    const zones = free.zoneOptions(library, map);
+    const zone = zones.some((item) => item.zone === logState.freeZone) ? logState.freeZone : '';
+    const query = logState.freeQuery || '';
+    const visible = new Set(free.search(library, { query, zone, muscleMap: map }).map((item) => item.id));
+    const zoneChip = (value, label) => `<button type="button" class="sv-chip${zone === value ? ' is-active' : ''}" data-sv-free-zone="${escapeHtml(value)}" aria-pressed="${zone === value}">${escapeHtml(label)}</button>`;
+    const items = library.map((item) => {
+      const added = chosenIds.has(item.id);
+      const logged = selection.day.exercises.find((exercise) => exercise.id === item.id)?.loggedSets > 0;
+      const image = images ? images.imageFor({ image: item.image, name: item.name }, null) : null;
+      const itemZones = free.itemZones(item, map);
+      const zoneText = map && itemZones.length ? map.joinLabels(itemZones) : '';
+      return `<li class="sv-free-item${visible.has(item.id) ? '' : ' hidden'}" data-sv-free-item data-name="${escapeHtml(free.fold(item.name))}" data-zones="${escapeHtml(itemZones.join(' '))}">
+          <button type="button" class="sv-free-option${added ? ' is-added' : ''}" data-sv-free-add="${escapeHtml(item.id)}" aria-pressed="${added}"${(!added && full) || logged ? ' disabled' : ''}>
+            <span class="sv-free-thumb">${image ? images.imgHtml(image) : '<span class="sv-free-thumb-empty" aria-hidden="true"></span>'}</span>
+            <span class="sv-free-text"><strong>${escapeHtml(item.name)}</strong>${zoneText ? `<span class="sv-meta">${escapeHtml(zoneText)}</span>` : ''}</span>
+            <span class="sv-free-mark" aria-hidden="true">${added ? '✓' : '+'}</span>
+          </button>
+        </li>`;
+    }).join('');
+    return `
+      <div class="sv-free-picker" data-sv-free-picker>
+        <div class="sv-free-picker-head">
+          <p class="sv-free-picker-title">Elige tus ejercicios <span class="sv-meta" data-sv-free-count>${chosenIds.size} de ${free.MAX_EXERCISES}</span></p>
+          <button type="button" class="sv-day-change" data-sv-free-done>Listo</button>
+        </div>
+        <input type="search" class="sv-free-search" data-sv-free-search placeholder="Buscar ejercicio" aria-label="Buscar ejercicio" autocomplete="off" value="${escapeHtml(query)}">
+        ${zones.length ? `<div class="sv-chips sv-free-zones" role="group" aria-label="Zona del cuerpo" data-sv-free-zones>${zoneChip('', 'Todo')}${zones.map((item) => zoneChip(item.zone, item.label)).join('')}</div>` : ''}
+        ${full ? `<p class="sv-meta" data-sv-free-full>Llegaste a ${free.MAX_EXERCISES} ejercicios. Quita uno para elegir otro.</p>` : ''}
+        <ul class="sv-free-list" data-sv-free-list>${items}</ul>
+        <p class="sv-meta${visible.size ? ' hidden' : ''}" data-sv-free-empty>No hay ejercicios con ese nombre.</p>
+      </div>`;
+  }
+
+  // Filtra la lista en el lugar (sin volver a dibujar: el teclado no se cierra).
+  function filterFreeList(container) {
+    const free = freeApi();
+    const list = container?.querySelector('[data-sv-free-list]');
+    if (!free || !list) return;
+    const words = free.fold(logState.freeQuery).split(' ').filter(Boolean);
+    let shown = 0;
+    list.querySelectorAll('[data-sv-free-item]').forEach((item) => {
+      const name = item.getAttribute('data-name') || '';
+      const zones = (item.getAttribute('data-zones') || '').split(' ');
+      const ok = words.every((word) => name.includes(word)) && (!logState.freeZone || zones.includes(logState.freeZone));
+      item.classList.toggle('hidden', !ok);
+      if (ok) shown += 1;
+    });
+    container.querySelector('[data-sv-free-empty]')?.classList.toggle('hidden', shown > 0);
+  }
+
+  function currentFree() {
+    const cache = logState.cache;
+    if (!cache || !freeApi()) return null;
+    const ctx = buildContext(cache);
+    const selection = resolveSelection(ctx, cache.programs || []);
+    return selection.day?.free ? { ctx, selection } : null;
+  }
+
+  // Agrega (o quita, si ya estaba y no tiene series) un ejercicio de la galería.
+  function toggleFreeExercise(id) {
+    const current = currentFree();
+    if (!current) return;
+    const free = freeApi();
+    const { ctx, selection } = current;
+    const assignmentId = selection.program.assignment_id;
+    const exercise = selection.day.exercises.find((item) => item.id === id);
+    let list = freeChosen(ctx, assignmentId);
+    // Lo que ya tiene series sigue en la lista elegida (para no perder su orden).
+    selection.day.exercises.forEach((item) => {
+      if (!list.some((entry) => entry.id === item.id)) list.push({ id: item.id, sets: item.sets });
+    });
+    if (exercise) {
+      if (exercise.loggedSets > 0) return;
+      list = free.removeExercise(list, id);
+    } else {
+      list = free.addExercise(list, id);
+    }
+    saveFreeChosen(ctx, assignmentId, list);
+    rerenderLog();
+  }
+
+  function addFreeSet(id) {
+    const current = currentFree();
+    if (!current) return;
+    const { ctx, selection } = current;
+    const exercise = selection.day.exercises.find((item) => item.id === id);
+    if (!exercise) return;
+    let list = freeChosen(ctx, selection.program.assignment_id);
+    selection.day.exercises.forEach((item) => {
+      if (!list.some((entry) => entry.id === item.id)) list.push({ id: item.id, sets: item.sets });
+    });
+    list = freeApi().addSet(list, id, exercise.sets);
+    saveFreeChosen(ctx, selection.program.assignment_id, list);
+    rerenderLog();
   }
 
   // ---------------------------------------------------------------------------
@@ -785,6 +986,7 @@
         ${programs.map((row) => `<button type="button" class="sv-chip${row.assignment_id === program.assignment_id ? ' is-active' : ''}" data-sv-program="${escapeHtml(row.assignment_id || '')}" aria-pressed="${row.assignment_id === program.assignment_id}">${escapeHtml(row.title || row.data?.programName || 'Programa')}</button>`).join('')}
       </div>` : '';
     const dayButtons = days.length ? renderDayChooser(ctx, selection) : '<p class="sv-meta">Este programa aún no tiene días.</p>';
+    const isFree = Boolean(day?.free);
     const card = (exercise, memberLabel = '') => {
       const can = ctx.canLog && loggable(exercise);
       const progress = can ? exerciseProgress(ctx, day.id, exercise) : null;
@@ -792,8 +994,12 @@
       const zones = exerciseZones(exercise);
       const figure = muscleMap() ? muscleMap().figureHtml(zones, 'sm') : '';
       const zoneTag = figure ? muscleMap().mainLabel(zones) : '';
+      // v0.9.59: en el libre, "×" quita un ejercicio que todavía no tiene series.
+      const remove = isFree && !(exercise.loggedSets > 0) && !(progress && progress.done > 0)
+        ? `<button type="button" class="sv-free-remove" data-sv-free-remove="${escapeHtml(exercise.id || '')}" aria-label="Quitar ${escapeHtml(exercise.name || 'ejercicio')}">×</button>`
+        : '';
       return `
-        <li class="sv-exercise${complete ? ' is-complete' : ''}">
+        <li class="sv-exercise${complete ? ' is-complete' : ''}${isFree ? ' sv-exercise--free' : ''}">
           <button type="button" class="sv-ex-card${figure ? ' has-fig' : ''}" data-sv-open="${escapeHtml(exercise.id || '')}">
             ${figure}
             <span class="sv-ex-card-text">
@@ -803,6 +1009,7 @@
             </span>
             ${progress ? `<span class="sv-ex-progress${complete ? ' is-complete' : ''}" data-sv-progress>${complete ? '<span class="sv-check" aria-label="Completo">✓</span>' : `${progress.done}/${progress.planned}`}</span>` : ''}
           </button>
+          ${remove}
         </li>`;
     };
     // v0.9.44: A1 y A2 juntos bajo "Superserie · 3 vueltas".
@@ -822,7 +1029,18 @@
     }).join('');
     let next = '';
     const firstStep = selection.steps?.[0];
-    if (exercises.length) {
+    let freeBlock = '';
+    if (isFree) {
+      // Libre: "Seguir" con el primero sin terminar y "Ver resumen" desde la primera serie hecha.
+      const free = freeApi();
+      const pending = exercises.find((exercise) => exerciseProgress(ctx, day.id, exercise).done < selfLog.plannedEffectiveSets(exercise));
+      const anyDone = exercises.some((exercise) => exerciseProgress(ctx, day.id, exercise).done > 0);
+      next = `${pending ? `<button type="button" class="sv-next" data-sv-open="${escapeHtml(pending.id || '')}" data-sv-next>Seguir: ${escapeHtml(pending.name || 'Ejercicio')}</button>` : ''}${anyDone ? `<button type="button" class="${pending ? 'sv-ghost sv-wide' : 'sv-next'}" data-sv-summary>Ver resumen ✓</button>` : ''}`;
+      const pickerOpen = logState.freePicker || !exercises.length;
+      freeBlock = pickerOpen
+        ? renderFreePicker(ctx, selection)
+        : (exercises.length < free.MAX_EXERCISES ? '<button type="button" class="sv-ghost sv-wide sv-free-add" data-sv-free-pick>+ Agregar ejercicio</button>' : '');
+    } else if (exercises.length) {
       if (!ctx.canLog) {
         next = firstStep ? `<button type="button" class="sv-next" data-sv-open="${escapeHtml(firstStep.id || '')}">Ver: ${escapeHtml(firstStep.name || 'Ejercicio')}</button>` : '';
       } else if (dayComplete(ctx, day)) {
@@ -841,7 +1059,8 @@
         ${programChips}
         ${ctx.canLog ? renderDatePicker(ctx) : ''}
         ${dayButtons}
-        ${exercises.length ? `<ul class="sv-exercises sv-ex-list">${cards}</ul>` : (day ? '<p class="sv-meta">Este día aún no tiene ejercicios.</p>' : '')}
+        ${exercises.length ? `<ul class="sv-exercises sv-ex-list">${cards}</ul>` : (day && !isFree ? '<p class="sv-meta">Este día aún no tiene ejercicios.</p>' : '')}
+        ${freeBlock}
         ${next}
         ${renderHistory(cache.progress || [])}
       </section>`;
@@ -861,7 +1080,8 @@
       </div>`;
     }
     const dayIndex = Math.max(days.findIndex((item) => item.id === day?.id), 0);
-    const canChange = days.length > 1;
+    const freeOn = Boolean(selection.freeAvailable);
+    const canChange = days.length > 1 || freeOn;
     const open = canChange && logState.dayPanel;
     const confirmIndex = days.findIndex((item) => item.id === logState.confirmDayId);
     const confirmDay = open && confirmIndex >= 0 ? days[confirmIndex] : null;
@@ -889,11 +1109,18 @@
             </button>
           </li>`;
           }).join('')}
+          ${freeOn ? `<li>
+            <button type="button" class="sv-day-option sv-day-option--free${day?.free ? ' is-active' : ''}" data-sv-free-open aria-pressed="${Boolean(day?.free)}">
+              <span class="sv-day-option-name">+ Entrenamiento libre</span>
+              <span class="sv-meta">Arma tu día con ejercicios de la galería</span>
+            </button>
+          </li>` : ''}
         </ul>
       </div>` : '';
+    const title = day?.free ? freeApi().DAY_NAME : routine.headline(ctx.date, day, dayIndex);
     return `
       <div class="sv-day-head" data-sv-day-head>
-        <h2 class="sv-day-title" data-sv-day-title data-day-id="${escapeHtml(day?.id || '')}">${escapeHtml(routine.headline(ctx.date, day, dayIndex))}</h2>
+        <h2 class="sv-day-title" data-sv-day-title data-day-id="${escapeHtml(day?.id || '')}">${escapeHtml(title)}</h2>
         ${canChange ? `<button type="button" class="sv-day-change" data-sv-change-day aria-expanded="${open}">${open ? 'Cerrar' : 'Cambiar día'}</button>` : ''}
       </div>
       ${list}`;
@@ -1123,6 +1350,7 @@
             : '<div class="sv-log-head" aria-hidden="true"><span></span><span>kg</span><span>reps</span><span></span></div>'}
           ${rows}
           ${approxRows ? `<details class="sv-approx"><summary>Aproximaciones (opcional)</summary><div class="sv-approx-rows">${approxRows}</div></details>` : ''}
+          ${exercise.free && effective < freeApi().MAX_SETS ? `<button type="button" class="sv-ghost sv-wide sv-free-add-set" data-sv-free-add-set="${escapeHtml(exercise.id)}">+ Agregar serie</button>` : ''}
           <p class="sv-log-msg hidden" role="alert" data-sv-log-msg></p>
         </div>`;
     }
@@ -1185,10 +1413,12 @@
     const newest = programs.slice().sort((a, b) => String(b.published_at || '').localeCompare(String(a.published_at || '')))[0];
     const active = activityDates(cache, ctx.outbox);
     const lastDate = [...active].filter((date) => date <= today).sort().pop() || '';
-    const allExercises = programs.flatMap((row) => (row.data?.days || []).flatMap((item) => item.exercises || []));
+    // v0.9.59: récords también de los ejercicios del Entrenamiento libre; "Semana completa" sin él.
+    const allExercises = programs.flatMap((row) => (row.data?.days || []).flatMap((item) => item.exercises || [])).concat(freeLoggedExercises(ctx));
     const records = lastDate ? findRecords(ctx, allExercises, new Set([lastDate])) : [];
     const target = (selection.days || []).filter((item) => (item.exercises || []).length).length;
-    const done = weekDates(today).filter((date) => active.has(date)).length;
+    const programActive = activityDates(cache, ctx.outbox, { programOnly: true });
+    const done = weekDates(today).filter((date) => programActive.has(date)).length;
     return api.pick({
       coach: newest?.data?.coachMessage,
       record: api.recordMessage(records, lastDate, today),
@@ -1229,7 +1459,7 @@
   function renderSummary(ctx, selection) {
     const { program, day } = selection;
     const stats = daySummary(ctx, day);
-    const allExercises = (program.data?.days || []).flatMap((item) => item.exercises || []);
+    const allExercises = (program.data?.days || []).flatMap((item) => item.exercises || []).concat(freeLoggedExercises(ctx));
     const week = new Set(weekDates(ctx.date));
     const records = findRecords(ctx, allExercises, week);
     const today = records.filter((record) => record.date === ctx.date);
@@ -1259,7 +1489,7 @@
 
   function shareText(ctx, selection) {
     const stats = daySummary(ctx, selection.day);
-    const records = findRecords(ctx, (selection.program.data?.days || []).flatMap((item) => item.exercises || []), new Set([ctx.date]));
+    const records = findRecords(ctx, (selection.program.data?.days || []).flatMap((item) => item.exercises || []).concat(freeLoggedExercises(ctx)), new Set([ctx.date]));
     return [
       `¡Hazaña cumplida! ${selection.day?.name || 'Día'} terminado.`,
       `${plural(stats.exercises, 'ejercicio', 'ejercicios')} · ${plural(stats.sets, 'serie', 'series')} · ${formatKg(stats.kg)} kg movidos.`,
@@ -1402,7 +1632,8 @@
       return;
     }
     const selection = resolveSelection(ctx, programs);
-    if (logState.screen === 'summary' && !dayComplete(ctx, selection.day)) {
+    const freeDone = selection.day?.free && selection.day.exercises.some((exercise) => exerciseProgress(ctx, selection.day.id, exercise).done > 0);
+    if (logState.screen === 'summary' && !dayComplete(ctx, selection.day) && !freeDone) {
       logState.screen = 'today';
     }
     let html = '';
@@ -1440,6 +1671,13 @@
 
   function findPublishedExercise(cache, assignmentId, dayId, exerciseId) {
     const program = (cache.programs || []).find((row) => row.assignment_id === assignmentId);
+    // v0.9.59: libre: el ejercicio del día libre de la fecha (con las series que tiene ahora).
+    const free = freeApi();
+    if (free && free.isFreeDayId(dayId)) {
+      const ctx = buildContext(cache);
+      if (!program || !free.isAvailable(program, ctx.canLog)) return null;
+      return buildFreeDay(ctx, program).exercises.find((item) => item.id === exerciseId) || null;
+    }
     const day = (program?.data?.days || []).find((item) => item.id === dayId);
     return (day?.exercises || []).find((item) => item.id === exerciseId) || null;
   }
@@ -1727,6 +1965,33 @@
     } else if ((button = pick('[data-sv-summary]'))) {
       logState.screen = 'summary';
       rerenderLog({ scrollTop: true });
+    } else if ((button = pick('[data-sv-free-open]'))) {
+      // v0.9.59: Entrenamiento libre (sin ejercicios, abre el buscador).
+      chooseDay(freeApi()?.DAY_ID || 'libre');
+    } else if ((button = pick('[data-sv-free-pick]'))) {
+      logState.freePicker = true;
+      rerenderLog();
+      logState.container?.querySelector('[data-sv-free-search]')?.focus();
+    } else if ((button = pick('[data-sv-free-done]'))) {
+      logState.freePicker = false;
+      logState.freeQuery = '';
+      logState.freeZone = '';
+      rerenderLog();
+    } else if ((button = pick('[data-sv-free-zone]'))) {
+      logState.freeZone = button.getAttribute('data-sv-free-zone') || '';
+      button.parentElement.querySelectorAll('[data-sv-free-zone]').forEach((chip) => {
+        const on = chip === button;
+        chip.classList.toggle('is-active', on);
+        chip.setAttribute('aria-pressed', String(on));
+      });
+      filterFreeList(logState.container);
+    } else if ((button = pick('[data-sv-free-add]'))) {
+      logState.freePicker = true;
+      toggleFreeExercise(button.getAttribute('data-sv-free-add'));
+    } else if ((button = pick('[data-sv-free-remove]'))) {
+      toggleFreeExercise(button.getAttribute('data-sv-free-remove'));
+    } else if ((button = pick('[data-sv-free-add-set]'))) {
+      addFreeSet(button.getAttribute('data-sv-free-add-set'));
     } else if ((button = pick('[data-sv-change-day]'))) {
       logState.dayPanel = !logState.dayPanel;
       logState.confirmDayId = '';
@@ -1762,6 +2027,9 @@
     logState.exerciseId = '';
     logState.dayPanel = false;
     logState.confirmDayId = '';
+    logState.freePicker = false;
+    logState.freeQuery = '';
+    logState.freeZone = '';
     rerenderLog();
   }
 
@@ -1772,6 +2040,10 @@
       container.addEventListener('input', (event) => {
         const row = event.target.closest('.sv-log-row');
         if (row && event.target.matches('[data-field]')) updateRowUi(row);
+        if (event.target.matches('[data-sv-free-search]')) {
+          logState.freeQuery = event.target.value;
+          filterFreeList(container);
+        }
       });
       container.addEventListener('change', (event) => {
         if (event.target.matches('[data-sv-log-date]')) {
@@ -1797,7 +2069,8 @@
     clearTimeout(logState.timer);
     Object.assign(logState, {
       container: null, cache: null, userId: '', date: '', timer: null, preview: false,
-      screen: 'today', assignmentId: '', dayId: '', exerciseId: '', feelKey: '', dayPanel: false, confirmDayId: ''
+      screen: 'today', assignmentId: '', dayId: '', exerciseId: '', feelKey: '', dayPanel: false, confirmDayId: '',
+      freePicker: false, freeQuery: '', freeZone: ''
     });
   }
 
@@ -1867,7 +2140,9 @@
     format: {
       setLine, studentSetLine, setHasData, repsRange, exerciseScheme, noteForStudent, renderProgram,
       feelFromRir, plannedFeel, FEEL_OPTIONS, weekStart, weekDates, weekStreak, localToday, addDays, renderExerciseScreen, renderToday,
-      isCircuit, resolveSelection
+      isCircuit, resolveSelection,
+      // v0.9.59 (pruebas): historial unido programa + libre, récords y días entrenados.
+      exerciseHistory, exerciseReference, findRecords, activityDates
     }
   };
 })();

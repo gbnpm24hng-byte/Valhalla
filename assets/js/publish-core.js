@@ -167,6 +167,12 @@
     if (image) {
       picked.image = image.file;
     }
+    // v0.9.59: id del ejercicio de la galería enlazado (por libraryExerciseId o por nombre), para
+    // juntar "Última vez" y récords con el Entrenamiento libre. Solo si hay.
+    const linked = libraryMatchFor(exercise, library);
+    if (linked && linked.id) {
+      picked.libraryId = text(linked.id, 120);
+    }
     const muscles = musclesFor(exercise, library);
     if (muscles) {
       picked.primaryMuscle = text(muscles.primaryMuscle, 40);
@@ -296,15 +302,54 @@
     return picked;
   }
 
+  // v0.9.59 · Entrenamiento libre: la galería que ve el alumno (data.library). Por cada ejercicio
+  // activo SOLO id, nombre, músculo principal (clave conocida de la figura) e imagen (archivo).
+  // La base (supabase/b5_entrenamiento_libre.sql) acepta series con day_id 'libre' solo de estos ids.
+  const MAX_LIBRARY = 600;
+  function pickLibraryItem(item) {
+    const picked = { id: text(item?.id, 120), name: text(item?.name, 120) };
+    const muscleMap = (typeof window !== 'undefined' && window.VALHALLA && window.VALHALLA.muscleMap) || null;
+    const muscles = muscleMap ? muscleMap.publishableMuscles({ primaryMuscle: item?.primaryMuscle }, item?.name) : null;
+    if (muscles && muscles.primaryMuscle) {
+      picked.muscle = text(muscles.primaryMuscle, 40);
+    }
+    const images = (typeof window !== 'undefined' && window.VALHALLA && window.VALHALLA.exerciseImages) || null;
+    const image = images ? images.imageFor({ name: item?.name, normalizedName: item?.normalizedName }, null) : null;
+    if (image) {
+      picked.image = image.file;
+    }
+    return picked;
+  }
+
+  function buildPublishedLibrary(activeLibrary) {
+    const seen = new Set();
+    const out = [];
+    list(activeLibrary).forEach((item) => {
+      const picked = pickLibraryItem(item);
+      if (!picked.id || !picked.name.trim() || seen.has(picked.id) || out.length >= MAX_LIBRARY) {
+        return;
+      }
+      seen.add(picked.id);
+      out.push(picked);
+    });
+    return out.sort((a, b) => foldName(a.name).localeCompare(foldName(b.name)));
+  }
+
   // Programa publicado a partir de una asignación (días, ejercicios, series, cargas).
+  // v0.9.59: con la galería (library) para el Entrenamiento libre, si hay ejercicios activos.
   function buildPublishedProgram(assignment, library) {
     const activeLibrary = list(library).filter((item) => item && item.active !== false);
-    return {
+    const program = {
       schema: 1,
       assignmentId: text(assignment?.id, 120),
       programName: text(assignment?.programName, 120) || 'Programa',
       days: list(assignment?.days).map((day, index) => pickProgramDay(day, index, activeLibrary))
     };
+    const published = buildPublishedLibrary(activeLibrary);
+    if (published.length) {
+      program.library = published;
+    }
+    return program;
   }
 
   // Historial de series de una sesión del cliente. Las series de tipo no publicable
@@ -420,6 +465,7 @@
     FORBIDDEN_KEYS,
     PUBLISHABLE_SET_TYPES,
     buildPublishedProgram,
+    buildPublishedLibrary,
     buildPublishedSession,
     buildPublication,
     findForbiddenKeys,
