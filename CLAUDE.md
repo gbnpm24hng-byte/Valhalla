@@ -46,6 +46,8 @@ Guarda primero en localStorage y sincroniza con Supabase (coach_state + tablas d
   v0.9.54: con cuenta activa, interruptor "Puede anotar sus series" = update solo de client_links.can_self_log
   (owner_id = coach, client_id, active = true; lo permite client_links_coach_all). Prender pide confirmación; si falla
   vuelve al estado anterior con aviso. selfLogLabel() da "puede anotar" / "solo ver" a la franja de "Vista alumno".
+  v0.9.60: con cuenta activa, "Enviar enlace de la app" = wa.me (con teléfono si hay) con buildAppLinkMessage
+  (APP_LINK fijo, primer nombre, cómo guardarlo en inicio). Lo prueba pw-anotar (paso 1b).
 - payment-period-core.js — v0.9.51: período de pago por clases. "Marcar pagado" guarda paidAt = hoy; el pago vuelve
   solo a Pendiente al usar las clases (classesPerPayment a mano o clases por semana × 4; 12 sin dato) o a los 28 días.
   Revisión al abrir (con la nube al día) y al guardar (persist y saveSessionState en app.js). paidAt y classesPerPayment

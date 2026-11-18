@@ -4637,6 +4637,7 @@ button.client-back {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
+.client-account-buttons.is-single { grid-template-columns: minmax(0, 1fr); }
 .client-account-buttons button:disabled { opacity: 0.45; }
 .client-account .auth-link { justify-self: start; padding-left: 0; }
 .client-account .client-account-danger { color: var(--bad); }

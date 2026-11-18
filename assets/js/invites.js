@@ -162,6 +162,9 @@
           </button>
           <p class="meta client-selflog-help">Apagado: ve su rutina y tú anotas en clase. Prendido: anota sus series desde su teléfono.</p>
         </div>
+        <div class="client-account-buttons is-single">
+          <button class="secondary" type="button" data-invite-applink ${attrs}>Enviar enlace de la app</button>
+        </div>
         <button class="auth-link client-account-danger" type="button" data-invite-unlink ${attrs} ${busy ? 'disabled' : ''}>Quitar acceso</button>`;
     } else if (state === 'pending') {
       const shown = fresh && fresh.inviteId === pending.id ? fresh : null;
@@ -433,6 +436,12 @@
       ctx.loadError = '';
       notifyChanged();
       load();
+    } else if (button.hasAttribute('data-invite-applink')) {
+      const text = encodeURIComponent(core.buildAppLinkMessage(name));
+      // Sin teléfono, WhatsApp deja elegir el chat.
+      window.open(phone ? `https://wa.me/${phone}?text=${text}` : `https://wa.me/?text=${text}`, '_blank', 'noopener,noreferrer');
+      setNotice(clientId, phone ? 'WhatsApp abierto con el enlace.' : 'WhatsApp abierto: el alumno no tiene teléfono, elige su chat.', 'ok');
+      notifyChanged();
     } else if (button.hasAttribute('data-invite-copy') && fresh) {
       const copied = await copyText(inviteMessage(fresh, name));
       setNotice(clientId, copied ? 'Mensaje copiado. Pégalo en el chat del alumno.' : 'No se pudo copiar. Usa "Enviar por WhatsApp".', copied ? 'ok' : 'warn');

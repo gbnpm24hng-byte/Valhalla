@@ -55,6 +55,14 @@ test('B4: mensaje de WhatsApp con nombre, link, código y vencimiento', () => {
   assert.equal(core.formatShortDate('basura'), '');
 });
 
+test('Enlace de la app: primer nombre, enlace fijo y cómo guardarlo en inicio', () => {
+  assert.equal(
+    core.buildAppLinkMessage('Nombre Falso Apellido'),
+    'Hola Nombre 👋 Este es el enlace de Valhalla: https://gbnpm24hng-byte.github.io/Valhalla/ Entra con tu correo y tu contraseña. Para no perderlo, guárdalo en la pantalla de inicio: iPhone: Compartir → Agregar a inicio. Android: ⋮ → Instalar app.'
+  );
+  assert.ok(core.buildAppLinkMessage('').startsWith('Hola 👋 Este es'));
+});
+
 test('B4: invitación pendiente = sin usar, sin anular, sin vencer; la más nueva', () => {
   const now = '2026-11-08T12:00:00.000Z';
   const invites = [

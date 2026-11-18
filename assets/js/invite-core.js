@@ -81,6 +81,14 @@
     ].join('\n');
   }
 
+  // Enlace fijo de la app para un alumno con cuenta activa ("Enviar enlace de la app").
+  const APP_LINK = 'https://gbnpm24hng-byte.github.io/Valhalla/';
+
+  function buildAppLinkMessage(name) {
+    const hello = firstName(name);
+    return `Hola${hello ? ` ${hello}` : ''} 👋 Este es el enlace de Valhalla: ${APP_LINK} Entra con tu correo y tu contraseña. Para no perderlo, guárdalo en la pantalla de inicio: iPhone: Compartir → Agregar a inicio. Android: ⋮ → Instalar app.`;
+  }
+
   // Invitación pendiente más reciente de un alumno (sin usar, sin anular y sin vencer).
   function pickPending(invites, clientId, nowIso = new Date().toISOString()) {
     const now = new Date(nowIso).getTime();
@@ -165,6 +173,8 @@
     formatShortDate,
     firstName,
     buildInviteMessage,
+    APP_LINK,
+    buildAppLinkMessage,
     pickPending,
     accountState,
     isMissingCloudError,
