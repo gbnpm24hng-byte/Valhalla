@@ -10,6 +10,13 @@
   // (1 = lunes; uno o dos tramos por día; un día sin tramos = no trabaja). Sube con trainingsV08 en
   // coach_state. Sin workHours, todo lo que no está ocupado es libre.
   //
+  // v0.9.62 · Bloqueos y horas extra (todo opcional, dentro del mismo workHours):
+  //   blocked:     [{ day: 1..5, hour }]  "Bloquear esta hora (todas las semanas)"
+  //   weekBlocked: [{ date, hour }]       "Bloquear solo esta semana" (esa fecha)
+  //   extra:       [{ date, hour }]       "Marcar disponible solo esta semana" (hora fuera de horario)
+  // Una hora bloqueada se ve gris con rayas ('blocked') y no sale en la imagen. Una clase manda sobre
+  // todo (ocupado). days puede faltar (sin horario) y aun así haber bloqueos.
+  //
   // La imagen para compartir usa shareData(): solo días, horas y libre sí/no (sin nombres ni clases).
 
   const FIRST_HOUR = 8;
@@ -61,14 +68,99 @@
       .map((range) => ({ from: clock(range.from), to: clock(range.to) }));
   }
 
-  // null = sin horario (todo libre). Si viene algo, los 5 días quedan definidos.
+  const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+  const isHour = (value) => Number.isInteger(value) && value >= FIRST_HOUR && value <= LAST_HOUR;
+
+  function cleanDayHours(list) {
+    const seen = new Set();
+    return (Array.isArray(list) ? list : [])
+      .map((item) => ({ day: Number(item && item.day), hour: Number(item && item.hour) }))
+      .filter((item) => DAYS.some((day) => day.n === item.day) && isHour(item.hour))
+      .filter((item) => !seen.has(`${item.day}:${item.hour}`) && seen.add(`${item.day}:${item.hour}`))
+      .sort((a, b) => a.day - b.day || a.hour - b.hour);
+  }
+
+  function cleanDateHours(list) {
+    const seen = new Set();
+    return (Array.isArray(list) ? list : [])
+      .map((item) => ({ date: String(item && item.date || ''), hour: Number(item && item.hour) }))
+      .filter((item) => DATE_RE.test(item.date) && isHour(item.hour))
+      .filter((item) => !seen.has(`${item.date}:${item.hour}`) && seen.add(`${item.date}:${item.hour}`))
+      .sort((a, b) => a.date.localeCompare(b.date) || a.hour - b.hour);
+  }
+
+  // null = sin horario ni bloqueos (todo libre). Con days, los 5 días quedan definidos.
+  // Las listas vacías no se devuelven.
   function normalizeWorkHours(raw) {
-    if (!raw || typeof raw !== 'object' || !raw.days || typeof raw.days !== 'object') {
+    if (!raw || typeof raw !== 'object') {
       return null;
     }
-    const days = {};
-    DAYS.forEach((day) => { days[day.n] = cleanRanges(raw.days[day.n] || raw.days[String(day.n)]); });
-    return { days };
+    const out = {};
+    if (raw.days && typeof raw.days === 'object') {
+      out.days = {};
+      DAYS.forEach((day) => { out.days[day.n] = cleanRanges(raw.days[day.n] || raw.days[String(day.n)]); });
+    }
+    const blocked = cleanDayHours(raw.blocked);
+    const weekBlocked = cleanDateHours(raw.weekBlocked);
+    const extra = cleanDateHours(raw.extra);
+    if (blocked.length) out.blocked = blocked;
+    if (weekBlocked.length) out.weekBlocked = weekBlocked;
+    if (extra.length) out.extra = extra;
+    return Object.keys(out).length ? out : null;
+  }
+
+  // ---- Cambios (devuelven el workHours nuevo, o undefined si quedó vacío) ----
+  // Las fechas de hace más de 35 días se descartan al escribir.
+  function prune(list, todayValue) {
+    if (!todayValue) return list;
+    const limit = new Date(`${todayValue}T12:00:00`);
+    limit.setDate(limit.getDate() - 35);
+    const min = [limit.getFullYear(), String(limit.getMonth() + 1).padStart(2, '0'), String(limit.getDate()).padStart(2, '0')].join('-');
+    return list.filter((item) => item.date >= min);
+  }
+
+  function rebuild(base, change, todayValue) {
+    const next = { ...(normalizeWorkHours(base) || {}), ...change };
+    ['weekBlocked', 'extra'].forEach((key) => { if (next[key]) next[key] = prune(next[key], todayValue); });
+    return normalizeWorkHours(next) || undefined;
+  }
+
+  function withDays(workHours, days, todayValue) {
+    return rebuild(workHours, { days }, todayValue);
+  }
+
+  function withoutDays(workHours, todayValue) {
+    const current = normalizeWorkHours(workHours) || {};
+    delete current.days;
+    return rebuild(current, {}, todayValue);
+  }
+
+  // kind 'always' (day, hour) o 'week' (date, hour).
+  function withBlock(workHours, { kind, day, date, hour }, todayValue) {
+    const current = normalizeWorkHours(workHours) || {};
+    if (kind === 'always') {
+      return rebuild(current, { blocked: [...(current.blocked || []), { day, hour }] }, todayValue);
+    }
+    return rebuild(current, { weekBlocked: [...(current.weekBlocked || []), { date, hour }] }, todayValue);
+  }
+
+  // Desbloquear quita los dos (el de todas las semanas de ese día y el de esa fecha).
+  function withoutBlock(workHours, { day, date, hour }, todayValue) {
+    const current = normalizeWorkHours(workHours) || {};
+    return rebuild(current, {
+      blocked: (current.blocked || []).filter((item) => !(item.day === day && item.hour === hour)),
+      weekBlocked: (current.weekBlocked || []).filter((item) => !(item.date === date && item.hour === hour))
+    }, todayValue);
+  }
+
+  function withExtra(workHours, { date, hour }, todayValue) {
+    const current = normalizeWorkHours(workHours) || {};
+    return rebuild(current, { extra: [...(current.extra || []), { date, hour }] }, todayValue);
+  }
+
+  function withoutExtra(workHours, { date, hour }, todayValue) {
+    const current = normalizeWorkHours(workHours) || {};
+    return rebuild(current, { extra: (current.extra || []).filter((item) => !(item.date === date && item.hour === hour)) }, todayValue);
   }
 
   // Revisa lo escrito en Ajustes: rows = [{ n, ranges: [{ from, to }] }] (vacío = sin tramo).
@@ -171,11 +263,23 @@
       label: `${String(hour).padStart(2, '0')}`,
       cells: columns.map((column, col) => {
         const classes = (byCell.get(`${col}:${hour}`) || []).slice().sort((a, b) => a.time.localeCompare(b.time));
-        const inWork = !work || overlapsWork(work.days[column.n] || [], hour);
-        return { state: classes.length ? 'busy' : (inWork ? 'free' : 'off'), classes };
+        if (classes.length) {
+          return { state: 'busy', classes };
+        }
+        const always = Boolean(work && (work.blocked || []).some((item) => item.day === column.n && item.hour === hour));
+        const week = Boolean(work && (work.weekBlocked || []).some((item) => item.date === column.date && item.hour === hour));
+        if (always || week) {
+          return { state: 'blocked', classes, blockKind: always ? 'always' : 'week' };
+        }
+        const inWork = !(work && work.days) || overlapsWork(work.days[column.n] || [], hour);
+        if (inWork) {
+          return { state: 'free', classes };
+        }
+        const extra = Boolean(work && (work.extra || []).some((item) => item.date === column.date && item.hour === hour));
+        return extra ? { state: 'free', classes, extra: true } : { state: 'off', classes };
       })
     }));
-    return { dates, columns, rows, noHour: [...noHour.values()], configured: Boolean(work) };
+    return { dates, columns, rows, noHour: [...noHour.values()], configured: Boolean(work && work.days) };
   }
 
   // "Lun 10:00 · Grupo · 4 alumnos" / "Lun 13:00 · Personalizado · Nombre".
@@ -184,6 +288,26 @@
       return `${dayShort} ${info.time} · Grupo · ${info.count} ${info.count === 1 ? 'alumno' : 'alumnos'}`;
     }
     return `${dayShort} ${info.time} · Personalizado · ${info.names.join(', ') || 'sin alumno'}`;
+  }
+
+  // Lo que se ofrece al tocar una celda: { title, actions: [{ id, label }], lines }.
+  // ids: block-always, block-week, unblock, extra, unextra.
+  function cellMenu(grid, col, hour) {
+    const row = grid.rows.find((item) => item.hour === hour);
+    const cell = row && row.cells[col];
+    const column = grid.columns[col];
+    if (!cell || !column) return null;
+    const at = `${column.short} ${String(hour).padStart(2, '0')}:00`;
+    if (cell.state === 'busy') return { title: '', lines: cellLines(grid, col, hour), actions: [] };
+    if (cell.state === 'blocked') {
+      return { title: `${at} · Bloqueada ${cell.blockKind === 'always' ? '(todas las semanas)' : '(solo esta semana)'}`, lines: [], actions: [{ id: 'unblock', label: 'Desbloquear' }] };
+    }
+    if (cell.state === 'off') {
+      return { title: `${at} · Fuera de horario`, lines: [], actions: [{ id: 'extra', label: 'Marcar disponible solo esta semana' }] };
+    }
+    const actions = [{ id: 'block-always', label: 'Bloquear esta hora (todas las semanas)' }, { id: 'block-week', label: 'Bloquear solo esta semana' }];
+    if (cell.extra) actions.push({ id: 'unextra', label: 'Quitar hora extra' });
+    return { title: `${at} · ${cell.extra ? 'Disponible solo esta semana' : 'Libre'}`, lines: [], actions };
   }
 
   function cellLines(grid, col, hour) {
@@ -216,6 +340,13 @@
     hours,
     normalizeWorkHours,
     validateForm,
+    withDays,
+    withoutDays,
+    withBlock,
+    withoutBlock,
+    withExtra,
+    withoutExtra,
+    cellMenu,
     weekDates,
     weekLabel,
     hoursTouched,

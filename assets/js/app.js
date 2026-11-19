@@ -11972,26 +11972,29 @@
     }
     const grid = getTodayWeekGrid();
     const [selCol, selHour] = weekUi.cell ? weekUi.cell.split(':').map(Number) : [-1, -1];
-    const lines = weekUi.cell ? weekApi.cellLines(grid, selCol, selHour) : [];
-    if (weekUi.cell && !lines.length) {
+    // v0.9.62: tocar cualquier celda abre su menú (ocupada = la línea de la clase; libre = bloquear;
+    // bloqueada = desbloquear; fuera de horario = hora extra solo esta semana).
+    const menu = weekUi.cell ? weekApi.cellMenu(grid, selCol, selHour) : null;
+    if (weekUi.cell && (!menu || (!menu.lines.length && !menu.actions.length))) {
       weekUi.cell = '';
     }
-    const stateLabel = { busy: 'ocupado', free: 'libre', off: 'fuera de horario' };
+    const lines = menu ? menu.lines : [];
+    const hasBlocked = grid.rows.some((row) => row.cells.some((cell) => cell.state === 'blocked'));
+    const stateLabel = { busy: 'ocupado', free: 'libre', off: 'fuera de horario', blocked: 'bloqueada' };
     const head = grid.columns.map((column) => `<span class="tw-day${column.isToday ? ' is-today' : ''}" data-week-day="${column.n}">${escapeHtml(column.short)}</span>`).join('');
     const body = grid.rows.map((row) => `<span class="tw-hour">${escapeHtml(row.label)}</span>${row.cells.map((cell, col) => {
       const column = grid.columns[col];
       const classes = `tw-cell is-${cell.state}${column.isToday ? ' is-today' : ''}${selCol === col && selHour === row.hour ? ' is-selected' : ''}`;
-      const attrs = `data-week-cell="${col}:${row.hour}" data-week-state="${cell.state}" aria-label="${escapeHtml(column.short)} ${row.label}:00 ${stateLabel[cell.state]}"`;
-      return cell.state === 'busy'
-        ? `<button type="button" class="${classes}" ${attrs}></button>`
-        : `<span class="${classes}" ${attrs}></span>`;
+      const attrs = `data-week-cell="${col}:${row.hour}" data-week-state="${cell.state}"${cell.extra ? ' data-week-extra' : ''}${cell.blockKind ? ` data-week-block="${cell.blockKind}"` : ''} aria-label="${escapeHtml(column.short)} ${row.label}:00 ${stateLabel[cell.state]}"`;
+      return `<button type="button" class="${classes}${cell.extra ? ' is-extra' : ''}" ${attrs}></button>`;
     }).join('')}`).join('');
     const noHour = grid.noHour;
     box.innerHTML = `
       <div class="tw-head"><h3 id="todayWeekTitle" class="tw-title">Mi semana</h3><span class="tw-range">${escapeHtml(weekApi.weekLabel(grid.dates).replace(/^Semana /, ''))}</span></div>
       <div class="tw-grid" data-week-grid><span class="tw-corner"></span>${head}${body}</div>
-      <div class="tw-legend"><span><i class="tw-key is-busy"></i>Ocupado</span><span><i class="tw-key is-free"></i>Libre</span>${grid.configured ? '<span><i class="tw-key is-off"></i>Fuera de horario</span>' : ''}</div>
+      <div class="tw-legend"><span><i class="tw-key is-busy"></i>Ocupado</span><span><i class="tw-key is-free"></i>Libre</span>${grid.configured ? '<span><i class="tw-key is-off"></i>Fuera de horario</span>' : ''}${hasBlocked ? '<span><i class="tw-key is-blocked"></i>Bloqueada</span>' : ''}</div>
       ${lines.length ? `<p class="tw-line" data-week-line>${lines.map((line) => `<span>${escapeHtml(line)}</span>`).join('')}</p>` : ''}
+      ${menu && menu.actions.length ? `<div class="tw-menu" data-week-menu><strong data-week-menu-title>${escapeHtml(menu.title)}</strong><div class="tw-menu-actions">${menu.actions.map((action) => `<button class="secondary small" type="button" data-week-action="${action.id}">${escapeHtml(action.label)}</button>`).join('')}</div></div>` : ''}
       ${noHour.length ? `<p class="tw-nohour" data-week-nohour-line>Sin hora: ${noHour.length} · <button class="tw-link" type="button" data-week-nohour aria-expanded="${weekUi.noHourOpen}">${weekUi.noHourOpen ? 'Ocultar' : 'Ver lista'}</button></p>` : ''}
       ${noHour.length && weekUi.noHourOpen ? `<ul class="tw-nohour-list" data-week-nohour-list>${noHour.map((item) => `<li><button class="tw-link" type="button" data-week-client="${escapeHtml(item.id)}">${escapeHtml(item.name)}</button></li>`).join('')}</ul>` : ''}
       <button class="secondary small tw-share-btn" type="button" data-week-share>Compartir horas libres</button>
@@ -12006,6 +12009,36 @@
           </div>
         </div>
       </div>` : ''}`;
+  }
+
+  // v0.9.62: bloquear / desbloquear / hora extra de la celda elegida. Se guarda en
+  // trainingsV08.workHours (blocked, weekBlocked, extra) y sube con la nube como el horario.
+  function applyWeekAction(action) {
+    if (!weekUi.cell) {
+      return;
+    }
+    const [col, hour] = weekUi.cell.split(':').map(Number);
+    const todayValue = getTodayLocalDate();
+    const date = weekApi.weekDates(todayValue)[col];
+    const day = weekApi.DAYS[col]?.n;
+    if (!date || !day) {
+      return;
+    }
+    const current = state.trainingsV08?.workHours;
+    const next = action === 'block-always' ? weekApi.withBlock(current, { kind: 'always', day, hour }, todayValue)
+      : action === 'block-week' ? weekApi.withBlock(current, { kind: 'week', date, hour }, todayValue)
+        : action === 'unblock' ? weekApi.withoutBlock(current, { day, date, hour }, todayValue)
+          : action === 'extra' ? weekApi.withExtra(current, { date, hour }, todayValue)
+            : action === 'unextra' ? weekApi.withoutExtra(current, { date, hour }, todayValue)
+              : current;
+    ensureTrainingsV08State();
+    if (next) {
+      state.trainingsV08.workHours = next;
+    } else {
+      delete state.trainingsV08.workHours;
+    }
+    weekUi.cell = '';
+    persist();
   }
 
   // Dibuja la imagen y la muestra; "Compartir" usa el PNG ya listo (el menú del teléfono necesita
@@ -12069,7 +12102,7 @@
     if (!weekApi || !document.getElementById('workHoursForm')) {
       return;
     }
-    const saved = weekApi.normalizeWorkHours(state.trainingsV08?.workHours);
+    const saved = weekApi.normalizeWorkHours(state.trainingsV08?.workHours)?.days ? weekApi.normalizeWorkHours(state.trainingsV08.workHours) : null;
     const chip = document.getElementById('workHoursChip');
     if (chip) {
       chip.textContent = saved ? 'Guardado' : 'Sin horario';
@@ -12111,17 +12144,24 @@
       return;
     }
     ensureTrainingsV08State();
-    state.trainingsV08.workHours = result.workHours;
+    // Los bloqueos y horas extra de "Mi semana" se conservan.
+    state.trainingsV08.workHours = weekApi.withDays(state.trainingsV08.workHours, result.workHours.days, getTodayLocalDate());
     workHoursUi.dirty = false;
     persist();
     setWorkHoursMessage('Horario guardado.', 'ok');
   }
 
   function handleWorkHoursClear() {
-    if (!state.trainingsV08?.workHours) {
+    if (!weekApi.normalizeWorkHours(state.trainingsV08?.workHours)?.days) {
       return;
     }
-    delete state.trainingsV08.workHours;
+    // Quita solo los tramos: los bloqueos de "Mi semana" siguen.
+    const rest = weekApi.withoutDays(state.trainingsV08.workHours, getTodayLocalDate());
+    if (rest) {
+      state.trainingsV08.workHours = rest;
+    } else {
+      delete state.trainingsV08.workHours;
+    }
     workHoursUi.dirty = false;
     persist();
     setWorkHoursMessage('Horario quitado: todo lo que no está ocupado se ve libre.');
@@ -13976,8 +14016,13 @@
     const weekCell = target.closest('[data-week-cell]');
     if (weekCell && target.closest('[data-week-grid]')) {
       const key = weekCell.getAttribute('data-week-cell');
-      weekUi.cell = weekCell.getAttribute('data-week-state') === 'busy' && weekUi.cell !== key ? key : '';
+      weekUi.cell = weekUi.cell !== key ? key : '';
       renderTodayWeek();
+      return;
+    }
+    const weekAction = target.closest('[data-week-action]');
+    if (weekAction) {
+      applyWeekAction(weekAction.getAttribute('data-week-action'));
       return;
     }
     if (target.closest('[data-week-nohour]')) {

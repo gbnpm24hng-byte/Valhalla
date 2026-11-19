@@ -5477,3 +5477,11 @@ body.sv-preview-open { overflow: hidden; }
 .st-wh-sep { color: var(--muted); font-size: 0.8rem; }
 .st-wh-actions { flex-wrap: wrap; }
 .st-wh-actions > button { flex: 1 1 auto; }
+/* v0.9.62 · "Mi semana": hora bloqueada (gris con rayas), hora extra y menú al tocar una celda. */
+.tw-cell { cursor: pointer; }
+.tw-cell.is-blocked { background: repeating-linear-gradient(135deg, #6B675C 0 2px, #3A3831 2px 5px); border: 0; }
+.tw-cell.is-extra { border-style: dashed; border-color: rgba(255, 204, 26, 0.6); }
+.tw-key.is-blocked { background: repeating-linear-gradient(135deg, #6B675C 0 2px, #3A3831 2px 4px); }
+.tw-menu { display: grid; gap: 6px; padding: 8px 10px; border-radius: 8px; background: #26241F; font-size: 0.82rem; }
+.tw-menu-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.tw-menu-actions button { min-height: 34px; padding: 0 10px; font-size: 0.78rem; }

@@ -107,6 +107,10 @@ Guarda primero en localStorage y sincroniza con Supabase (coach_state + tablas d
   (11:15 marca 11 y 12). Sáb/dom muestran la semana siguiente. Horario de trabajo (Ajustes) = trainingsV08.workHours
   { days: { 1..5: [{ from, to }] } } (sube con trainingsV08; sin él todo lo no ocupado es libre; el formulario propone
   el sugerido pero no cuenta hasta "Guardar horario"). shareData = solo días, horas y libre sí/no.
+  v0.9.62: tocar una celda abre su menú (cellMenu). En el mismo workHours, todo opcional: blocked [{ day, hour }]
+  (todas las semanas), weekBlocked [{ date, hour }] (solo esa fecha), extra [{ date, hour }] (hora fuera de horario
+  disponible solo esa fecha). Bloqueada = gris con rayas, no sale en la imagen; una clase manda sobre todo.
+  Fechas de hace más de 35 días se descartan al escribir. "Quitar" en Ajustes quita solo days (withoutDays).
   week-grid.js — imagen 1080 × 1350 "Horas disponibles" (logo, semana, firma; sin nombres) y compartir/descargar.
 - Galería v0.9.56: músculos Abductores (glúteo medio), Aductores (zona nueva 'aductores' de figura-esculpida.svg),
   Deltoides lateral, Trapecio, Lumbar. labels.js entiende los nombres anteriores (Trapecios, Erectores espinales).

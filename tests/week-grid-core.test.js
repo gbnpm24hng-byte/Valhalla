@@ -113,6 +113,63 @@ test('la imagen para compartir lleva solo días, horas y libre sí/no (sin nombr
   assert.equal(share.signature, 'by Vikingos Radical');
 });
 
+test('bloquear siempre, solo esta semana, desbloquear y hora extra (y la imagen los respeta)', () => {
+  const TODAY = '2026-11-16';
+  const slotsByDate = { '2026-11-16': [slot('10:00', 'group', ['Uno'])] };
+  const build = (workHours) => week.buildGrid({ dates: DATES, slotsByDate, workHours, todayValue: TODAY });
+  // Sin horario: bloquear funciona igual (days falta).
+  let wh = week.withBlock(undefined, { kind: 'always', day: 2, hour: 9 }, TODAY);
+  assert.deepEqual(wh, { blocked: [{ day: 2, hour: 9 }] });
+  wh = week.withBlock(wh, { kind: 'week', date: '2026-11-18', hour: 11 }, TODAY);
+  let grid = build(wh);
+  assert.equal(grid.configured, false);
+  assert.equal(cell(grid, 1, 9).state, 'blocked');
+  assert.equal(cell(grid, 1, 9).blockKind, 'always');
+  assert.equal(cell(grid, 2, 11).blockKind, 'week');
+  assert.equal(cell(grid, 2, 9).state, 'free');
+  // La semana siguiente: el de siempre sigue, el de esa fecha no.
+  const next = week.buildGrid({ dates: week.weekDates('2026-11-23'), slotsByDate: {}, workHours: wh, todayValue: '2026-11-23' });
+  assert.equal(cell(next, 1, 9).state, 'blocked');
+  assert.equal(cell(next, 2, 11).state, 'free');
+  // Una clase manda sobre el bloqueo.
+  const busy = build(week.withBlock(wh, { kind: 'always', day: 1, hour: 10 }, TODAY));
+  assert.equal(cell(busy, 0, 10).state, 'busy');
+  // Menús.
+  assert.deepEqual(week.cellMenu(grid, 1, 9).actions.map((a) => a.label), ['Desbloquear']);
+  assert.equal(week.cellMenu(grid, 1, 9).title, 'Mar 09:00 · Bloqueada (todas las semanas)');
+  assert.deepEqual(week.cellMenu(grid, 3, 9).actions.map((a) => a.label), ['Bloquear esta hora (todas las semanas)', 'Bloquear solo esta semana']);
+  assert.deepEqual(week.cellMenu(grid, 0, 10).lines, ['Lun 10:00 · Grupo · 1 alumno']);
+  // Desbloquear.
+  wh = week.withoutBlock(wh, { day: 2, date: '2026-11-17', hour: 9 }, TODAY);
+  assert.deepEqual(wh, { weekBlocked: [{ date: '2026-11-18', hour: 11 }] });
+  assert.equal(week.withoutBlock(wh, { day: 3, date: '2026-11-18', hour: 11 }, TODAY), undefined, 'vacío = sin workHours');
+  // Hora extra fuera de horario.
+  let work = week.withDays(undefined, week.DEFAULT_WORK_HOURS.days, TODAY);
+  grid = build(work);
+  assert.equal(cell(grid, 0, 15).state, 'off');
+  assert.deepEqual(week.cellMenu(grid, 0, 15).actions.map((a) => a.label), ['Marcar disponible solo esta semana']);
+  work = week.withExtra(work, { date: '2026-11-16', hour: 15 }, TODAY);
+  work = week.withBlock(work, { kind: 'week', date: '2026-11-17', hour: 8 }, TODAY);
+  grid = build(work);
+  assert.equal(cell(grid, 0, 15).state, 'free');
+  assert.equal(cell(grid, 0, 15).extra, true);
+  assert.equal(cell(grid, 0, 16).state, 'off');
+  assert.ok(week.cellMenu(grid, 0, 15).actions.some((a) => a.id === 'unextra'));
+  const share = week.shareData(grid);
+  assert.equal(share.free[7][0], true, 'hora extra sale disponible');
+  assert.equal(share.free[0][1], false, 'bloqueada no sale');
+  assert.equal(share.free[8][0], false);
+  // Ajustes: guardar o quitar los tramos conserva bloqueos y extras; las fechas viejas se descartan.
+  const kept = week.withoutDays(work, TODAY);
+  assert.equal(kept.days, undefined);
+  assert.equal(kept.extra.length, 1);
+  assert.equal(kept.weekBlocked.length, 1);
+  const pruned = week.withBlock(kept, { kind: 'always', day: 5, hour: 20 }, '2027-01-30');
+  assert.equal(pruned.extra, undefined);
+  assert.deepEqual(pruned.blocked, [{ day: 5, hour: 20 }]);
+  assert.equal(week.normalizeWorkHours({ blocked: [{ day: 6, hour: 9 }, { day: 1, hour: 7 }], extra: [{ date: 'x', hour: 9 }] }), null);
+});
+
 test('workHours vive en trainingsV08: data.js lo conserva y sube en coach_state', () => {
   const workHours = { days: { 1: [{ from: '08:30', to: '15:00' }], 2: [], 3: [], 4: [], 5: [] } };
   const state = data.importState(JSON.stringify({ clients: [{ id: 'c1', full_name: 'Cliente Falso' }], trainingsV08: { workHours } }));
