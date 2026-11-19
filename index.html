@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Bebas+Neue&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <title>VALHALLA</title>
-  <link rel="stylesheet" href="./assets/css/styles.css?v=0.9.60">
+  <link rel="stylesheet" href="./assets/css/styles.css?v=0.9.61">
 </head>
 <!-- Clase "solo-entrenamientos": oculta Inicio, Registrar (finanzas) y Nutrición sin borrarlos. Quitarla los vuelve a mostrar. -->
 <body class="solo-entrenamientos">
@@ -31,7 +31,7 @@
       <div class="header-actions">
         <span class="user-pill">Usuario</span>
         <span class="badge" id="cloudModeBadge">Modo Local</span>
-        <span class="badge">v0.9.60</span>
+        <span class="badge">v0.9.61</span>
       </div>
     </header>
 
@@ -417,6 +417,8 @@
         <div id="todayNewSetsNotice" class="today-alert today-alert--new hidden" role="status" data-today-new></div>
         <div id="todayPaymentNotice" class="today-alert today-alert--pay hidden" role="status" data-today-pay></div>
         <div id="todayClasses" class="today-classes"></div>
+        <!-- v0.9.61: "Mi semana": horas ocupadas, libres y fuera de horario (Lun a Vie, 08 a 20). -->
+        <section id="todayWeek" class="today-week" aria-labelledby="todayWeekTitle" data-today-week></section>
 
         <!-- Lo que estaba en Hoy y no entra en la pantalla nueva: plegado, sin cambios. -->
         <details id="trainingTodayMore" class="today-more">
@@ -1056,6 +1058,48 @@
           <p class="st-small">La nube gratis no guarda copias. Este archivo es tu única copia de seguridad.</p>
         </div>
 
+        <!-- v0.9.61: horario de trabajo para "Mi semana" de Hoy (trainingsV08.workHours, sube con la nube). -->
+        <h2 class="st-label">Mi horario de trabajo</h2>
+        <details class="st-card st-fold" id="workHoursCard">
+          <summary><span>Horas de trabajo por día</span><span class="st-chip" id="workHoursChip">Sin horario</span></summary>
+          <div class="st-fold-body">
+            <p class="st-small">Uno o dos tramos por día (desde – hasta). Lo que queda fuera se ve casi negro en "Mi semana" de Hoy. Sin horario guardado, todo lo que no está ocupado se ve libre. Un día sin tramos = no trabajas ese día.</p>
+            <form id="workHoursForm" class="st-wh-form" novalidate>
+              <div class="st-wh-row" data-work-day="1">
+                <span class="st-wh-day">Lun</span>
+                <span class="st-wh-range"><input type="time" step="900" data-work-input="1-0-from" aria-label="Lun tramo 1 desde"><span class="st-wh-sep">–</span><input type="time" step="900" data-work-input="1-0-to" aria-label="Lun tramo 1 hasta"></span>
+                <span class="st-wh-range"><input type="time" step="900" data-work-input="1-1-from" aria-label="Lun tramo 2 desde"><span class="st-wh-sep">–</span><input type="time" step="900" data-work-input="1-1-to" aria-label="Lun tramo 2 hasta"></span>
+              </div>
+              <div class="st-wh-row" data-work-day="2">
+                <span class="st-wh-day">Mar</span>
+                <span class="st-wh-range"><input type="time" step="900" data-work-input="2-0-from" aria-label="Mar tramo 1 desde"><span class="st-wh-sep">–</span><input type="time" step="900" data-work-input="2-0-to" aria-label="Mar tramo 1 hasta"></span>
+                <span class="st-wh-range"><input type="time" step="900" data-work-input="2-1-from" aria-label="Mar tramo 2 desde"><span class="st-wh-sep">–</span><input type="time" step="900" data-work-input="2-1-to" aria-label="Mar tramo 2 hasta"></span>
+              </div>
+              <div class="st-wh-row" data-work-day="3">
+                <span class="st-wh-day">Mié</span>
+                <span class="st-wh-range"><input type="time" step="900" data-work-input="3-0-from" aria-label="Mié tramo 1 desde"><span class="st-wh-sep">–</span><input type="time" step="900" data-work-input="3-0-to" aria-label="Mié tramo 1 hasta"></span>
+                <span class="st-wh-range"><input type="time" step="900" data-work-input="3-1-from" aria-label="Mié tramo 2 desde"><span class="st-wh-sep">–</span><input type="time" step="900" data-work-input="3-1-to" aria-label="Mié tramo 2 hasta"></span>
+              </div>
+              <div class="st-wh-row" data-work-day="4">
+                <span class="st-wh-day">Jue</span>
+                <span class="st-wh-range"><input type="time" step="900" data-work-input="4-0-from" aria-label="Jue tramo 1 desde"><span class="st-wh-sep">–</span><input type="time" step="900" data-work-input="4-0-to" aria-label="Jue tramo 1 hasta"></span>
+                <span class="st-wh-range"><input type="time" step="900" data-work-input="4-1-from" aria-label="Jue tramo 2 desde"><span class="st-wh-sep">–</span><input type="time" step="900" data-work-input="4-1-to" aria-label="Jue tramo 2 hasta"></span>
+              </div>
+              <div class="st-wh-row" data-work-day="5">
+                <span class="st-wh-day">Vie</span>
+                <span class="st-wh-range"><input type="time" step="900" data-work-input="5-0-from" aria-label="Vie tramo 1 desde"><span class="st-wh-sep">–</span><input type="time" step="900" data-work-input="5-0-to" aria-label="Vie tramo 1 hasta"></span>
+                <span class="st-wh-range"><input type="time" step="900" data-work-input="5-1-from" aria-label="Vie tramo 2 desde"><span class="st-wh-sep">–</span><input type="time" step="900" data-work-input="5-1-to" aria-label="Vie tramo 2 hasta"></span>
+              </div>
+              <div class="st-row st-wh-actions">
+                <button class="st-small-btn" type="submit" id="workHoursSave">Guardar horario</button>
+                <button class="st-ghost-btn" type="button" id="workHoursDefault">Sugerido</button>
+                <button class="st-ghost-btn" type="button" id="workHoursClear">Quitar</button>
+              </div>
+            </form>
+            <div id="workHoursMessage" class="notice" role="status"></div>
+          </div>
+        </details>
+
         <!-- v0.9.55: series guardadas con un peso 10 veces lo normal (el "7.5" que se guardó como 75). -->
         <h2 class="st-label">Revisar pesos</h2>
         <details class="st-card st-fold" id="weightReviewCard">
@@ -1149,47 +1193,49 @@
     </div>
   </nav>
 
-  <script src="./assets/js/config.js?v=0.9.60"></script>
-  <script src="./assets/js/decimal-core.js?v=0.9.60"></script>
+  <script src="./assets/js/config.js?v=0.9.61"></script>
+  <script src="./assets/js/decimal-core.js?v=0.9.61"></script>
   <!-- supabase-js fijado a una versión exacta; integrity = SHA-384 del archivo publicado en npm -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js" integrity="sha384-Rj26LVGvoeRVR6+mwQmFfcR3QOBEwT+ZmuCWpuiqeTzJpCs0ER4ITAWGb4Hiy3Ok" crossorigin="anonymous"></script>
-  <script src="./assets/js/circuits-core.js?v=0.9.60"></script>
-  <script src="./assets/js/blocks-core.js?v=0.9.60"></script>
-  <script src="./assets/js/monthly-card-core.js?v=0.9.60"></script>
-  <script src="./assets/js/attendance-core.js?v=0.9.60"></script>
-  <script src="./assets/js/data.js?v=0.9.60"></script>
-  <script src="./assets/js/supabase.js?v=0.9.60"></script>
-  <script src="./assets/js/auth.js?v=0.9.60"></script>
-  <script src="./assets/js/invite-core.js?v=0.9.60"></script>
-  <script src="./assets/js/cloud-data.js?v=0.9.60"></script>
-  <script src="./assets/js/finance.js?v=0.9.60"></script>
-  <script src="./assets/js/qrcode-generator.js?v=0.9.60"></script>
-  <script src="./assets/js/onboarding.js?v=0.9.60"></script>
-  <script src="./assets/js/sync-core.js?v=0.9.60"></script>
-  <script src="./assets/js/cloud-sync.js?v=0.9.60"></script>
-  <script src="./assets/js/client-overrides-core.js?v=0.9.60"></script>
-  <script src="./assets/js/swap-reason-core.js?v=0.9.60"></script>
-  <script src="./assets/js/muscle-map-core.js?v=0.9.60"></script>
-  <script src="./assets/js/exercise-images-core.js?v=0.9.60"></script>
-  <script src="./assets/js/publish-core.js?v=0.9.60"></script>
-  <script src="./assets/js/publish.js?v=0.9.60"></script>
-  <script src="./assets/js/invites.js?v=0.9.60"></script>
-  <script src="./assets/js/self-log-core.js?v=0.9.60"></script>
-  <script src="./assets/js/student-messages-core.js?v=0.9.60"></script>
-  <script src="./assets/js/routine-choice-core.js?v=0.9.60"></script>
-  <script src="./assets/js/free-training-core.js?v=0.9.60"></script>
-  <script src="./assets/js/student-view.js?v=0.9.60"></script>
-  <script src="./assets/js/auth-gate.js?v=0.9.60"></script>
-  <script src="./assets/js/labels.js?v=0.9.60"></script>
-  <script src="./assets/js/student-import-core.js?v=0.9.60"></script>
-  <script src="./assets/js/coach-sets-core.js?v=0.9.60"></script>
-  <script src="./assets/js/group-draft-core.js?v=0.9.60"></script>
-  <script src="./assets/js/group-round-core.js?v=0.9.60"></script>
-  <script src="./assets/js/program-import-core.js?v=0.9.60"></script>
-  <script src="./assets/js/settings-core.js?v=0.9.60"></script>
-  <script src="./assets/js/monthly-card.js?v=0.9.60"></script>
-  <script src="./assets/js/payment-period-core.js?v=0.9.60"></script>
-  <script src="./assets/js/weight-review-core.js?v=0.9.60"></script>
-  <script src="./assets/js/app.js?v=0.9.60"></script>
+  <script src="./assets/js/circuits-core.js?v=0.9.61"></script>
+  <script src="./assets/js/blocks-core.js?v=0.9.61"></script>
+  <script src="./assets/js/monthly-card-core.js?v=0.9.61"></script>
+  <script src="./assets/js/attendance-core.js?v=0.9.61"></script>
+  <script src="./assets/js/data.js?v=0.9.61"></script>
+  <script src="./assets/js/supabase.js?v=0.9.61"></script>
+  <script src="./assets/js/auth.js?v=0.9.61"></script>
+  <script src="./assets/js/invite-core.js?v=0.9.61"></script>
+  <script src="./assets/js/cloud-data.js?v=0.9.61"></script>
+  <script src="./assets/js/finance.js?v=0.9.61"></script>
+  <script src="./assets/js/qrcode-generator.js?v=0.9.61"></script>
+  <script src="./assets/js/onboarding.js?v=0.9.61"></script>
+  <script src="./assets/js/sync-core.js?v=0.9.61"></script>
+  <script src="./assets/js/cloud-sync.js?v=0.9.61"></script>
+  <script src="./assets/js/client-overrides-core.js?v=0.9.61"></script>
+  <script src="./assets/js/swap-reason-core.js?v=0.9.61"></script>
+  <script src="./assets/js/muscle-map-core.js?v=0.9.61"></script>
+  <script src="./assets/js/exercise-images-core.js?v=0.9.61"></script>
+  <script src="./assets/js/publish-core.js?v=0.9.61"></script>
+  <script src="./assets/js/publish.js?v=0.9.61"></script>
+  <script src="./assets/js/invites.js?v=0.9.61"></script>
+  <script src="./assets/js/self-log-core.js?v=0.9.61"></script>
+  <script src="./assets/js/student-messages-core.js?v=0.9.61"></script>
+  <script src="./assets/js/routine-choice-core.js?v=0.9.61"></script>
+  <script src="./assets/js/free-training-core.js?v=0.9.61"></script>
+  <script src="./assets/js/student-view.js?v=0.9.61"></script>
+  <script src="./assets/js/auth-gate.js?v=0.9.61"></script>
+  <script src="./assets/js/labels.js?v=0.9.61"></script>
+  <script src="./assets/js/student-import-core.js?v=0.9.61"></script>
+  <script src="./assets/js/coach-sets-core.js?v=0.9.61"></script>
+  <script src="./assets/js/group-draft-core.js?v=0.9.61"></script>
+  <script src="./assets/js/group-round-core.js?v=0.9.61"></script>
+  <script src="./assets/js/program-import-core.js?v=0.9.61"></script>
+  <script src="./assets/js/settings-core.js?v=0.9.61"></script>
+  <script src="./assets/js/monthly-card.js?v=0.9.61"></script>
+  <script src="./assets/js/payment-period-core.js?v=0.9.61"></script>
+  <script src="./assets/js/weight-review-core.js?v=0.9.61"></script>
+  <script src="./assets/js/week-grid-core.js?v=0.9.61"></script>
+  <script src="./assets/js/week-grid.js?v=0.9.61"></script>
+  <script src="./assets/js/app.js?v=0.9.61"></script>
 </body>
 </html>

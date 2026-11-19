@@ -102,6 +102,12 @@ Guarda primero en localStorage y sincroniza con Supabase (coach_state + tablas d
   en valhalla_free_training:<cuenta> (fuera del estado). sameExercise junta programa y libre (galería enlazada, si no
   nombre) para récords y "Última vez". Racha sí; "Semana completa", "✓ hecha" y sugerencia no. Coach: "Traer registros"
   crea la sesión con freeTraining: true; getClientClassDates la deja fuera (pago y asistencia); ficha y Progreso "· libre".
+- week-grid-core.js — v0.9.61: "Mi semana" en Hoy (antes de "Más"): Lun a Vie × 08 a 20, ocupado / libre / fuera de
+  horario. Clases = getAgendaSlotsForDate (misma lectura de hora que las tarjetas, con "Solo un día"); cada clase 60 min
+  (11:15 marca 11 y 12). Sáb/dom muestran la semana siguiente. Horario de trabajo (Ajustes) = trainingsV08.workHours
+  { days: { 1..5: [{ from, to }] } } (sube con trainingsV08; sin él todo lo no ocupado es libre; el formulario propone
+  el sugerido pero no cuenta hasta "Guardar horario"). shareData = solo días, horas y libre sí/no.
+  week-grid.js — imagen 1080 × 1350 "Horas disponibles" (logo, semana, firma; sin nombres) y compartir/descargar.
 - Galería v0.9.56: músculos Abductores (glúteo medio), Aductores (zona nueva 'aductores' de figura-esculpida.svg),
   Deltoides lateral, Trapecio, Lumbar. labels.js entiende los nombres anteriores (Trapecios, Erectores espinales).
 - onboarding.js — formulario público de ingreso (?onboarding=1), sin login.

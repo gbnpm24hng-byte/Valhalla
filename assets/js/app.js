@@ -59,6 +59,9 @@
   // v0.9.56 · Asistencia ("Vino", "No vino", "Vino a otra clase") y cambios de clase
   // ("Solo un día" / "Desde ahora") (attendance-core.js).
   const attendanceApi = window.VALHALLA.attendanceCore;
+  // v0.9.61 · "Mi semana" en Hoy y "Mi horario de trabajo" en Ajustes (week-grid-core.js / week-grid.js).
+  const weekApi = window.VALHALLA.weekGridCore;
+  const weekImage = window.VALHALLA.weekGrid;
 
   const state = dataApi.loadState();
   // v0.9.56: "Sesiones mensuales" / "Sesiones usadas" (sessions_total, sessions_used) ya no se usan:
@@ -11928,6 +11931,7 @@
     }
     const todaySlots = getAgendaSlotsForDate(today);
     renderTodayOverview(todaySlots);
+    renderTodayWeek();
     if (els.trainingAgendaToday) {
       els.trainingAgendaToday.innerHTML = todaySlots.length
         ? todaySlots.map((slot) => renderAgendaSlot(slot, true)).join('')
@@ -11945,6 +11949,188 @@
         ? upcomingSlots.map((slot) => `<div class="training-agenda-upcoming"><strong>${escapeHtml(slot.dateLabel)}</strong>${renderAgendaSlot(slot, false)}</div>`).join('')
         : '<div class="muted">No hay entrenamientos próximos en los siguientes 7 días.</div>';
     }
+  }
+
+  // ---- v0.9.61 · Hoy: "Mi semana" ----
+  // Lun a Vie de esta semana con las clases de getAgendaSlotsForDate (la misma lectura de hora que
+  // las tarjetas, con "Cambiar de clase · Solo un día"). Solo lee: lo único que guarda es el horario
+  // de trabajo, desde Ajustes. weekUi vive en memoria.
+  const weekUi = { cell: '', noHourOpen: false, share: null, shareMessage: '' };
+
+  function getTodayWeekGrid() {
+    const todayValue = getTodayLocalDate();
+    const dates = weekApi.weekDates(todayValue);
+    const slotsByDate = {};
+    dates.forEach((date) => { slotsByDate[date] = getAgendaSlotsForDate(new Date(`${date}T00:00:00`)); });
+    return weekApi.buildGrid({ dates, slotsByDate, workHours: state.trainingsV08?.workHours, todayValue });
+  }
+
+  function renderTodayWeek() {
+    const box = document.getElementById('todayWeek');
+    if (!box || !weekApi) {
+      return;
+    }
+    const grid = getTodayWeekGrid();
+    const [selCol, selHour] = weekUi.cell ? weekUi.cell.split(':').map(Number) : [-1, -1];
+    const lines = weekUi.cell ? weekApi.cellLines(grid, selCol, selHour) : [];
+    if (weekUi.cell && !lines.length) {
+      weekUi.cell = '';
+    }
+    const stateLabel = { busy: 'ocupado', free: 'libre', off: 'fuera de horario' };
+    const head = grid.columns.map((column) => `<span class="tw-day${column.isToday ? ' is-today' : ''}" data-week-day="${column.n}">${escapeHtml(column.short)}</span>`).join('');
+    const body = grid.rows.map((row) => `<span class="tw-hour">${escapeHtml(row.label)}</span>${row.cells.map((cell, col) => {
+      const column = grid.columns[col];
+      const classes = `tw-cell is-${cell.state}${column.isToday ? ' is-today' : ''}${selCol === col && selHour === row.hour ? ' is-selected' : ''}`;
+      const attrs = `data-week-cell="${col}:${row.hour}" data-week-state="${cell.state}" aria-label="${escapeHtml(column.short)} ${row.label}:00 ${stateLabel[cell.state]}"`;
+      return cell.state === 'busy'
+        ? `<button type="button" class="${classes}" ${attrs}></button>`
+        : `<span class="${classes}" ${attrs}></span>`;
+    }).join('')}`).join('');
+    const noHour = grid.noHour;
+    box.innerHTML = `
+      <div class="tw-head"><h3 id="todayWeekTitle" class="tw-title">Mi semana</h3><span class="tw-range">${escapeHtml(weekApi.weekLabel(grid.dates).replace(/^Semana /, ''))}</span></div>
+      <div class="tw-grid" data-week-grid><span class="tw-corner"></span>${head}${body}</div>
+      <div class="tw-legend"><span><i class="tw-key is-busy"></i>Ocupado</span><span><i class="tw-key is-free"></i>Libre</span>${grid.configured ? '<span><i class="tw-key is-off"></i>Fuera de horario</span>' : ''}</div>
+      ${lines.length ? `<p class="tw-line" data-week-line>${lines.map((line) => `<span>${escapeHtml(line)}</span>`).join('')}</p>` : ''}
+      ${noHour.length ? `<p class="tw-nohour" data-week-nohour-line>Sin hora: ${noHour.length} · <button class="tw-link" type="button" data-week-nohour aria-expanded="${weekUi.noHourOpen}">${weekUi.noHourOpen ? 'Ocultar' : 'Ver lista'}</button></p>` : ''}
+      ${noHour.length && weekUi.noHourOpen ? `<ul class="tw-nohour-list" data-week-nohour-list>${noHour.map((item) => `<li><button class="tw-link" type="button" data-week-client="${escapeHtml(item.id)}">${escapeHtml(item.name)}</button></li>`).join('')}</ul>` : ''}
+      <button class="secondary small tw-share-btn" type="button" data-week-share>Compartir horas libres</button>
+      ${weekUi.shareMessage ? `<p class="meta" data-week-share-message>${escapeHtml(weekUi.shareMessage)}</p>` : ''}
+      ${weekUi.share ? `
+      <div class="tw-sheet" data-week-share-sheet role="dialog" aria-label="Horas disponibles">
+        <div class="tw-sheet-card">
+          <img class="tw-sheet-img" src="${weekUi.share.url}" alt="Horas disponibles de la semana">
+          <div class="inline-actions">
+            <button class="primary" type="button" data-week-share-send>Compartir</button>
+            <button class="secondary" type="button" data-week-share-close>Cerrar</button>
+          </div>
+        </div>
+      </div>` : ''}`;
+  }
+
+  // Dibuja la imagen y la muestra; "Compartir" usa el PNG ya listo (el menú del teléfono necesita
+  // el toque reciente).
+  async function openWeekShare() {
+    if (!weekImage || !weekApi) {
+      return;
+    }
+    const grid = getTodayWeekGrid();
+    weekUi.shareMessage = 'Preparando la imagen…';
+    renderTodayWeek();
+    try {
+      const { blob } = await weekImage.render(weekApi.shareData(grid));
+      closeWeekShare();
+      weekUi.share = { blob, url: URL.createObjectURL(blob), name: weekImage.fileName(grid.dates[0]) };
+      weekUi.shareMessage = '';
+    } catch (error) {
+      weekUi.shareMessage = 'No se pudo crear la imagen.';
+    }
+    renderTodayWeek();
+  }
+
+  function closeWeekShare() {
+    if (weekUi.share?.url) {
+      URL.revokeObjectURL(weekUi.share.url);
+    }
+    weekUi.share = null;
+  }
+
+  async function sendWeekShare() {
+    if (!weekUi.share) {
+      return;
+    }
+    const result = await weekImage.share(weekUi.share.blob, weekUi.share.name);
+    if (result.via === 'cancel') {
+      return;
+    }
+    closeWeekShare();
+    weekUi.shareMessage = result.via === 'download' ? 'Imagen descargada.' : '';
+    renderTodayWeek();
+  }
+
+  // ---- v0.9.61 · Ajustes: "Mi horario de trabajo" (trainingsV08.workHours) ----
+  // El formulario se llena desde el estado salvo que el entrenador esté escribiendo (dirty).
+  const workHoursUi = { dirty: false };
+
+  function fillWorkHoursForm(workHours) {
+    const days = (workHours || weekApi.DEFAULT_WORK_HOURS).days;
+    weekApi.DAYS.forEach((day) => {
+      [0, 1].forEach((index) => {
+        const range = (days[day.n] || [])[index] || { from: '', to: '' };
+        const from = document.querySelector(`[data-work-input="${day.n}-${index}-from"]`);
+        const to = document.querySelector(`[data-work-input="${day.n}-${index}-to"]`);
+        if (from) from.value = range.from || '';
+        if (to) to.value = range.to || '';
+      });
+    });
+  }
+
+  function renderWorkHoursSettings() {
+    if (!weekApi || !document.getElementById('workHoursForm')) {
+      return;
+    }
+    const saved = weekApi.normalizeWorkHours(state.trainingsV08?.workHours);
+    const chip = document.getElementById('workHoursChip');
+    if (chip) {
+      chip.textContent = saved ? 'Guardado' : 'Sin horario';
+      chip.classList.toggle('st-chip--ok', Boolean(saved));
+    }
+    const clear = document.getElementById('workHoursClear');
+    if (clear) {
+      clear.disabled = !saved;
+    }
+    if (!workHoursUi.dirty) {
+      // Sin horario guardado, el formulario propone el sugerido (no cuenta hasta "Guardar horario").
+      fillWorkHoursForm(saved);
+    }
+  }
+
+  function readWorkHoursForm() {
+    return weekApi.DAYS.map((day) => ({
+      n: day.n,
+      ranges: [0, 1].map((index) => ({
+        from: document.querySelector(`[data-work-input="${day.n}-${index}-from"]`)?.value || '',
+        to: document.querySelector(`[data-work-input="${day.n}-${index}-to"]`)?.value || ''
+      }))
+    }));
+  }
+
+  function setWorkHoursMessage(text, kind = '') {
+    const message = document.getElementById('workHoursMessage');
+    if (message) {
+      message.textContent = text;
+      message.className = `notice${kind ? ` ${kind}` : ''}`;
+    }
+  }
+
+  function handleWorkHoursSubmit(event) {
+    event.preventDefault();
+    const result = weekApi.validateForm(readWorkHoursForm());
+    if (!result.ok) {
+      setWorkHoursMessage(result.errors.join(' '), 'bad');
+      return;
+    }
+    ensureTrainingsV08State();
+    state.trainingsV08.workHours = result.workHours;
+    workHoursUi.dirty = false;
+    persist();
+    setWorkHoursMessage('Horario guardado.', 'ok');
+  }
+
+  function handleWorkHoursClear() {
+    if (!state.trainingsV08?.workHours) {
+      return;
+    }
+    delete state.trainingsV08.workHours;
+    workHoursUi.dirty = false;
+    persist();
+    setWorkHoursMessage('Horario quitado: todo lo que no está ocupado se ve libre.');
+  }
+
+  function handleWorkHoursDefault() {
+    fillWorkHoursForm(null);
+    workHoursUi.dirty = true;
+    setWorkHoursMessage('Horario sugerido puesto. Toca "Guardar horario" para usarlo.');
   }
 
   // v0.9.56: cambia un alumno en el estado (y en la lista de Alumnos) y guarda como la asistencia
@@ -12308,6 +12494,7 @@
     renderOnboardingQr();
     renderLastExport();
     renderWeightReview();
+    renderWorkHoursSettings();
     if (els.accountSettings) {
       els.accountSettings.innerHTML = (state.accounts || []).map((account) => `
         <div class="list-item">
@@ -13785,6 +13972,39 @@
       return;
     }
 
+    // v0.9.61 · Hoy: "Mi semana".
+    const weekCell = target.closest('[data-week-cell]');
+    if (weekCell && target.closest('[data-week-grid]')) {
+      const key = weekCell.getAttribute('data-week-cell');
+      weekUi.cell = weekCell.getAttribute('data-week-state') === 'busy' && weekUi.cell !== key ? key : '';
+      renderTodayWeek();
+      return;
+    }
+    if (target.closest('[data-week-nohour]')) {
+      weekUi.noHourOpen = !weekUi.noHourOpen;
+      renderTodayWeek();
+      return;
+    }
+    const weekClient = target.closest('[data-week-client]');
+    if (weekClient) {
+      show('clients');
+      openClientFicha(weekClient.getAttribute('data-week-client'));
+      return;
+    }
+    if (target.closest('[data-week-share]')) {
+      openWeekShare();
+      return;
+    }
+    if (target.closest('[data-week-share-send]')) {
+      sendWeekShare();
+      return;
+    }
+    if (target.closest('[data-week-share-close]') || target.matches('[data-week-share-sheet]')) {
+      closeWeekShare();
+      renderTodayWeek();
+      return;
+    }
+
     // v0.9.56 · Hoy: ✓ Vino / ✗ No vino, "+ Agregar alumno a esta clase" y × (quitar el cambio de hoy).
     const todayMarkButton = target.closest('[data-today-mark]');
     if (todayMarkButton) {
@@ -15023,6 +15243,10 @@
   els.copyOnboardingUrlBtn?.addEventListener('click', copyOnboardingUrl);
   document.getElementById('exportBtn').addEventListener('click', handleExportClick);
   document.getElementById('weightReviewList')?.addEventListener('click', handleWeightReviewClick);
+  document.getElementById('workHoursForm')?.addEventListener('submit', handleWorkHoursSubmit);
+  document.getElementById('workHoursForm')?.addEventListener('input', () => { workHoursUi.dirty = true; });
+  document.getElementById('workHoursDefault')?.addEventListener('click', handleWorkHoursDefault);
+  document.getElementById('workHoursClear')?.addEventListener('click', handleWorkHoursClear);
   els.fileInput.addEventListener('change', handleImport);
   els.restoreConfirmInput.addEventListener('input', updateRestoreButton);
   els.restoreBtn.addEventListener('click', handleRestoreClick);
